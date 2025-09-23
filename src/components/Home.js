@@ -18,7 +18,7 @@ const Home = (props) => {
         color={blue}
         fontSize={120}
         fontColor={yellow}
-        text={"Start"}
+        text={"START"}
         fontWeight={800}
         callback={startCallback}
       />
@@ -30,7 +30,7 @@ const Home = (props) => {
         color={red}
         fontSize={14}
         fontColor={white}
-        text={"Log Out"}
+        text={"LOG OUT"}
         fontWeight={800}
         callback={logoutCallback}
       />

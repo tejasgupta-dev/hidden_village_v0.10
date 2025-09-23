@@ -301,10 +301,10 @@ export const StoryEditorContentEditor = (props) => {
       {createTextElement("Game Name:", 0.11, 0.10, 0.018, width, height)}
 
       
-      {createTextElement(`Total chapters: ${chapters.length}`, 0.04, 0.24, 0.018, width, height)}
+      {createTextElement(`Total levels: ${chapters.length}`, 0.04, 0.24, 0.018, width, height)}
 
       {/* To label the narritives */}
-      {createTextElement("Chapter", 0.04, 0.32, 0.015, width, height)}
+      {createTextElement("Level", 0.04, 0.32, 0.015, width, height)}
       {createTextElement("Character", 0.13, 0.32, 0.015, width, height)}
       {createTextElement("In/Out", 0.25, 0.32, 0.015, width, height)}
       {createTextElement("Dialogue Preview", 0.45, 0.32, 0.015, width, height)}
@@ -444,7 +444,7 @@ export const StoryEditorContentEditor = (props) => {
               color={orange}
               fontSize={width * 0.01}
               fontColor={white}
-              text={"Remove"}
+              text={"REMOVE"}
               fontWeight ={800}
               callback={() => onRemoveDialogue(index)}
             />
@@ -456,7 +456,7 @@ export const StoryEditorContentEditor = (props) => {
             color={pink}
             fontSize={width * 0.01}
             fontColor={white}
-            text={"Edit"}
+            text={"EDIT"}
             fontWeight={800}
             callback={() => onEditDialogue(index)}
           />
