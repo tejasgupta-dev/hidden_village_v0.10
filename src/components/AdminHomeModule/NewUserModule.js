@@ -104,7 +104,7 @@ const NewUserModule = (props) => {
             color={red}
             fontSize={width * 0.015}
             fontColor={white}
-            text={"Back"}
+            text={"BACK"}
             fontWeight={800}
             callback={() => {
                 const currentUserEmail = getSavedUsername();
@@ -133,7 +133,7 @@ const NewUserModule = (props) => {
             color={green}
             fontSize={width * 0.015}
             fontColor={white}
-            text={"Add New User"}
+            text={"ADD NEW USER"}
             fontWeight={800}
             callback={async () => {
            // wait for the DB write to finish…

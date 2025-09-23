@@ -220,7 +220,7 @@ const CurricularModule = (props) => {
             color={indigo}
             fontSize={width * 0.014}
             fontColor={white}
-            text={"+Add Level"}
+            text={"+ADD LEVEL"}
             fontWeight={800}
             callback={() => {
               setAddtoCurricular(true);
