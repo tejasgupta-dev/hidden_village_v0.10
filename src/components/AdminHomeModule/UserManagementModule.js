@@ -85,7 +85,7 @@ const UserManagementModule = (props) => {
             color={navyBlue} 
             fontSize={width * 0.015}
             fontColor={white} 
-            text={loading ? "Refreshing..." : "Refresh Users"}
+            text={loading ? "REFRESHING..." : "REFRESH USERS"}
             fontWeight={800}
             callback={refreshUserList}
         />
@@ -110,7 +110,7 @@ const UserManagementModule = (props) => {
             color={red}
             fontSize={width * 0.015}
             fontColor={white}
-            text={"Back"}
+            text={"BACK"}
             fontWeight={800}
             callback={mainCallback}
         />

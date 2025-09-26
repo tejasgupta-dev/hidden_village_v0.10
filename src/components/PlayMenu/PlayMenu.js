@@ -44,24 +44,24 @@ const PlayMenu = (props) => {
         let list = [];
         if(role === "Admin" || role === "Developer"){ // if user is not a student
             list.push(
-                {text: "Admin", callback: () => send("ADMIN"), color: babyBlue},
-                {text: "New Game", callback: () => send("NEWGAME"), color: purple},
-                {text: "Edit Game", callback: () => (setPlayGame(false), send("GAMESELECT")), color: powderBlue},
-                {text: "Play Game", callback: () => (setPlayGame(true), send("GAMESELECT")), color: royalBlue},
-                {text: "New Level", callback: () => (setEditLevel(true), send("NEWLEVEL")), color: dodgerBlue},
-                {text: "Edit Level", callback: () => (setAddtoCurricular(false),send("LEVELSELECT")), color: steelBlue},
-                {text: "Settings", callback: () => send("SETTINGS"), color: cornflowerBlue},
+                {text: "ADMIN", callback: () => send("ADMIN"), color: babyBlue},
+                {text: "NEW GAME", callback: () => send("NEWGAME"), color: purple},
+                {text: "EDIT GAME", callback: () => (setPlayGame(false), send("GAMESELECT")), color: powderBlue},
+                {text: "PLAY", callback: () => (setPlayGame(true), send("GAMESELECT")), color: royalBlue},
+                {text: "NEW LEVEL", callback: () => (setEditLevel(true), send("NEWLEVEL")), color: dodgerBlue},
+                {text: "EDIT LEVEL", callback: () => (setAddtoCurricular(false),send("LEVELSELECT")), color: steelBlue},
+                {text: "SETTINGS", callback: () => send("SETTINGS"), color: cornflowerBlue},
             );
         } else if (role === "Student"){
             list.push({text: "Play", callback: () => (setPlayGame(true), send("GAMESELECT")), color: royalBlue}, {text: "Settings", callback: () => send("SETTINGS"), color: cornflowerBlue})
         } else if (role === "Teacher"){
             list.push(
-                {text: "New Game", callback: () => send("NEWGAME"), color: purple},
-                {text: "Edit Game", callback: () => (setPlayGame(false), send("GAMESELECT")), color: powderBlue},
-                {text: "Play", callback: () => send("PLAY"), color: royalBlue},
-                {text: "New Level", callback: () => (setEditLevel(true), send("NEWLEVEL")), color: dodgerBlue},
-                {text: "Edit Level", callback: () => (setAddtoCurricular(false),send("LEVELSELECT")), color: steelBlue},
-                {text: "Settings", callback: () => send("SETTINGS"), color: cornflowerBlue},
+                {text: "NEW GAME", callback: () => send("NEWGAME"), color: purple},
+                {text: "EDIT GAME", callback: () => (setPlayGame(false), send("GAMESELECT")), color: powderBlue},
+                {text: "PLAY", callback: () => send("PLAY"), color: royalBlue},
+                {text: "NEW LEVEL", callback: () => (setEditLevel(true), send("NEWLEVEL")), color: dodgerBlue},
+                {text: "EDIT LEVEL", callback: () => (setAddtoCurricular(false),send("LEVELSELECT")), color: steelBlue},
+                {text: "SETTINGS", callback: () => send("SETTINGS"), color: cornflowerBlue},
             );
         }
             setButtonList(list);
@@ -80,7 +80,7 @@ const PlayMenu = (props) => {
             color={red}
             fontSize={14}
             fontColor={white}
-            text={"Log Out"}
+            text={"LOG OUT"}
             fontWeight={800}
             callback={logoutCallback}
           />
@@ -110,7 +110,7 @@ const PlayMenu = (props) => {
             color={red}
             fontSize={14}
             fontColor={white}
-            text={"Data"}
+            text={"DATA"}
             fontWeight={800}
             callback={() => setdataMenuVisable(!isDataMenuVisable)}
           />

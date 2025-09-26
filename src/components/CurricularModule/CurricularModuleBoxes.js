@@ -218,7 +218,7 @@ const CurriculumList = ({
               color={orange}
               fontSize={totalWidth * fontSizeMultiplier / 1.3}
               fontColor={white}
-              text={"Remove"}
+              text={"REMOVE"}
               fontWeight="bold"
               callback={() => {
                 Curriculum.removeConjectureByIndex(globalIndex);

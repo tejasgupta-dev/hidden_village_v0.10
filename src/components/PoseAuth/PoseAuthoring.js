@@ -389,7 +389,7 @@ const handleReset = () => {
           color={white}
           fontSize={width * 0.021}
           fontColor={pink}
-          text={"Capture"}
+          text={"CAPTURE"}
           fontWeight={800}
           callback={() => startTimer()} // Start timer to capture pose
         />
@@ -402,7 +402,7 @@ const handleReset = () => {
           color={white}
           fontSize={width * 0.021}
           fontColor={green}
-          text={"Save"}
+          text={"SAVE"}
           fontWeight={800}
           callback={handleSave} // Handle saving current poses to database
         />
@@ -415,7 +415,7 @@ const handleReset = () => {
           color={white}
           fontSize={width * 0.021}
           fontColor={blue}
-          text={"Cancel"}
+          text={"CANCEL"}
           fontWeight={800}
           callback={() => {
             const confirmLeave = window.confirm(
@@ -436,7 +436,7 @@ const handleReset = () => {
           color={white}
           fontSize={width * 0.021}
           fontColor={orange}
-          text={"Reset"}
+          text={"RESET"}
           fontWeight={800}
           callback={handleReset}  // Clear all poses and tolerance from pose auth
         />
