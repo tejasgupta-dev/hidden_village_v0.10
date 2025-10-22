@@ -17,7 +17,7 @@ import NewUserModule from "./NewUserModule";
 
 
 const UserManagementModule = (props) => {
-    const { height, width, mainCallback, addNewUserCallback } = props;
+    const { height, width, firebaseApp, mainCallback, addNewUserCallback } = props;
     const [usersList, setUsersList] = useState([]);
     const [loading, setLoading] = useState(false);
     const [currentOrgId, setCurrentOrgId] = useState(null);
@@ -28,7 +28,7 @@ const UserManagementModule = (props) => {
                   setLoading(true);
 
       /* 1.  fetch org (may be null for brand-new users) */
-      const { orgId } = await getCurrentUserContext();
+      const { orgId } = await getCurrentUserContext(firebaseApp);
       if (!orgId) {
         console.warn('No organization found for current user');
         setUsersList([]);
@@ -37,7 +37,7 @@ const UserManagementModule = (props) => {
       setCurrentOrgId(orgId);
       
       /* 2.  fetch users – returns [] on empty org */
-      const users = await getUsersByOrganizationFromDatabase(orgId);
+      const users = await getUsersByOrganizationFromDatabase(orgId, firebaseApp);
       console.log('User 0:', users.length ? users[0] : 'none');
       setUsersList(users);
         } catch (error) {

@@ -32,6 +32,9 @@ const PlayMenu = (props) => {
     const [userRole, setUserRole] = useState(role);
     const [isDataMenuVisable, setdataMenuVisable] = useState(false);
     
+    // Get Firebase app instance
+    const firebaseApp = firebase.app();
+    
     useEffect(() => {
         // Calculate the distance for buttons
         const totalAvailableWidth = width * 0.85 * (buttonList.length/7);
@@ -223,6 +226,7 @@ const PlayMenu = (props) => {
             <UserManagementModule
             width={width}
             height={height}
+            firebaseApp={firebaseApp}
             mainCallback={() => send("MAIN")} // goes to Home
             addNewUserCallback={() => send("ADDNEWUSER")} // goes to add new user section
         />
@@ -301,6 +305,7 @@ const PlayMenu = (props) => {
           <OrganizationManager
             width={width}
             height={height}
+            firebaseApp={firebaseApp}
             mainCallback={() => send("MAIN")}
           />
         )}

@@ -3,19 +3,8 @@ import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, setPersist
 import { async } from "regenerator-runtime";
 import { v4 as uuidv4 } from 'uuid';
 
-const db = getDatabase();
-
 // User Id functionality will be added in a different PR
 let userId;
-
-// Get the Firebase authentication instance
-const auth = getAuth();
-
-// Listen for changes to the authentication state
-// and update the userId variable accordingly
-onAuthStateChanged(auth, (user) => {
-    userId = user.uid;
-});
 
 const UserPermissions = {
     Admin: 'Admin',
@@ -183,8 +172,9 @@ export const createOrganization = async (name, ownerUid) => {
 };
 
 // Get organization information by ID
-export const getOrganizationInfo = async (orgId) => {
+export const getOrganizationInfo = async (orgId, firebaseApp) => {
     try {
+        const db = getDatabase(firebaseApp);
         const orgRef = ref(db, `orgs/${orgId}`);
         const orgSnapshot = await get(orgRef);
         
@@ -199,9 +189,17 @@ export const getOrganizationInfo = async (orgId) => {
 };
 
 // Get current user's primary organization and role
-export const getCurrentUserContext = async () => {
+export const getCurrentUserContext = async (firebaseApp) => {
     try {
-        const userOrgs = await getUserOrgsFromDatabase(userId);
+        const auth = getAuth(firebaseApp);
+        const user = auth.currentUser;
+        
+        if (!user) {
+            console.warn('No authenticated user');
+            return { orgId: null, role: null };
+        }
+        
+        const userOrgs = await getUserOrgsFromDatabase(user.uid, firebaseApp);
         const orgIds = Object.keys(userOrgs);
         
         if (orgIds.length === 0) {
@@ -211,7 +209,7 @@ export const getCurrentUserContext = async () => {
         
         // Use the first organization as primary (or implement logic to choose primary org)
         const primaryOrgId = orgIds[0];
-        const role = await getUserRoleInOrg(userId, primaryOrgId);
+        const role = await getUserRoleInOrg(user.uid, primaryOrgId, firebaseApp);
         
         return { orgId: primaryOrgId, role };
     } catch (error) {
@@ -221,9 +219,9 @@ export const getCurrentUserContext = async () => {
 };
 
 // Backward compatibility function - returns role from primary organization
-export const getUserRoleFromDatabase = async (props) => {
+export const getUserRoleFromDatabase = async (firebaseApp) => {
     try {
-        const { role } = await getCurrentUserContext();
+        const { role } = await getCurrentUserContext(firebaseApp);
         return role;
     } catch (error) {
         console.error('Error getting user role:', error);
@@ -232,14 +230,15 @@ export const getUserRoleFromDatabase = async (props) => {
 };
 
 // Get current user's organization info for display
-export const getCurrentUserOrgInfo = async () => {
+export const getCurrentUserOrgInfo = async (firebaseApp) => {
     try {
-        const { orgId, role } = await getCurrentUserContext();
+        const { orgId, role } = await getCurrentUserContext(firebaseApp);
         if (!orgId) {
             return { orgName: 'No Organization', role: null };
         }
         
         // Get organization name
+        const db = getDatabase(firebaseApp);
         const orgRef = ref(db, `orgs/${orgId}/name`);
         const orgSnapshot = await get(orgRef);
         const orgName = orgSnapshot.exists() ? orgSnapshot.val() : 'Unknown Organization';
@@ -251,43 +250,39 @@ export const getCurrentUserOrgInfo = async () => {
     }
 };
 
-export const getUserNameFromDatabase = async (props) => {
-    const userPath = `users/${userId}`;
-
-    // Get the user snapshot from the database
-    const userSnapshot = await get(ref(db, userPath));
-
-    if (userSnapshot.exists()) {
-        // User exists, return the user's name
-        return userSnapshot.val().userName;
-    } else {
-        // User does not exist in the database
-        // we should put the user in the database if they are not found
-        try{
-            console.log("User Not Found - Entering user into database")
-            // Get the Firebase authentication instance
-            const auth = getAuth();
-
-            // Log information about the current user, if one exists
-            const currentUser = auth.currentUser;
-
-            // make this user a dev - they were probably created directly in firebase.
-            // Note: This will need to be updated to work with organizations
-            console.warn('Auto-creating user without organization. This should be updated.');
-            await writeCurrentUserToDatabaseNewUser(currentUser.uid,currentUser.email,UserPermissions.Developer, null)
-
-        }catch(error){
-            console.log("User not found")
+export const getUserNameFromDatabase = async (firebaseApp) => {
+    try {
+        const auth = getAuth(firebaseApp);
+        const user = auth.currentUser;
+        
+        if (!user) {
+            console.log("No authenticated user");
             return "USER NOT FOUND";
         }
+        
+        const db = getDatabase(firebaseApp);
+        const userPath = `users/${user.uid}`;
+        const userSnapshot = await get(ref(db, userPath));
+
+        if (userSnapshot.exists()) {
+            // User exists, return the user's name
+            return userSnapshot.val().userName;
+        } else {
+            // User doesn't exist in the database
+            console.log("User not found in database");
+            return "USER NOT FOUND";
+        }
+    } catch (error) {
+        console.error('Error getting user name:', error);
         return "USER NOT FOUND";
     }
 };
 
 
 // Get list of users by organization ID
-export const getUsersByOrganizationFromDatabase = async (orgId) => {
+export const getUsersByOrganizationFromDatabase = async (orgId, firebaseApp) => {
     try {
+        const db = getDatabase(firebaseApp);
         const membersRef = ref(db, `orgs/${orgId}/members`);
         const membersSnapshot = await get(membersRef);
 
@@ -339,8 +334,9 @@ export const getUserEmailFromDatabase = async (props) => {
 };
 
 // Get all organizations for a user
-export const getUserOrgsFromDatabase = async (uid) => {
+export const getUserOrgsFromDatabase = async (uid, firebaseApp) => {
     try {
+        const db = getDatabase(firebaseApp);
         const orgsRef = ref(db, `users/${uid}/orgs`);
         const snapshot = await get(orgsRef);
         return snapshot.exists() ? snapshot.val() : {};
@@ -351,8 +347,9 @@ export const getUserOrgsFromDatabase = async (uid) => {
 };
 
 // Get user role in specific organization
-export const getUserRoleInOrg = async (uid, orgId) => {
+export const getUserRoleInOrg = async (uid, orgId, firebaseApp) => {
     try {
+        const db = getDatabase(firebaseApp);
         const orgRef = ref(db, `users/${uid}/orgs/${orgId}/roleSnapshot`);
         const snapshot = await get(orgRef);
         return snapshot.exists() ? snapshot.val() : null;
@@ -375,8 +372,9 @@ export const getUserStatusInOrg = async (uid, orgId) => {
 };
 
 // Add user to organization
-export const addUserToOrganization = async (uid, orgId, role) => {
+export const addUserToOrganization = async (uid, orgId, role, firebaseApp) => {
     try {
+        const db = getDatabase(firebaseApp);
         const timestamp = new Date().toISOString();
         
         await Promise.all([
@@ -433,5 +431,80 @@ export const updateUserRoleInOrg = async (uid, orgId, newRole) => {
     } catch (error) {
         console.error("Error updating user role in organization:", error);
         return false;
+    }
+};
+
+// Find organization by name
+export const findOrganizationByName = async (orgName, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const orgsRef = ref(db, 'orgs');
+        const orgsSnapshot = await get(orgsRef);
+        
+        if (orgsSnapshot.exists()) {
+            const orgs = orgsSnapshot.val();
+            for (const [orgId, orgData] of Object.entries(orgs)) {
+                if (orgData.name === orgName) {
+                    return orgId;
+                }
+            }
+        }
+        return null;
+    } catch (error) {
+        console.error('Error finding organization by name:', error);
+        return null;
+    }
+};
+
+// Register new user and add to Admin Organization
+export const registerNewUser = async (email, password, firebaseApp) => {
+    try {
+        // 1. Create user through Firebase Auth
+        const auth = getAuth(firebaseApp);
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+        const uid = user.uid;
+        
+        // 2. Get database instance with the app
+        const db = getDatabase(firebaseApp);
+        
+        // 3. Find Admin Organization (simplified - just get first org for now)
+        const orgsRef = ref(db, 'orgs');
+        const orgsSnapshot = await get(orgsRef);
+        let adminOrgId = null;
+        
+        if (orgsSnapshot.exists()) {
+            const orgs = orgsSnapshot.val();
+            // Find first organization (assuming it's Admin Organization)
+            adminOrgId = Object.keys(orgs)[0];
+        }
+        
+        if (!adminOrgId) {
+            throw new Error('No organizations found. Please create an organization first.');
+        }
+        
+        // 4. Extract username from email (part before @)
+        const userName = email.split('@')[0];
+        
+        // 5. Create user record in database
+        const now = new Date().toISOString();
+        const userData = {
+            userEmail: email,
+            userName: userName,
+            userId: uid,
+            dateCreated: now,
+            dateLastAccessed: now
+        };
+        
+        await set(ref(db, `users/${uid}`), userData);
+        
+        // 6. Add user to Admin Organization with Admin role (for testing)
+        await addUserToOrganization(uid, adminOrgId, 'Admin', firebaseApp);
+        
+        console.log('User registered successfully:', uid);
+        return { success: true, uid: uid };
+    } catch (error) {
+        console.error('Error registering user:', error);
+        throw error;
     }
 };

@@ -29,6 +29,9 @@ const Story = () => {
   const [userRole, setUserRole] = useState(null);
   const [userOrg, setUserOrg] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  
+  // Get Firebase app instance
+  const firebaseApp = firebase.app();
 
   let [rowDimensions, columnDimensions] = generateRowAndColumnFunctions(
     width,
@@ -60,9 +63,9 @@ const Story = () => {
     const fetchUserData = async () => {
       try {
         const [name, userContext, orgInfo] = await Promise.all([
-          getUserNameFromDatabase(),
-          getCurrentUserContext(),
-          getCurrentUserOrgInfo(),
+          getUserNameFromDatabase(firebaseApp),
+          getCurrentUserContext(firebaseApp),
+          getCurrentUserOrgInfo(firebaseApp),
         ]);
 
         if (name && name !== "USER NOT FOUND") {

@@ -8,7 +8,7 @@ import OrganizationList from "./OrganizationList";
 import { getCurrentUserContext, getUserOrgsFromDatabase, getOrganizationInfo } from "../../firebase/userDatabase";
 import { getAuth } from "firebase/auth";
 
-const OrganizationManager = ({ width, height, mainCallback }) => {
+const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
   const [organizations, setOrganizations] = useState([]);
   const [currentOrgId, setCurrentOrgId] = useState(null);
   const [currentOrgName, setCurrentOrgName] = useState('Loading...');
@@ -23,20 +23,20 @@ const OrganizationManager = ({ width, height, mainCallback }) => {
       setLoading(true);
       
       // Get current user context
-      const { orgId } = await getCurrentUserContext();
+      const { orgId } = await getCurrentUserContext(firebaseApp);
       setCurrentOrgId(orgId);
       
       // Get user's organizations
-      const auth = getAuth();
+      const auth = getAuth(firebaseApp);
       const user = auth.currentUser;
       if (!user) return;
 
-      const userOrgs = await getUserOrgsFromDatabase(user.uid);
+      const userOrgs = await getUserOrgsFromDatabase(user.uid, firebaseApp);
       const orgList = [];
       
       // Get full organization data for each org
       for (const [orgId, orgData] of Object.entries(userOrgs)) {
-        const orgInfo = await getOrganizationInfo(orgId);
+        const orgInfo = await getOrganizationInfo(orgId, firebaseApp);
         if (orgInfo) {
           orgList.push({
             id: orgId,
