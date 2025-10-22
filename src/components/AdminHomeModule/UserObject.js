@@ -10,7 +10,8 @@ import { green, neonGreen, black, blue, white, pink, orange, red, transparent, t
 
 let currentUsername = null; // set currentUsername to null so that while the promise in getUserName() is pending, getUserName() returns null
 async function getUserName(){
-    const promise = getUserNameFromDatabase();
+    const firebaseApp = firebase.app();
+    const promise = getUserNameFromDatabase(firebaseApp);
 
     // Wait for the promise to resolve and get the username
     currentUsername = await promise;
@@ -52,7 +53,8 @@ const UserObject = (props) => {
                 return;
             }
             
-            const result = await updateUserRoleInOrg(userId, orgId, getNextRole(role));
+            const firebaseApp = firebase.app();
+            const result = await updateUserRoleInOrg(userId, orgId, getNextRole(role), firebaseApp);
 
             if (result) {
                 // Success
@@ -153,8 +155,8 @@ const UserObject = (props) => {
                     fontColor={white}
                     text={role}
                     fontWeight={800}
-                    callback={() => {
-                        getUserName();
+                    callback={async () => {
+                        await getUserName();
                         if(username != currentUsername && currentUsername != null){ // users cannot change their own role
                             console.log("username:", username, " currentUsername:", currentUsername);
                             handleChangeRole();

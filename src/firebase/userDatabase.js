@@ -445,8 +445,9 @@ export const removeUserFromOrganization = async (uid, orgId, firebaseApp) => {
 };
 
 // Update user role in organization
-export const updateUserRoleInOrg = async (uid, orgId, newRole) => {
+export const updateUserRoleInOrg = async (uid, orgId, newRole, firebaseApp) => {
     try {
+        const db = getDatabase(firebaseApp);
         const timestamp = new Date().toISOString();
         
         await Promise.all([
