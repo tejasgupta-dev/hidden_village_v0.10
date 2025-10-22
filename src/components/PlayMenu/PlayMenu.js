@@ -3,7 +3,7 @@ import { Text } from "@inlet/react-pixi";
 import { TextStyle } from "@pixi/text";
 import Background from "../Background"
 import Button from "../Button";
-import { red, yellow, purple, babyBlue, powderBlue, cornflowerBlue, steelBlue, dodgerBlue, royalBlue, white, black } from "../../utils/colors";
+import { red, yellow, purple, babyBlue, powderBlue, cornflowerBlue, steelBlue, dodgerBlue, royalBlue, white, black, green } from "../../utils/colors";
 import { useMachine } from "@xstate/react";
 import {PlayMenuMachine} from "./PlayMenuMachine";
 import ConjectureModule , {getEditLevel, setEditLevel, getGoBackFromLevelEdit, setGoBackFromLevelEdit} from "../ConjectureModule/ConjectureModule";
@@ -23,6 +23,7 @@ import PlayGame from "../PlayGameModule/PlayGame";
 import PoseTest from "../ConjectureModule/PoseTest";
 import DataMenu from "./DataMenu.js";
 import OrganizationManager from "../OrganizationManager/OrganizationManager";
+import ClassManager from "../ClassManager/ClassManager";
 
 const PlayMenu = (props) => {
     const {width, height, columnDimensions, rowDimensions, userName, role, organization, logoutCallback} = props;
@@ -61,6 +62,7 @@ const PlayMenu = (props) => {
             list.push(
                 {text: "ADMIN", callback: () => send("ADMIN"), color: babyBlue},
                 {text: "ORGANIZATIONS", callback: () => send("ORGANIZATIONS"), color: yellow},
+                {text: "CLASSES", callback: () => send("CLASSES"), color: green},
                 {text: "INVITES", callback: () => send("INVITES"), color: red},
                 {text: "NEW GAME", callback: () => send("NEWGAME"), color: purple},
                 {text: "EDIT GAME", callback: () => (setPlayGame(false), send("GAMESELECT")), color: powderBlue},
@@ -72,12 +74,14 @@ const PlayMenu = (props) => {
         } else if (role === "Student"){
             list.push(
                 {text: "ORGANIZATIONS", callback: () => send("ORGANIZATIONS"), color: yellow},
+                {text: "CLASSES", callback: () => send("CLASSES"), color: green},
                 {text: "PLAY", callback: () => (setPlayGame(true), send("GAMESELECT")), color: royalBlue},
                 {text: "SETTINGS", callback: () => send("SETTINGS"), color: cornflowerBlue}
             );
         } else if (role === "Teacher"){
             list.push(
                 {text: "ORGANIZATIONS", callback: () => send("ORGANIZATIONS"), color: yellow},
+                {text: "CLASSES", callback: () => send("CLASSES"), color: green},
                 {text: "NEW GAME", callback: () => send("NEWGAME"), color: purple},
                 {text: "EDIT GAME", callback: () => (setPlayGame(false), send("GAMESELECT")), color: powderBlue},
                 {text: "PLAY", callback: () => (setPlayGame(true), send("GAMESELECT")), color: royalBlue},
@@ -255,6 +259,14 @@ const PlayMenu = (props) => {
             onBack={() => send("MAIN")} // goes to Home
         />
         )}
+        {state.value === "classes" && (
+            <ClassManager
+                width={width}
+                height={height}
+                firebaseApp={firebaseApp}
+                mainCallback={() => send("MAIN")}
+            />
+        )}
         {state.value === "addNewUser" && (
             <NewUserModule  
             width={width}
@@ -314,6 +326,7 @@ const PlayMenu = (props) => {
             columnDimensions={columnDimensions}
             rowDimensions={rowDimensions}
             userRole={userRole}
+            firebaseApp={firebaseApp}
             curricularCallback={() => {
               if (!getPlayGame()) // edit game
                 send("NEWGAME");

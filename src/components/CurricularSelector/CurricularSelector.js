@@ -3,7 +3,7 @@ import Background from "../Background";
 import { blue, white, red, neonGreen, green, black } from "../../utils/colors";
 import RectButton from "../RectButton";
 import { getCurricularListWithCurrentOrg, writeToDatabaseGameSelect, writeToDatabaseNewSession } from "../../firebase/database";
-import { getUserNameFromDatabase, getCurrentUserContext } from "../../firebase/userDatabase";
+import { getUserNameFromDatabase, getCurrentUserContext, getCurrentClassContext, getClassInfo } from "../../firebase/userDatabase";
 import { CurricularSelectorBoxes } from "./CurricularSelectorModuleBoxes";
 import { useMachine } from "@xstate/react";
 import { Curriculum } from "../CurricularModule/CurricularModule";
@@ -71,7 +71,7 @@ async function handleGameClicked(curricular, curricularCallback, setLoading) {
 
 const CurricularSelectModule = (props) => {
   
-  const { height, width, mainCallback, curricularCallback, userRole } = props;
+  const { height, width, mainCallback, curricularCallback, userRole, firebaseApp } = props;
   const [curricularList, setCurricularList] = useState([]);
   const [currentPage, setCurrentPage] = useState(0);
   const [selectedCurricular, setSelectedCurricular] = useState(null);
@@ -80,8 +80,41 @@ const CurricularSelectModule = (props) => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const result = await getCurricularListWithCurrentOrg(getPlayGame());
-        setCurricularList(result);
+        const isPlayMode = getPlayGame();
+        
+        if (isPlayMode) {
+          // PLAY mode: show only games assigned to current class
+          const { classId, orgId } = await getCurrentClassContext(firebaseApp);
+          
+          if (!classId || !orgId) {
+            console.warn('No class context found, showing all games');
+            const result = await getCurricularListWithCurrentOrg(isPlayMode);
+            setCurricularList(result);
+            setLoading(false);
+            return;
+          }
+          
+          // Get games assigned to current class
+          const classInfo = await getClassInfo(orgId, classId, firebaseApp);
+          const assignedGameIds = classInfo?.assignedGames ? Object.keys(classInfo.assignedGames) : [];
+          
+          console.log('Current class:', classId, 'Assigned games:', assignedGameIds);
+          
+          // Get all games
+          const allGames = await getCurricularListWithCurrentOrg(isPlayMode);
+          
+          // Filter only games assigned to current class
+          const classGames = allGames.filter(game => assignedGameIds.includes(game.UUID));
+          
+          console.log('Filtered games for class:', classGames.length, 'out of', allGames.length);
+          setCurricularList(classGames);
+        } else {
+          // EDIT mode: show all games created by current user
+          console.log('EDIT mode: showing all user games');
+          const result = await getCurricularListWithCurrentOrg(isPlayMode);
+          setCurricularList(result);
+        }
+        
         setLoading(false);
       } catch (error) {
         console.error('Error fetching data:', error);

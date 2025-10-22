@@ -155,16 +155,33 @@ export const createOrganization = async (name, ownerUid, firebaseApp) => {
         // Create organization
         await set(ref(db, `orgs/${orgId}`), orgData);
         
-        // Add organization to user's org list
+        // CREATE DEFAULT CLASS
+        await createDefaultClass(orgId, firebaseApp);
+        
+        // Add owner to default class as teacher
+        await set(ref(db, `orgs/${orgId}/classes/default/teachers/${ownerUid}`), {
+            addedAt: now,
+            addedBy: 'system'
+        });
+        
+        // Add organization to user's org list with default class
         const userOrgData = {
             joinedAt: now,
             roleSnapshot: 'Admin',
             status: 'active',
-            updatedAt: now
+            updatedAt: now,
+            currentClassId: 'default', // Set default as current
+            classes: {
+                default: {
+                    joinedAt: now,
+                    role: 'teacher'
+                }
+            }
         };
         
         await set(ref(db, `users/${ownerUid}/orgs/${orgId}`), userOrgData);
         
+        console.log('Organization created with default class:', orgId);
         return orgId;
     } catch (error) {
         console.error('Error creating organization:', error);
@@ -455,21 +472,39 @@ export const addUserToOrganization = async (uid, orgId, role, firebaseApp) => {
         const db = getDatabase(firebaseApp);
         const timestamp = new Date().toISOString();
         
+        // Determine class role based on organization role
+        const classRole = (role === 'Teacher' || role === 'Admin' || role === 'Developer') ? 'teacher' : 'student';
+        const classRoleGroup = (role === 'Teacher' || role === 'Admin' || role === 'Developer') ? 'teachers' : 'students';
+        
         await Promise.all([
+            // Add to users/orgs with default class
             set(ref(db, `users/${uid}/orgs/${orgId}`), {
                 roleSnapshot: role,
                 status: 'active',
                 joinedAt: timestamp,
-                updatedAt: timestamp
+                updatedAt: timestamp,
+                currentClassId: 'default', // Auto-assign to default class
+                classes: {
+                    default: {
+                        joinedAt: timestamp,
+                        role: classRole
+                    }
+                }
             }),
+            // Add to orgs/members
             set(ref(db, `orgs/${orgId}/members/${uid}`), {
                 uid,
                 role,
                 status: 'active'
+            }),
+            // Add to default class in organization
+            set(ref(db, `orgs/${orgId}/classes/default/${classRoleGroup}/${uid}`), {
+                addedAt: timestamp,
+                addedBy: 'system'
             })
         ]);
         
-        console.log(`User ${uid} added to organization ${orgId} with role ${role}`);
+        console.log(`User ${uid} added to organization ${orgId} with role ${role} and added to Default Class`);
         return true;
     } catch (error) {
         console.error("Error adding user to organization:", error);
@@ -744,5 +779,319 @@ export const deleteInviteCode = async (code, firebaseApp) => {
     } catch (error) {
         console.error('Error deleting invite code:', error);
         throw error;
+    }
+};
+
+// =====================================================
+// CLASS MANAGEMENT FUNCTIONS
+// =====================================================
+
+// Create Default Class when organization is created
+export const createDefaultClass = async (orgId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const classData = {
+            name: "Default Class",
+            createdBy: "system",
+            createdAt: new Date().toISOString(),
+            isDefault: true,
+            teachers: {},
+            students: {},
+            assignedGames: {}
+        };
+        await set(ref(db, `orgs/${orgId}/classes/default`), classData);
+        console.log('Default class created for organization:', orgId);
+        return 'default';
+    } catch (error) {
+        console.error('Error creating default class:', error);
+        throw error;
+    }
+};
+
+// Create new class
+export const createClass = async (orgId, className, creatorUid, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const classId = uuidv4();
+        const now = new Date().toISOString();
+        
+        const classData = {
+            name: className,
+            createdBy: creatorUid,
+            createdAt: now,
+            isDefault: false,
+            teachers: {
+                [creatorUid]: {
+                    addedAt: now,
+                    addedBy: creatorUid
+                }
+            },
+            students: {},
+            assignedGames: {}
+        };
+        
+        await set(ref(db, `orgs/${orgId}/classes/${classId}`), classData);
+        
+        // Add class to creator's user profile
+        await set(ref(db, `users/${creatorUid}/orgs/${orgId}/classes/${classId}`), {
+            joinedAt: now,
+            role: 'teacher'
+        });
+        
+        console.log('Class created:', classId, className);
+        return classId;
+    } catch (error) {
+        console.error('Error creating class:', error);
+        throw error;
+    }
+};
+
+// Get all classes in organization
+export const getClassesInOrg = async (orgId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const classesRef = ref(db, `orgs/${orgId}/classes`);
+        const snapshot = await get(classesRef);
+        
+        if (!snapshot.exists()) return {};
+        return snapshot.val();
+    } catch (error) {
+        console.error('Error getting classes in org:', error);
+        return {};
+    }
+};
+
+// Get user's classes in organization
+export const getUserClassesInOrg = async (uid, orgId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const userClassesRef = ref(db, `users/${uid}/orgs/${orgId}/classes`);
+        const snapshot = await get(userClassesRef);
+        
+        if (!snapshot.exists()) return {};
+        return snapshot.val();
+    } catch (error) {
+        console.error('Error getting user classes:', error);
+        return {};
+    }
+};
+
+// Get class info
+export const getClassInfo = async (orgId, classId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const classRef = ref(db, `orgs/${orgId}/classes/${classId}`);
+        const snapshot = await get(classRef);
+        
+        if (!snapshot.exists()) return null;
+        return snapshot.val();
+    } catch (error) {
+        console.error('Error getting class info:', error);
+        return null;
+    }
+};
+
+// Delete class
+export const deleteClass = async (orgId, classId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const classInfo = await getClassInfo(orgId, classId, firebaseApp);
+        
+        if (!classInfo) throw new Error('Class not found');
+        if (classInfo.isDefault) throw new Error('Cannot delete default class');
+        
+        // Remove class from all users
+        const allMembers = {
+            ...classInfo.teachers || {},
+            ...classInfo.students || {}
+        };
+        
+        const userUpdates = Object.keys(allMembers).map(uid =>
+            remove(ref(db, `users/${uid}/orgs/${orgId}/classes/${classId}`))
+        );
+        
+        // Delete class
+        await Promise.all([
+            ...userUpdates,
+            remove(ref(db, `orgs/${orgId}/classes/${classId}`))
+        ]);
+        
+        console.log('Class deleted:', classId);
+        return true;
+    } catch (error) {
+        console.error('Error deleting class:', error);
+        throw error;
+    }
+};
+
+// Assign students to classes
+export const assignStudentsToClasses = async (orgId, studentUids, classIds, assignerUid, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const updates = [];
+        const now = new Date().toISOString();
+        
+        for (const studentUid of studentUids) {
+            for (const classId of classIds) {
+                // Add to class
+                updates.push(
+                    set(ref(db, `orgs/${orgId}/classes/${classId}/students/${studentUid}`), {
+                        addedAt: now,
+                        addedBy: assignerUid
+                    })
+                );
+                
+                // Add to user profile
+                updates.push(
+                    set(ref(db, `users/${studentUid}/orgs/${orgId}/classes/${classId}`), {
+                        joinedAt: now,
+                        role: 'student'
+                    })
+                );
+            }
+        }
+        
+        await Promise.all(updates);
+        console.log('Students assigned to classes');
+        return true;
+    } catch (error) {
+        console.error('Error assigning students to classes:', error);
+        throw error;
+    }
+};
+
+// Remove user from class
+export const removeUserFromClass = async (orgId, classId, userId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const updates = [];
+        
+        // Remove from class students
+        updates.push(
+            remove(ref(db, `orgs/${orgId}/classes/${classId}/students/${userId}`))
+        );
+        
+        // Remove from class teachers
+        updates.push(
+            remove(ref(db, `orgs/${orgId}/classes/${classId}/teachers/${userId}`))
+        );
+        
+        // Remove from user profile
+        updates.push(
+            remove(ref(db, `users/${userId}/orgs/${orgId}/classes/${classId}`))
+        );
+        
+        await Promise.all(updates);
+        console.log(`User ${userId} removed from class ${classId}`);
+        return true;
+    } catch (error) {
+        console.error('Error removing user from class:', error);
+        throw error;
+    }
+};
+
+// Remove game from class
+export const removeGameFromClass = async (orgId, classId, gameId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        
+        // Remove from class assigned games
+        await remove(ref(db, `orgs/${orgId}/classes/${classId}/assignedGames/${gameId}`));
+        
+        console.log(`Game ${gameId} removed from class ${classId}`);
+        return true;
+    } catch (error) {
+        console.error('Error removing game from class:', error);
+        throw error;
+    }
+};
+
+// Assign games to classes
+export const assignGamesToClasses = async (orgId, gameIds, classIds, assignerUid, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const updates = [];
+        const now = new Date().toISOString();
+        
+        for (const gameId of gameIds) {
+            for (const classId of classIds) {
+                updates.push(
+                    set(ref(db, `orgs/${orgId}/classes/${classId}/assignedGames/${gameId}`), {
+                        addedAt: now,
+                        addedBy: assignerUid
+                    })
+                );
+            }
+        }
+        
+        await Promise.all(updates);
+        console.log('Games assigned to classes');
+        return true;
+    } catch (error) {
+        console.error('Error assigning games to classes:', error);
+        throw error;
+    }
+};
+
+// Switch user's current class
+export const switchUserClass = async (uid, orgId, classId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        await set(ref(db, `users/${uid}/orgs/${orgId}/currentClassId`), classId);
+        console.log('User switched to class:', classId);
+        return true;
+    } catch (error) {
+        console.error('Error switching user class:', error);
+        throw error;
+    }
+};
+
+// Get current class context
+export const getCurrentClassContext = async (firebaseApp) => {
+    try {
+        const auth = getAuth(firebaseApp);
+        const user = auth.currentUser;
+        
+        if (!user) return { classId: null, className: null, orgId: null };
+        
+        const { orgId } = await getCurrentUserContext(firebaseApp);
+        if (!orgId) return { classId: null, className: null, orgId: null };
+        
+        const db = getDatabase(firebaseApp);
+        const currentClassRef = ref(db, `users/${user.uid}/orgs/${orgId}/currentClassId`);
+        const snapshot = await get(currentClassRef);
+        
+        const classId = snapshot.exists() ? snapshot.val() : 'default';
+        
+        // Get class name
+        const classInfo = await getClassInfo(orgId, classId, firebaseApp);
+        const className = classInfo ? classInfo.name : 'Unknown Class';
+        
+        return { classId, className, orgId };
+    } catch (error) {
+        console.error('Error getting current class context:', error);
+        return { classId: null, className: null, orgId: null };
+    }
+};
+
+// Check and create Default Class if missing
+export const ensureDefaultClass = async (orgId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const defaultClassRef = ref(db, `orgs/${orgId}/classes/default`);
+        const snapshot = await get(defaultClassRef);
+        
+        if (!snapshot.exists()) {
+            console.log('Default class not found, creating it...');
+            await createDefaultClass(orgId, firebaseApp);
+            console.log('Default class created successfully');
+        } else {
+            console.log('Default class already exists');
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('Error ensuring default class:', error);
+        return false;
     }
 };

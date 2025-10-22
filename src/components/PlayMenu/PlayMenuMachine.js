@@ -18,7 +18,8 @@ export const PlayMenuMachine = createMachine({
         STORYEDITOR: "storyEditor", //move to story editor
         LEVELSELECT: "levelSelect", //move to edit level
         GAMESELECT: "gameSelect",
-        ORGANIZATIONS: "organizations" // move to organizations
+        ORGANIZATIONS: "organizations", // move to organizations
+        CLASSES: "classes" // move to classes
       },
     },
 
@@ -108,6 +109,12 @@ export const PlayMenuMachine = createMachine({
     },
 
     invites: {
+      on: {
+        MAIN: "main", // move to home
+      }
+    },
+
+    classes: {
       on: {
         MAIN: "main", // move to home
       }
