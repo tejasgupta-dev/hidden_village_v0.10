@@ -3,7 +3,8 @@ import { Container, Sprite, Text } from "@inlet/react-pixi";
 import { TextStyle } from "@pixi/text";
 import RectButton from '../RectButton'; 
 import UserManagementModule from '../../components/AdminHomeModule/UserManagementModule'
-import { updateUserRoleInOrg, getUserNameFromDatabase } from '../../firebase/userDatabase'
+import { updateUserRoleInOrg, getUserNameFromDatabase, removeUserFromOrganization, getCurrentUserContext } from '../../firebase/userDatabase'
+import firebase from 'firebase/compat/app';
 
 import { green, neonGreen, black, blue, white, pink, orange, red, transparent, turquoise } from "../../utils/colors";
 
@@ -70,6 +71,62 @@ const UserObject = (props) => {
         }
     };
 
+    // Function to handle user deletion
+    const handleDeleteUser = async () => {
+        try {
+            // Get Firebase app instance
+            const firebaseApp = firebase.app();
+            
+            // Get current user to prevent self-deletion
+            const auth = firebaseApp.auth();
+            const currentUser = auth.currentUser;
+            
+            if (!currentUser) {
+                alert("Authentication error. Please log in again.");
+                return;
+            }
+            
+            // Prevent deleting yourself
+            if (currentUser.uid === userId) {
+                alert("You cannot remove yourself from the organization.");
+                return;
+            }
+            
+            if (!orgId) {
+                console.error("No organization ID provided");
+                alert("Organization ID is missing.");
+                return;
+            }
+            
+            // Show confirmation dialog
+            const confirmDelete = window.confirm(
+                `Are you sure you want to remove ${username} from the organization?\n\nThis action cannot be undone.`
+            );
+            
+            if (!confirmDelete) {
+                return; // User cancelled
+            }
+            
+            // Remove user from organization
+            const result = await removeUserFromOrganization(userId, orgId, firebaseApp);
+            
+            if (result) {
+                // Success
+                console.log("User removed successfully from organization.");
+                alert(`${username} has been removed from the organization.`);
+                await refreshUserListCallback(); // Refresh the user list
+            } else {
+                // Failure
+                console.log("Failed to remove user from organization.");
+                alert("Failed to remove user. Please try again.");
+            }
+        } catch (error) {
+            // Handle any errors that occurred during the operation
+            console.error("Error removing user:", error);
+            alert("An error occurred while removing the user: " + error.message);
+        }
+    };
+
     return (
         <>
             <Text
@@ -103,6 +160,20 @@ const UserObject = (props) => {
                             handleChangeRole();
                         }
                     }}
+                />
+                
+                {/* Delete Button */}
+                <RectButton
+                    height={55}
+                    width={200}
+                    x={width * 7}
+                    y={y * 1.1 + height *0.25}
+                    color={red}
+                    fontSize={15}
+                    fontColor={white}
+                    text={"DELETE"}
+                    fontWeight={800}
+                    callback={handleDeleteUser}
                 />
         
         </>

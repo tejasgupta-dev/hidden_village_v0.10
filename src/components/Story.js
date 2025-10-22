@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import Loader from "./utilities/Loader.js";
 import Home from "./Home.js";
+import OrganizationSelector from "./OrganizationSelector.js";
 import { useMachine } from "@xstate/react";
 import { StoryMachine } from "../machines/storyMachine.js";
 import { Stage } from "@inlet/react-pixi";
@@ -122,12 +123,33 @@ const Story = () => {
   }, [isAuthenticated, userName, userRole, userOrg, state, send]);
 
   const loading =
-    !isAuthenticated || !userName || userName === "USER NOT FOUND" || !userRole || !userOrg;
+    !isAuthenticated || !userName || userName === "USER NOT FOUND";
+  
+  const needsOrganizationSelection = 
+    isAuthenticated && userName && userName !== "USER NOT FOUND" && (!userRole || !userOrg);
 
   return (
     <>
       {loading ? (
         <Loader />
+      ) : needsOrganizationSelection ? (
+        <Stage
+          height={height}
+          width={width}
+          options={{
+            antialias: true,
+            autoDensity: true,
+            backgroundColor: yellow,
+          }}
+        >
+          <OrganizationSelector
+            width={width}
+            height={height}
+            onOrganizationSelected={() => {
+              // This will trigger a page reload, so no need to handle state
+            }}
+          />
+        </Stage>
       ) : (
         <Stage
           height={height}

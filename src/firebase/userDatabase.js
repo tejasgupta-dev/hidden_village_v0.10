@@ -428,8 +428,9 @@ export const addUserToOrganization = async (uid, orgId, role, firebaseApp) => {
 };
 
 // Remove user from organization
-export const removeUserFromOrganization = async (uid, orgId) => {
+export const removeUserFromOrganization = async (uid, orgId, firebaseApp) => {
     try {
+        const db = getDatabase(firebaseApp);
         await Promise.all([
             remove(ref(db, `users/${uid}/orgs/${orgId}`)),
             remove(ref(db, `orgs/${orgId}/members/${uid}`))
