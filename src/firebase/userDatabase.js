@@ -172,6 +172,56 @@ export const createOrganization = async (name, ownerUid, firebaseApp) => {
     }
 };
 
+// Delete organization (Admin only)
+export const deleteOrganization = async (orgId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const auth = getAuth(firebaseApp);
+        const currentUser = auth.currentUser;
+        
+        if (!currentUser) {
+            throw new Error('No authenticated user');
+        }
+        
+        // Get organization info
+        const orgRef = ref(db, `orgs/${orgId}`);
+        const orgSnapshot = await get(orgRef);
+        
+        if (!orgSnapshot.exists()) {
+            throw new Error('Organization not found');
+        }
+        
+        const orgData = orgSnapshot.val();
+        
+        // Check if user is Admin in this organization
+        const userRole = orgData.members?.[currentUser.uid]?.role;
+        if (userRole !== 'Admin') {
+            throw new Error('Only Admins can delete organizations');
+        }
+        
+        // Get all members to remove organization from their user records
+        const members = orgData.members || {};
+        const memberIds = Object.keys(members);
+        
+        // Remove organization from all users
+        const userUpdates = memberIds.map(uid => 
+            remove(ref(db, `users/${uid}/orgs/${orgId}`))
+        );
+        
+        // Delete organization data (includes levels and games)
+        await Promise.all([
+            ...userUpdates,
+            remove(ref(db, `orgs/${orgId}`))
+        ]);
+        
+        console.log(`Organization ${orgId} deleted successfully`);
+        return { success: true, memberCount: memberIds.length };
+    } catch (error) {
+        console.error('Error deleting organization:', error);
+        throw error;
+    }
+};
+
 // Get organization information by ID
 export const getOrganizationInfo = async (orgId, firebaseApp) => {
     try {

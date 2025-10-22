@@ -5,7 +5,7 @@ import RectButton from '../RectButton';
 import { green, blue, white, red, orange, black } from "../../utils/colors";
 
 const OrganizationObject = (props) => {
-    const { width, height, x, y, organization, index, isCurrent, onSelect } = props;
+    const { width, height, x, y, organization, index, isCurrent, onSelect, onDelete, currentUserId } = props;
 
 
     // Don't render if organization is not defined
@@ -26,6 +26,9 @@ const OrganizationObject = (props) => {
             onSelect(organization);
         }
     };
+
+    const isAdmin = organization.roleSnapshot === 'Admin';
+    const canDelete = isAdmin && !isCurrent; // Cannot delete current organization
 
     return (
         <>
@@ -54,6 +57,21 @@ const OrganizationObject = (props) => {
                 fontWeight={800}
                 callback={handleSelect}
             />
+            {/* Delete button - only show for Admins and non-current organizations */}
+            {canDelete && onDelete && (
+                <RectButton
+                    height={55}
+                    width={150}
+                    x={width * 7}
+                    y={y * 1.1 + height * 0.25}
+                    color={red}
+                    fontSize={15}
+                    fontColor={white}
+                    text={"DELETE"}
+                    fontWeight={800}
+                    callback={() => onDelete(organization)}
+                />
+            )}
             {/* Current indicator */}
             {isCurrent && (
                 <Text

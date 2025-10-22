@@ -6,7 +6,7 @@ import OrganizationObject from './OrganizationObject';
 import { green, orange, black, white } from "../../utils/colors";
 
 const OrganizationList = (props) => {
-    const { width, height, x, y, organizations, onOrganizationSelect, currentOrgId } = props;
+    const { width, height, x, y, organizations, onOrganizationSelect, currentOrgId, onOrganizationDelete, currentUserId } = props;
 
     const [startIndex, setStartIndex] = useState(0);
 
@@ -93,6 +93,8 @@ const OrganizationList = (props) => {
                     organization={org}
                     isCurrent={org.id === currentOrgId}
                     onSelect={onOrganizationSelect}
+                    onDelete={onOrganizationDelete}
+                    currentUserId={currentUserId}
                 />
             ))}
             {/* < Button */}

@@ -5,7 +5,7 @@ import { blue, white, red, green, black, navyBlue } from "../../utils/colors";
 import RectButton from "../RectButton";
 import Background from "../Background";
 import OrganizationList from "./OrganizationList";
-import { getCurrentUserContext, getUserOrgsFromDatabase, getOrganizationInfo, findOrganizationByName, createOrganization, useInviteCode } from "../../firebase/userDatabase";
+import { getCurrentUserContext, getUserOrgsFromDatabase, getOrganizationInfo, findOrganizationByName, createOrganization, useInviteCode, deleteOrganization } from "../../firebase/userDatabase";
 import { getAuth } from "firebase/auth";
 import { getDatabase, ref, get, set } from "firebase/database";
 
@@ -18,6 +18,7 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
   const [creating, setCreating] = useState(false);
   const [joinError, setJoinError] = useState(null);
   const [joining, setJoining] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState(null);
 
   useEffect(() => {
     loadOrganizations();
@@ -35,6 +36,8 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
       const auth = getAuth(firebaseApp);
       const user = auth.currentUser;
       if (!user) return;
+
+      setCurrentUserId(user.uid);
 
       const userOrgs = await getUserOrgsFromDatabase(user.uid, firebaseApp);
       const orgList = [];
@@ -147,6 +150,49 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
     }
   };
 
+  const handleDeleteOrganization = async (organization) => {
+    try {
+      // Prevent deleting current organization
+      if (organization.id === currentOrgId) {
+        alert('Cannot delete your current organization. Please switch to another organization first.');
+        return;
+      }
+      
+      // Get member count
+      const orgInfo = await getOrganizationInfo(organization.id, firebaseApp);
+      const memberCount = orgInfo.members ? Object.keys(orgInfo.members).length : 0;
+      
+      // Show confirmation with warning
+      const confirmMessage = `WARNING: This action cannot be undone!\n\n` +
+        `You are about to DELETE "${organization.name}".\n\n` +
+        `This will:\n` +
+        `- Remove ${memberCount} member(s) from this organization\n` +
+        `- Delete all levels and games\n` +
+        `- Remove all organization data\n\n` +
+        `Type the organization name to confirm: ${organization.name}`;
+      
+      const userInput = window.prompt(confirmMessage);
+      
+      if (userInput !== organization.name) {
+        if (userInput !== null) {
+          alert('Organization name does not match. Deletion cancelled.');
+        }
+        return;
+      }
+      
+      // Delete organization
+      await deleteOrganization(organization.id, firebaseApp);
+      
+      alert(`Organization "${organization.name}" has been deleted successfully.`);
+      
+      // Reload organizations list
+      await loadOrganizations();
+    } catch (error) {
+      console.error('Error deleting organization:', error);
+      alert(`Failed to delete organization: ${error.message}`);
+    }
+  };
+
   const handleCreateOrganization = async (orgName) => {
     try {
       setCreating(true);
@@ -246,6 +292,8 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
           y={height * 1}
           currentOrgId={currentOrgId}
           onOrganizationSelect={handleOrganizationSelect}
+          onOrganizationDelete={handleDeleteOrganization}
+          currentUserId={currentUserId}
         />
       )}
       
