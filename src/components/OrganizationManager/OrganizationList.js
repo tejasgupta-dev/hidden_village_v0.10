@@ -27,7 +27,14 @@ const OrganizationList = (props) => {
     };
 
     // Slice the organizations based on the current start index and number of orgs per page
-    const displayedOrgs = organizations.slice(startIndex, startIndex + orgsPerPage);
+    const displayedOrgs = organizations ? organizations.slice(startIndex, startIndex + orgsPerPage) : [];
+
+
+    // Don't render if organizations is not defined
+    if (!organizations) {
+        console.log('OrganizationList: organizations is not defined, returning null');
+        return null;
+    }
 
     return (
         <>

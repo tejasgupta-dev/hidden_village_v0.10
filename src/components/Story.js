@@ -74,6 +74,8 @@ const Story = () => {
           console.warn("User name not found.");
         }
 
+        console.log('User context:', userContext);
+        console.log('User role from context:', userContext.role);
         setUserRole(userContext.role);
         setUserOrg(orgInfo.orgName);
       } catch (error) {

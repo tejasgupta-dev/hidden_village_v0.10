@@ -132,8 +132,9 @@ export const writeCurrentUserToDatabaseNewUser = async (newID,newEmail,newRole, 
 // });
 
 // Create a new organization
-export const createOrganization = async (name, ownerUid) => {
+export const createOrganization = async (name, ownerUid, firebaseApp) => {
     try {
+        const db = getDatabase(firebaseApp);
         const orgId = uuidv4();
         const now = new Date().toISOString();
         
@@ -199,6 +200,22 @@ export const getCurrentUserContext = async (firebaseApp) => {
             return { orgId: null, role: null };
         }
         
+        // First check if user has a primary organization set
+        const db = getDatabase(firebaseApp);
+        const userRef = ref(db, `users/${user.uid}`);
+        const userSnapshot = await get(userRef);
+        
+        if (userSnapshot.exists()) {
+            const userData = userSnapshot.val();
+            
+            // If user has a primary organization set, use it
+            if (userData.primaryOrgId) {
+                const role = await getUserRoleInOrg(user.uid, userData.primaryOrgId, firebaseApp);
+                return { orgId: userData.primaryOrgId, role };
+            }
+        }
+        
+        // Fallback: use the first organization from user's org list
         const userOrgs = await getUserOrgsFromDatabase(user.uid, firebaseApp);
         const orgIds = Object.keys(userOrgs);
         
@@ -207,7 +224,7 @@ export const getCurrentUserContext = async (firebaseApp) => {
             return { orgId: null, role: null };
         }
         
-        // Use the first organization as primary (or implement logic to choose primary org)
+        // Use the first organization as primary
         const primaryOrgId = orgIds[0];
         const role = await getUserRoleInOrg(user.uid, primaryOrgId, firebaseApp);
         

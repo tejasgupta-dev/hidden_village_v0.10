@@ -5,14 +5,17 @@ import { blue, white, red, green, black, navyBlue } from "../../utils/colors";
 import RectButton from "../RectButton";
 import Background from "../Background";
 import OrganizationList from "./OrganizationList";
-import { getCurrentUserContext, getUserOrgsFromDatabase, getOrganizationInfo } from "../../firebase/userDatabase";
+import { getCurrentUserContext, getUserOrgsFromDatabase, getOrganizationInfo, findOrganizationByName, createOrganization } from "../../firebase/userDatabase";
 import { getAuth } from "firebase/auth";
+import { getDatabase, ref, get, set } from "firebase/database";
 
 const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
   const [organizations, setOrganizations] = useState([]);
   const [currentOrgId, setCurrentOrgId] = useState(null);
   const [currentOrgName, setCurrentOrgName] = useState('Loading...');
   const [loading, setLoading] = useState(true);
+  const [createError, setCreateError] = useState(null);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     loadOrganizations();
@@ -61,10 +64,116 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
     }
   };
 
-  const handleOrganizationSelect = (organization) => {
-    console.log('Organization selected:', organization);
-    // TODO: Implement organization switching
+  const handleOrganizationSelect = async (organization) => {
+    try {
+      console.log('Switching to organization:', organization);
+      
+      // Get current user
+      const auth = getAuth(firebaseApp);
+      const user = auth.currentUser;
+      if (!user) {
+        console.error('No authenticated user');
+        return;
+      }
+      
+      // Update user's primary organization in database
+      const db = getDatabase(firebaseApp);
+      const userRef = ref(db, `users/${user.uid}`);
+      const userSnapshot = await get(userRef);
+      
+      if (userSnapshot.exists()) {
+        const userData = userSnapshot.val();
+        userData.primaryOrgId = organization.id;
+        userData.primaryOrgName = organization.name;
+        userData.lastOrgSwitch = new Date().toISOString();
+        
+        await set(userRef, userData);
+        console.log('Primary organization updated to:', organization.name);
+        
+        // Update current organization display
+        setCurrentOrgId(organization.id);
+        setCurrentOrgName(organization.name);
+        
+        // Show success message (optional)
+        console.log('Successfully switched to organization:', organization.name);
+        
+        // Refresh the page to reload all data with new organization context
+        window.location.reload();
+      }
+    } catch (error) {
+      console.error('Error switching organization:', error);
+    }
   };
+
+  const handleCreateOrganization = async (orgName) => {
+    try {
+      setCreating(true);
+      setCreateError(null);
+      
+      // Validate name
+      if (!orgName || orgName.trim() === '') {
+        setCreateError('Organization name cannot be empty');
+        setCreating(false);
+        return;
+      }
+      
+      // Check if organization with this name already exists
+      const existingOrgId = await findOrganizationByName(orgName.trim(), firebaseApp);
+      if (existingOrgId) {
+        setCreateError('Organization with this name already exists');
+        setCreating(false);
+        return;
+      }
+      
+      // Get current user
+      const auth = getAuth(firebaseApp);
+      const user = auth.currentUser;
+      if (!user) {
+        setCreateError('User not authenticated');
+        setCreating(false);
+        return;
+      }
+      
+      // Create organization (user is automatically added as Admin)
+      await createOrganization(orgName.trim(), user.uid, firebaseApp);
+      
+      // Reset state
+      setCreating(false);
+      setCreateError(null);
+      
+      // Refresh organization list
+      await loadOrganizations();
+      
+    } catch (error) {
+      console.error('Error creating organization:', error);
+      setCreateError('Failed to create organization');
+      setCreating(false);
+    }
+  };
+
+
+
+  // Don't render if still loading or critical data is missing
+  if (loading || !currentOrgName || currentOrgName === 'Loading...') {
+    console.log('OrganizationManager: Still loading or currentOrgName is missing, showing loading screen');
+    return (
+      <>
+        <Background height={height * 1.1} width={width} />
+        <Text
+          text="Loading organizations..."
+          x={width * 0.5}
+          y={height * 0.5}
+          style={new TextStyle({
+            align: "center",
+            fontFamily: "Arial",
+            fontSize: 24,
+            fontWeight: "bold",
+            fill: [white],
+          })}
+        />
+      </>
+    );
+  }
 
   return (
     <>
@@ -100,7 +209,7 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
       
       {/* Current Organization */}
       <Text
-        text={`Current Organization: ${currentOrgName}`}
+        text={`Current Organization: ${currentOrgName || 'Loading...'}`}
         x={width * 0.1}
         y={height * 0.2}
         style={new TextStyle({
@@ -111,6 +220,41 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
           fill: [green],
         })}
       />
+      
+      {/* Create New Organization Button */}
+      <RectButton
+        height={height * 0.13}
+        width={width * 0.26}
+        x={width * 0.7}
+        y={height * 0.2}
+        color={green}
+        fontSize={width * 0.012}
+        fontColor={white}
+        text={creating ? "CREATING..." : "CREATE NEW ORGANIZATION"}
+        fontWeight={800}
+        callback={async () => {
+          const orgName = window.prompt('Enter organization name:');
+          if (orgName) {
+            await handleCreateOrganization(orgName);
+          }
+        }}
+      />
+      
+      {/* Error Message */}
+      {createError && (
+        <Text
+          text={createError}
+          x={width * 0.7}
+          y={height * 0.35}
+          style={new TextStyle({
+            align: "left",
+            fontFamily: "Arial",
+            fontSize: 18,
+            fontWeight: "bold",
+            fill: [red],
+          })}
+        />
+      )}
       
       {/* Refresh Button */}
       <RectButton

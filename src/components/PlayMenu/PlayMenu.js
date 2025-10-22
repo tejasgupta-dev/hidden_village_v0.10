@@ -49,6 +49,13 @@ const PlayMenu = (props) => {
         let role = userRole;
         console.log('Building button list for role:', role);
         let list = [];
+        
+        // Add safety check for undefined role
+        if (!role) {
+            console.warn('User role is undefined, using default role');
+            role = 'Student';
+        }
+        
         if(role === "Admin" || role === "Developer"){ // if user is not a student
             list.push(
                 {text: "ADMIN", callback: () => send("ADMIN"), color: babyBlue},
@@ -131,6 +138,13 @@ const PlayMenu = (props) => {
         )}
         {state.value === "main" && buttonList.map((button, idx) => { //if the state is main, show the buttons
             console.log(`Rendering button ${idx}:`, button.text, 'color:', button.color);
+            
+            // Skip rendering if button text is empty or undefined
+            if (!button.text) {
+                console.warn(`Skipping button ${idx} with empty text:`, button);
+                return null;
+            }
+            
             return (
                 <Button
                     fontColor={button.color === yellow ? black : yellow}

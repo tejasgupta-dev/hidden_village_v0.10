@@ -2,10 +2,17 @@ import React from 'react';
 import { Text } from "@inlet/react-pixi";
 import { TextStyle } from "@pixi/text";
 import RectButton from '../RectButton';
-import { green, blue, white, red, orange } from "../../utils/colors";
+import { green, blue, white, red, orange, black } from "../../utils/colors";
 
 const OrganizationObject = (props) => {
     const { width, height, x, y, organization, index, isCurrent, onSelect } = props;
+
+
+    // Don't render if organization is not defined
+    if (!organization) {
+        console.log('OrganizationObject: organization is not defined, returning null');
+        return null;
+    }
 
     const roleColors = {
         'Admin': red,
@@ -25,7 +32,7 @@ const OrganizationObject = (props) => {
             <Text
                 x={width * 1.1}
                 y={y * 1.1 + height * 0.25}
-                text={organization.name || 'Unknown Organization'}
+                text={organization?.name || 'Unknown Organization'}
                 style={
                     new TextStyle({
                         fontFamily: 'Futura',
@@ -43,7 +50,7 @@ const OrganizationObject = (props) => {
                 color={roleColors[organization.roleSnapshot] || green}
                 fontSize={15}
                 fontColor={white}
-                text={organization.roleSnapshot || 'Member'}
+                text={isCurrent ? 'CURRENT' : 'SWITCH TO'}
                 fontWeight={800}
                 callback={handleSelect}
             />
