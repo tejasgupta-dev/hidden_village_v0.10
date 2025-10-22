@@ -19,7 +19,7 @@ async function getUserName(){
 }
 
 const UserObject = (props) => {
-    const { width, height, x, y, username, index, role, userId, refreshUserListCallback, orgId } = props;
+    const { width, height, x, y, username, index, role, userId, refreshUserListCallback, orgId, currentUserRole } = props;
 
     const UserPermissions = {
         Admin: 'Admin',
@@ -38,10 +38,25 @@ const UserObject = (props) => {
     // Define the order of roles
     const roleOrder = [UserPermissions.Admin, UserPermissions.Developer, UserPermissions.Teacher, UserPermissions.Student];
 
-    // Function to get the next role
+    // Function to get the next role with Developer restrictions
     const getNextRole = (currentRole) => {
+        // If current user is Developer, they cannot make anyone Admin
+        if (currentUserRole === 'Developer') {
+            // If target user is Admin, don't allow role change
+            if (currentRole === 'Admin') {
+                return currentRole; // Keep current role (no change allowed)
+            }
+            
+            // For non-Admin users, cycle through: Developer -> Teacher -> Student -> Developer
+            const restrictedRoleOrder = [UserPermissions.Developer, UserPermissions.Teacher, UserPermissions.Student];
+            const currentIndex = restrictedRoleOrder.indexOf(currentRole);
+            const nextIndex = (currentIndex + 1) % restrictedRoleOrder.length;
+            return restrictedRoleOrder[nextIndex];
+        }
+        
+        // For Admin users, allow full role cycling
         const currentIndex = roleOrder.indexOf(currentRole);
-        const nextIndex = (currentIndex + 1) % roleOrder.length; // Cycle through roles
+        const nextIndex = (currentIndex + 1) % roleOrder.length;
         return roleOrder[nextIndex];
     };
 
@@ -53,8 +68,22 @@ const UserObject = (props) => {
                 return;
             }
             
+            // Check if Developer is trying to change Admin role
+            if (currentUserRole === 'Developer' && role === 'Admin') {
+                alert('Developers cannot modify Admin roles');
+                return;
+            }
+            
+            const nextRole = getNextRole(role);
+            
+            // Check if role actually changed (for Developer restrictions)
+            if (nextRole === role) {
+                alert('Role change not allowed');
+                return;
+            }
+            
             const firebaseApp = firebase.app();
-            const result = await updateUserRoleInOrg(userId, orgId, getNextRole(role), firebaseApp);
+            const result = await updateUserRoleInOrg(userId, orgId, nextRole, firebaseApp);
 
             if (result) {
                 // Success
@@ -143,8 +172,8 @@ const UserObject = (props) => {
                     })
                 }
             />
-            {/* Render the Role Button only if the user is not the current user */}
-             
+            {/* Render the Role Button only if the user is not the current user and Developer restrictions allow it */}
+            {!(currentUserRole === 'Developer' && role === 'Admin') && (
                 <RectButton
                     height={55}
                     width={200}
@@ -163,6 +192,24 @@ const UserObject = (props) => {
                         }
                     }}
                 />
+            )}
+            
+            {/* Show "LOCKED" text for Admin when viewed by Developer */}
+            {currentUserRole === 'Developer' && role === 'Admin' && (
+                <Text
+                    x={width * 5}
+                    y={y * 1.1 + height *0.25}
+                    text="LOCKED"
+                    style={
+                        new TextStyle({
+                            fontFamily: 'Futura',
+                            fontSize: 15,
+                            fontWeight: 800,
+                            fill: [red],
+                        })
+                    }
+                />
+            )}
                 
                 {/* Delete Button */}
                 <RectButton

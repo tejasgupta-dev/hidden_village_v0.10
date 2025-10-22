@@ -21,6 +21,7 @@ const UserManagementModule = (props) => {
     const [usersList, setUsersList] = useState([]);
     const [loading, setLoading] = useState(false);
     const [currentOrgId, setCurrentOrgId] = useState(null);
+    const [currentUserRole, setCurrentUserRole] = useState(null);
 
     const refreshUserList = async () => {
         try {
@@ -28,13 +29,14 @@ const UserManagementModule = (props) => {
                   setLoading(true);
 
       /* 1.  fetch org (may be null for brand-new users) */
-      const { orgId } = await getCurrentUserContext(firebaseApp);
+      const { orgId, role } = await getCurrentUserContext(firebaseApp);
       if (!orgId) {
         console.warn('No organization found for current user');
         setUsersList([]);
         return;      }
       
       setCurrentOrgId(orgId);
+      setCurrentUserRole(role);
       
       /* 2.  fetch users – returns [] on empty org */
       const users = await getUsersByOrganizationFromDatabase(orgId, firebaseApp);
@@ -103,6 +105,7 @@ const UserManagementModule = (props) => {
                 y={height * 0.93}
                 orgId={currentOrgId}
                 refreshUserListCallback = {refreshUserList}
+                currentUserRole={currentUserRole}
             />
         )}
 

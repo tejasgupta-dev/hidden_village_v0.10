@@ -13,7 +13,7 @@ async function getName(){ // Get the username of the current user
 }
 
 const UserList = (props) => {
-    const { width, height, x, y, users, refreshUserListCallback, orgId } = props;
+    const { width, height, x, y, users, refreshUserListCallback, orgId, currentUserRole } = props;
 
         const [startIndex, setStartIndex] = useState(0);
 
@@ -100,6 +100,7 @@ const UserList = (props) => {
                         userId = {user.userId}
                         orgId = {orgId}
                         refreshUserListCallback = {refreshUserListCallback}
+                        currentUserRole={currentUserRole}
                     />
                 );
             })}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Text } from "@inlet/react-pixi";
 import { TextStyle } from "@pixi/text";
 import { green, blue, red, white, black } from "../utils/colors";
@@ -12,59 +12,73 @@ const OrganizationSelector = ({ width, height, onOrganizationSelected }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selecting, setSelecting] = useState(false);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
-    loadUserOrganizations();
-  }, []);
+    const loadUserOrganizations = async () => {
+      try {
+        if (!isMountedRef.current) return;
+        setLoading(true);
+        setError(null);
+        
+        const firebaseApp = firebase.app();
+        const auth = firebaseApp.auth();
+        const user = auth.currentUser;
+        
+        if (!user) {
+          if (!isMountedRef.current) return;
+          setError('User not authenticated');
+          setLoading(false);
+          return;
+        }
+        
+        // Get user's organizations
+        const userOrgs = await getUserOrgsFromDatabase(user.uid, firebaseApp);
+        const orgIds = Object.keys(userOrgs);
+        
+        if (!isMountedRef.current) return;
+        
+        if (orgIds.length === 0) {
+          setError('You are not a member of any organization');
+          setLoading(false);
+          return;
+        }
+        
+        // Get organization details
+        const orgPromises = orgIds.map(async (orgId) => {
+          const orgInfo = await getOrganizationInfo(orgId, firebaseApp);
+          return {
+            id: orgId,
+            name: orgInfo.name,
+            role: userOrgs[orgId].roleSnapshot || 'Member'
+          };
+        });
+        
+        const orgsWithDetails = await Promise.all(orgPromises);
+        
+        if (!isMountedRef.current) return;
+        setOrganizations(orgsWithDetails);
+        
+      } catch (err) {
+        console.error('Error loading organizations:', err);
+        if (!isMountedRef.current) return;
+        setError('Failed to load organizations');
+      } finally {
+        if (!isMountedRef.current) return;
+        setLoading(false);
+      }
+    };
 
-  const loadUserOrganizations = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const firebaseApp = firebase.app();
-      const auth = firebaseApp.auth();
-      const user = auth.currentUser;
-      
-      if (!user) {
-        setError('User not authenticated');
-        setLoading(false);
-        return;
-      }
-      
-      // Get user's organizations
-      const userOrgs = await getUserOrgsFromDatabase(user.uid, firebaseApp);
-      const orgIds = Object.keys(userOrgs);
-      
-      if (orgIds.length === 0) {
-        setError('You are not a member of any organization');
-        setLoading(false);
-        return;
-      }
-      
-      // Get organization details
-      const orgPromises = orgIds.map(async (orgId) => {
-        const orgInfo = await getOrganizationInfo(orgId, firebaseApp);
-        return {
-          id: orgId,
-          name: orgInfo.name,
-          role: userOrgs[orgId].roleSnapshot || 'Member'
-        };
-      });
-      
-      const orgsWithDetails = await Promise.all(orgPromises);
-      setOrganizations(orgsWithDetails);
-      
-    } catch (err) {
-      console.error('Error loading organizations:', err);
-      setError('Failed to load organizations');
-    } finally {
-      setLoading(false);
-    }
-  };
+    loadUserOrganizations();
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const handleSelectOrganization = async (orgId) => {
     try {
+      if (!isMountedRef.current) return;
       setSelecting(true);
       
       const firebaseApp = firebase.app();
@@ -73,6 +87,7 @@ const OrganizationSelector = ({ width, height, onOrganizationSelected }) => {
       const user = auth.currentUser;
       
       if (!user) {
+        if (!isMountedRef.current) return;
         alert('User not authenticated');
         setSelecting(false);
         return;
@@ -91,6 +106,7 @@ const OrganizationSelector = ({ width, height, onOrganizationSelected }) => {
       
     } catch (err) {
       console.error('Error selecting organization:', err);
+      if (!isMountedRef.current) return;
       alert('Failed to select organization: ' + err.message);
       setSelecting(false);
     }
