@@ -197,7 +197,7 @@ export const getCurrentUserContext = async (firebaseApp) => {
         
         if (!user) {
             console.warn('No authenticated user');
-            return { orgId: null, role: null };
+            return { orgId: null, role: null, orgName: 'Not Authenticated' };
         }
         
         // First check if user has a primary organization set
@@ -207,11 +207,17 @@ export const getCurrentUserContext = async (firebaseApp) => {
         
         if (userSnapshot.exists()) {
             const userData = userSnapshot.val();
+            console.log('User data:', userData);
             
             // If user has a primary organization set, use it
             if (userData.primaryOrgId) {
+                console.log('Using primaryOrgId:', userData.primaryOrgId);
                 const role = await getUserRoleInOrg(user.uid, userData.primaryOrgId, firebaseApp);
-                return { orgId: userData.primaryOrgId, role };
+                // Get organization name
+                const orgRef = ref(db, `orgs/${userData.primaryOrgId}/name`);
+                const orgSnapshot = await get(orgRef);
+                const orgName = orgSnapshot.exists() ? orgSnapshot.val() : 'Unknown Organization';
+                return { orgId: userData.primaryOrgId, role, orgName };
             }
         }
         
@@ -221,17 +227,22 @@ export const getCurrentUserContext = async (firebaseApp) => {
         
         if (orgIds.length === 0) {
             console.warn('User is not in any organization');
-            return { orgId: null, role: null };
+            return { orgId: null, role: null, orgName: 'No Organization' };
         }
         
         // Use the first organization as primary
         const primaryOrgId = orgIds[0];
         const role = await getUserRoleInOrg(user.uid, primaryOrgId, firebaseApp);
         
-        return { orgId: primaryOrgId, role };
+        // Get organization name
+        const orgRef = ref(db, `orgs/${primaryOrgId}/name`);
+        const orgSnapshot = await get(orgRef);
+        const orgName = orgSnapshot.exists() ? orgSnapshot.val() : 'Unknown Organization';
+        
+        return { orgId: primaryOrgId, role, orgName };
     } catch (error) {
         console.error('Error getting current user context:', error);
-        return { orgId: null, role: null };
+        return { orgId: null, role: null, orgName: 'Error' };
     }
 };
 
@@ -510,18 +521,176 @@ export const registerNewUser = async (email, password, firebaseApp) => {
             userName: userName,
             userId: uid,
             dateCreated: now,
-            dateLastAccessed: now
+            dateLastAccessed: now,
+            primaryOrgId: adminOrgId  // Set primary organization
         };
         
         await set(ref(db, `users/${uid}`), userData);
         
         // 6. Add user to Admin Organization with Admin role (for testing)
-        await addUserToOrganization(uid, adminOrgId, 'Admin', firebaseApp);
+        console.log('Adding user to organization:', { uid, adminOrgId, role: 'Admin' });
+        const addResult = await addUserToOrganization(uid, adminOrgId, 'Admin', firebaseApp);
+        console.log('Add user result:', addResult);
         
         console.log('User registered successfully:', uid);
         return { success: true, uid: uid };
     } catch (error) {
         console.error('Error registering user:', error);
+        throw error;
+    }
+};
+
+// ============================================
+// INVITE CODE FUNCTIONS
+// ============================================
+
+// Generate a unique invite code for an organization
+export const generateInviteCode = async (orgId, role, creatorUid, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        
+        // Generate unique code (UUID)
+        let inviteCode;
+        let isUnique = false;
+        let attempts = 0;
+        const maxAttempts = 10;
+        
+        // Try to generate a unique code
+        while (!isUnique && attempts < maxAttempts) {
+            inviteCode = uuidv4();
+            const inviteRef = ref(db, `invites/${inviteCode}`);
+            const snapshot = await get(inviteRef);
+            isUnique = !snapshot.exists();
+            attempts++;
+        }
+        
+        if (!isUnique) {
+            throw new Error('Failed to generate unique invite code');
+        }
+        
+        // Get organization name
+        const orgRef = ref(db, `orgs/${orgId}`);
+        const orgSnapshot = await get(orgRef);
+        const orgName = orgSnapshot.exists() ? orgSnapshot.val().name : 'Unknown Organization';
+        
+        // Create invite data
+        const inviteData = {
+            code: inviteCode,
+            orgId: orgId,
+            orgName: orgName,
+            role: role,
+            createdBy: creatorUid,
+            createdAt: new Date().toISOString(),
+            status: 'active'
+        };
+        
+        // Save invite to database
+        await set(ref(db, `invites/${inviteCode}`), inviteData);
+        
+        console.log('Invite code generated:', inviteCode);
+        return inviteCode;
+    } catch (error) {
+        console.error('Error generating invite code:', error);
+        throw error;
+    }
+};
+
+// Validate an invite code
+export const validateInviteCode = async (code, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const inviteRef = ref(db, `invites/${code}`);
+        const snapshot = await get(inviteRef);
+        
+        if (!snapshot.exists()) {
+            return { valid: false, error: 'Invite code does not exist' };
+        }
+        
+        const inviteData = snapshot.val();
+        
+        if (inviteData.status !== 'active') {
+            return { valid: false, error: 'Invite code has already been used' };
+        }
+        
+        return { 
+            valid: true, 
+            invite: inviteData 
+        };
+    } catch (error) {
+        console.error('Error validating invite code:', error);
+        return { valid: false, error: 'Error validating invite code' };
+    }
+};
+
+// Use an invite code to join an organization
+export const useInviteCode = async (code, userUid, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        
+        // Validate the invite code
+        const validation = await validateInviteCode(code, firebaseApp);
+        if (!validation.valid) {
+            throw new Error(validation.error);
+        }
+        
+        const invite = validation.invite;
+        
+        // Add user to organization
+        await addUserToOrganization(userUid, invite.orgId, invite.role, firebaseApp);
+        
+        // Delete the invite code (one-time use)
+        await remove(ref(db, `invites/${code}`));
+        
+        console.log('Invite code used successfully:', code);
+        return { 
+            success: true, 
+            orgId: invite.orgId, 
+            orgName: invite.orgName, 
+            role: invite.role 
+        };
+    } catch (error) {
+        console.error('Error using invite code:', error);
+        throw error;
+    }
+};
+
+// Get all active invites for an organization
+export const getInvitesForOrganization = async (orgId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const invitesRef = ref(db, 'invites');
+        const snapshot = await get(invitesRef);
+        
+        if (!snapshot.exists()) {
+            return [];
+        }
+        
+        const allInvites = snapshot.val();
+        const orgInvites = [];
+        
+        // Filter invites for this organization
+        for (const [code, inviteData] of Object.entries(allInvites)) {
+            if (inviteData.orgId === orgId && inviteData.status === 'active') {
+                orgInvites.push(inviteData);
+            }
+        }
+        
+        return orgInvites;
+    } catch (error) {
+        console.error('Error getting invites for organization:', error);
+        return [];
+    }
+};
+
+// Delete an invite code
+export const deleteInviteCode = async (code, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        await remove(ref(db, `invites/${code}`));
+        console.log('Invite code deleted:', code);
+        return { success: true };
+    } catch (error) {
+        console.error('Error deleting invite code:', error);
         throw error;
     }
 };

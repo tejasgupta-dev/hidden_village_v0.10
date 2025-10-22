@@ -17,6 +17,7 @@ import { Curriculum } from "../CurricularModule/CurricularModule.js";
 import Settings from "../Settings";
 import UserManagementModule from "../AdminHomeModule/UserManagementModule";
 import NewUserModule from "../AdminHomeModule/NewUserModule";
+import InviteManagementModule from "../AdminHomeModule/InviteManagementModule";
 import PoseAuthoring from "../PoseAuth/PoseAuthoring";
 import PlayGame from "../PlayGameModule/PlayGame";
 import PoseTest from "../ConjectureModule/PoseTest";
@@ -37,7 +38,7 @@ const PlayMenu = (props) => {
     
     useEffect(() => {
         // Calculate the distance for buttons
-        const totalAvailableWidth = width * 0.85 * (buttonList.length/7);
+        const totalAvailableWidth = width * 0.9;
         const startingX = (width * 0.5) - (totalAvailableWidth * 0.5);
         setStartingX(startingX);
         const spaceInBetween = totalAvailableWidth / (buttonList.length-1);
@@ -60,6 +61,7 @@ const PlayMenu = (props) => {
             list.push(
                 {text: "ADMIN", callback: () => send("ADMIN"), color: babyBlue},
                 {text: "ORGANIZATIONS", callback: () => send("ORGANIZATIONS"), color: yellow},
+                {text: "INVITES", callback: () => send("INVITES"), color: red},
                 {text: "NEW GAME", callback: () => send("NEWGAME"), color: purple},
                 {text: "EDIT GAME", callback: () => (setPlayGame(false), send("GAMESELECT")), color: powderBlue},
                 {text: "PLAY", callback: () => (setPlayGame(true), send("GAMESELECT")), color: royalBlue},
@@ -149,7 +151,7 @@ const PlayMenu = (props) => {
                 <Button
                     fontColor={button.color === yellow ? black : yellow}
                     key = {idx}
-                    width = {width * 0.1}
+                    width = {width * 0.12}
                     color = {button.color}
                     fontSize = {width * 0.02}
                     fontWeight = {600}
@@ -243,6 +245,14 @@ const PlayMenu = (props) => {
             firebaseApp={firebaseApp}
             mainCallback={() => send("MAIN")} // goes to Home
             addNewUserCallback={() => send("ADDNEWUSER")} // goes to add new user section
+        />
+        )}
+        {state.value === "invites" && (
+            <InviteManagementModule
+            width={width}
+            height={height}
+            firebaseApp={firebaseApp}
+            onBack={() => send("MAIN")} // goes to Home
         />
         )}
         {state.value === "addNewUser" && (

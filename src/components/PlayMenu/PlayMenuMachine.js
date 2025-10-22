@@ -13,6 +13,7 @@ export const PlayMenuMachine = createMachine({
         PLAY: "play", // move to play
         SETTINGS: "settings", // move to settings
         ADMIN: "admin", // move to admin
+        INVITES: "invites", // move to invites
         NEWGAME: "newGame", //move to new game
         STORYEDITOR: "storyEditor", //move to story editor
         LEVELSELECT: "levelSelect", //move to edit level
@@ -101,6 +102,12 @@ export const PlayMenuMachine = createMachine({
     },
 
     organizations: {
+      on: {
+        MAIN: "main", // move to home
+      }
+    },
+
+    invites: {
       on: {
         MAIN: "main", // move to home
       }

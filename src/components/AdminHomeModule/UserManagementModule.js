@@ -119,20 +119,6 @@ const UserManagementModule = (props) => {
             fontWeight={800}
             callback={mainCallback}
         />
-
-        {/* // new user module // */}
-        <RectButton
-            height={height * 0.13}
-            width={width * 0.26}
-            x={width * .6}
-            y={height * .15}
-            color={green}
-            fontSize={width * 0.015}
-            fontColor={white}
-            text={"ADD USER"}
-            fontWeight={800}
-            callback={addNewUserCallback}
-        />
     </>
     );
 };

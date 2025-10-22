@@ -5,7 +5,7 @@ import { blue, white, red, green, black, navyBlue } from "../../utils/colors";
 import RectButton from "../RectButton";
 import Background from "../Background";
 import OrganizationList from "./OrganizationList";
-import { getCurrentUserContext, getUserOrgsFromDatabase, getOrganizationInfo, findOrganizationByName, createOrganization } from "../../firebase/userDatabase";
+import { getCurrentUserContext, getUserOrgsFromDatabase, getOrganizationInfo, findOrganizationByName, createOrganization, useInviteCode } from "../../firebase/userDatabase";
 import { getAuth } from "firebase/auth";
 import { getDatabase, ref, get, set } from "firebase/database";
 
@@ -16,6 +16,8 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
   const [loading, setLoading] = useState(true);
   const [createError, setCreateError] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [joinError, setJoinError] = useState(null);
+  const [joining, setJoining] = useState(false);
 
   useEffect(() => {
     loadOrganizations();
@@ -102,6 +104,46 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
       }
     } catch (error) {
       console.error('Error switching organization:', error);
+    }
+  };
+
+  const handleJoinOrganization = async (inviteCode) => {
+    try {
+      setJoining(true);
+      setJoinError(null);
+      
+      // Validate code
+      if (!inviteCode || inviteCode.trim() === '') {
+        setJoinError('Invite code cannot be empty');
+        setJoining(false);
+        return;
+      }
+      
+      // Get current user
+      const auth = getAuth(firebaseApp);
+      const user = auth.currentUser;
+      if (!user) {
+        setJoinError('User not authenticated');
+        setJoining(false);
+        return;
+      }
+      
+      // Use invite code to join organization
+      const result = await useInviteCode(inviteCode.trim(), user.uid, firebaseApp);
+      
+      console.log('Successfully joined organization:', result.orgName);
+      
+      // Reset state
+      setJoining(false);
+      setJoinError(null);
+      
+      // Refresh organization list
+      await loadOrganizations();
+      
+    } catch (error) {
+      console.error('Error joining organization:', error);
+      setJoinError(error.message || 'Failed to join organization');
+      setJoining(false);
     }
   };
 
@@ -221,12 +263,31 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
         })}
       />
       
-      {/* Create New Organization Button */}
+      {/* Join Organization Button */}
       <RectButton
         height={height * 0.13}
         width={width * 0.26}
         x={width * 0.7}
         y={height * 0.2}
+        color={blue}
+        fontSize={width * 0.012}
+        fontColor={white}
+        text={joining ? "JOINING..." : "JOIN ORGANIZATION"}
+        fontWeight={800}
+        callback={async () => {
+          const inviteCode = window.prompt('Enter invite code:');
+          if (inviteCode) {
+            await handleJoinOrganization(inviteCode);
+          }
+        }}
+      />
+      
+      {/* Create New Organization Button */}
+      <RectButton
+        height={height * 0.13}
+        width={width * 0.26}
+        x={width * 0.7}
+        y={height * 0.35}
         color={green}
         fontSize={width * 0.012}
         fontColor={white}
@@ -240,12 +301,28 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
         }}
       />
       
-      {/* Error Message */}
+      {/* Join Error Message */}
+      {joinError && (
+        <Text
+          text={joinError}
+          x={width * 0.1}
+          y={height * 0.35}
+          style={new TextStyle({
+            align: "left",
+            fontFamily: "Arial",
+            fontSize: 18,
+            fontWeight: "bold",
+            fill: [red],
+          })}
+        />
+      )}
+      
+      {/* Create Error Message */}
       {createError && (
         <Text
           text={createError}
-          x={width * 0.7}
-          y={height * 0.35}
+          x={width * 0.1}
+          y={height * 0.5}
           style={new TextStyle({
             align: "left",
             fontFamily: "Arial",
