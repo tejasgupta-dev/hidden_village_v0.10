@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { Text } from "@inlet/react-pixi";
+import { TextStyle } from "@pixi/text";
 import Background from "../Background"
 import Button from "../Button";
-import { red, yellow, purple, babyBlue, powderBlue, cornflowerBlue, steelBlue, dodgerBlue, royalBlue, white } from "../../utils/colors";
+import { red, yellow, purple, babyBlue, powderBlue, cornflowerBlue, steelBlue, dodgerBlue, royalBlue, white, black } from "../../utils/colors";
 import { useMachine } from "@xstate/react";
 import {PlayMenuMachine} from "./PlayMenuMachine";
 import ConjectureModule , {getEditLevel, setEditLevel, getGoBackFromLevelEdit, setGoBackFromLevelEdit} from "../ConjectureModule/ConjectureModule";
@@ -19,9 +21,10 @@ import PoseAuthoring from "../PoseAuth/PoseAuthoring";
 import PlayGame from "../PlayGameModule/PlayGame";
 import PoseTest from "../ConjectureModule/PoseTest";
 import DataMenu from "./DataMenu.js";
+import OrganizationManager from "../OrganizationManager/OrganizationManager";
 
 const PlayMenu = (props) => {
-    const {width, height, columnDimensions, rowDimensions, userName, role, logoutCallback} = props;
+    const {width, height, columnDimensions, rowDimensions, userName, role, organization, logoutCallback} = props;
     const [buttonList, setButtonList] = useState([]);
     const [distanceBetweenButtons, setDistanceBetweenButtons] = useState();
     const [startingX, setStartingX] = useState();
@@ -41,10 +44,12 @@ const PlayMenu = (props) => {
     
     useEffect(() => {
         let role = userRole;
+        console.log('Building button list for role:', role);
         let list = [];
         if(role === "Admin" || role === "Developer"){ // if user is not a student
             list.push(
                 {text: "ADMIN", callback: () => send("ADMIN"), color: babyBlue},
+                {text: "ORGANIZATIONS", callback: () => send("ORGANIZATIONS"), color: yellow},
                 {text: "NEW GAME", callback: () => send("NEWGAME"), color: purple},
                 {text: "EDIT GAME", callback: () => (setPlayGame(false), send("GAMESELECT")), color: powderBlue},
                 {text: "PLAY", callback: () => (setPlayGame(true), send("GAMESELECT")), color: royalBlue},
@@ -56,6 +61,11 @@ const PlayMenu = (props) => {
             list.push({text: "Play", callback: () => (setPlayGame(true), send("GAMESELECT")), color: royalBlue}, {text: "Settings", callback: () => send("SETTINGS"), color: cornflowerBlue})
         } else if (role === "Teacher"){
             list.push(
+                {text: "ORGANIZATIONS", callback: () => {
+                    console.log('ORGANIZATIONS button clicked (Teacher)!');
+                    console.log('Setting isOrganizationManagerVisible to true');
+                    setIsOrganizationManagerVisible(true);
+                }, color: yellow},
                 {text: "NEW GAME", callback: () => send("NEWGAME"), color: purple},
                 {text: "EDIT GAME", callback: () => (setPlayGame(false), send("GAMESELECT")), color: powderBlue},
                 {text: "PLAY", callback: () => send("PLAY"), color: royalBlue},
@@ -64,7 +74,8 @@ const PlayMenu = (props) => {
                 {text: "SETTINGS", callback: () => send("SETTINGS"), color: cornflowerBlue},
             );
         }
-            setButtonList(list);
+        console.log('Final button list:', list);
+        setButtonList(list);
     }, [userRole]);
 
     return (
@@ -84,22 +95,54 @@ const PlayMenu = (props) => {
             fontWeight={800}
             callback={logoutCallback}
           />
+          
+          {/* User and Organization Info */}
+          <Text
+            text={`Welcome, ${userName || 'User'} (${role || 'Unknown'})`}
+            x={width * 0.1}
+            y={height * 0.15}
+            style={new TextStyle({
+              align: "left",
+              fontFamily: "Arial",
+              fontSize: 16,
+              fontWeight: "bold",
+              fill: [white],
+            })}
+          />
+          
+          {organization && (
+            <Text
+              text={`Organization: ${organization}`}
+              x={width * 0.1}
+              y={height * 0.18}
+              style={new TextStyle({
+                align: "left",
+                fontFamily: "Arial",
+                fontSize: 14,
+                fontWeight: "normal",
+                fill: [white],
+              })}
+            />
+          )}
         </>
         )}
-        {state.value === "main" && buttonList.map((button, idx) => ( //if the state is main, show the buttons
-            <Button
-                fontColor={yellow}
-                key = {idx}
-                width = {width * 0.1}
-                color = {button.color}
-                fontSize = {width * 0.02}
-                fontWeight = {600}
-                text={button.text}
-                x={startingX + (idx * distanceBetweenButtons)}
-                y={height * 0.5}
-                callback={button.callback}
-            />
-        ))}
+        {state.value === "main" && buttonList.map((button, idx) => { //if the state is main, show the buttons
+            console.log(`Rendering button ${idx}:`, button.text, 'color:', button.color);
+            return (
+                <Button
+                    fontColor={button.color === yellow ? black : yellow}
+                    key = {idx}
+                    width = {width * 0.1}
+                    color = {button.color}
+                    fontSize = {width * 0.02}
+                    fontWeight = {600}
+                    text={button.text}
+                    x={startingX + (idx * distanceBetweenButtons)}
+                    y={height * 0.5}
+                    callback={button.callback}
+                />
+            );
+        })}
         {state.value === "main" && ( // if the state is main, show the data button and the data menu
           <>
           <Button
@@ -250,6 +293,15 @@ const PlayMenu = (props) => {
                 send("PLAY");
             }}
             mainCallback={() => {send("MAIN")}}
+          />
+        )}
+        
+        {/* Organization Manager */}
+        {state.value === "organizations" && (
+          <OrganizationManager
+            width={width}
+            height={height}
+            mainCallback={() => send("MAIN")}
           />
         )}
         

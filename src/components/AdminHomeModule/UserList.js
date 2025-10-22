@@ -13,7 +13,7 @@ async function getName(){ // Get the username of the current user
 }
 
 const UserList = (props) => {
-    const { width, height, x, y, users, refreshUserListCallback } = props;
+    const { width, height, x, y, users, refreshUserListCallback, orgId } = props;
 
         const [startIndex, setStartIndex] = useState(0);
 
@@ -83,20 +83,26 @@ const UserList = (props) => {
             />
             {/* Display User Names */}
             {/* <ScrollView style={{ flex: 1 }}> */}
-            {displayedUsers.map((user, index) => (
-                <UserObject
-                    key={index} 
-                    width={width * .3}
-                    height={height}
-                    x={x}
-                    y={y * 0.2 + (index + 1.2) * 25}  // Adjust the y position based on index
-                    index={index}
-                    username={user.userName}
-                    role={user.userRole}
-                    userId = {user.userId}
-                    refreshUserListCallback = {refreshUserListCallback}
-                />              
-            ))}
+            {displayedUsers.map((user, index) => {
+                // Get user role from current organization context
+                const userRole = user.roleInOrg || user.userRole || 'Member'; // fallback to 'Member' if no role
+                
+                return (
+                    <UserObject
+                        key={index} 
+                        width={width * .3}
+                        height={height}
+                        x={x}
+                        y={y * 0.2 + (index + 1.2) * 25}  // Adjust the y position based on index
+                        index={index}
+                        username={user.userName || user.userEmail || 'Unknown'}
+                        role={userRole}
+                        userId = {user.userId}
+                        orgId = {orgId}
+                        refreshUserListCallback = {refreshUserListCallback}
+                    />
+                );
+            })}
             {/* // < Button // */}
             <RectButton
                 height={height * .7}

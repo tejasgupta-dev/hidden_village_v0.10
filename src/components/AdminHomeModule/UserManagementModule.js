@@ -6,7 +6,7 @@ import { green, neonGreen, black, blue, white, pink, orange, red, transparent, t
 import Button from "../Button";
 import RectButton from "../RectButton";
 import { getConjectureDataByUUIDWithCurrentOrg } from "../../firebase/database";
-import {getUsersByOrganizationFromDatabase, getUserOrganizationFromDatabase} from "../../firebase/userDatabase";
+import {getUsersByOrganizationFromDatabase, getCurrentUserContext} from "../../firebase/userDatabase";
 
 import UserList from './UserList';
 
@@ -20,6 +20,7 @@ const UserManagementModule = (props) => {
     const { height, width, mainCallback, addNewUserCallback } = props;
     const [usersList, setUsersList] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [currentOrgId, setCurrentOrgId] = useState(null);
 
     const refreshUserList = async () => {
         try {
@@ -27,13 +28,16 @@ const UserManagementModule = (props) => {
                   setLoading(true);
 
       /* 1.  fetch org (may be null for brand-new users) */
-      const organization = await getUserOrganizationFromDatabase();
-      if (!organization) {
+      const { orgId } = await getCurrentUserContext();
+      if (!orgId) {
         console.warn('No organization found for current user');
         setUsersList([]);
         return;      }
+      
+      setCurrentOrgId(orgId);
+      
       /* 2.  fetch users – returns [] on empty org */
-      const users = await getUsersByOrganizationFromDatabase(organization);
+      const users = await getUsersByOrganizationFromDatabase(orgId);
       console.log('User 0:', users.length ? users[0] : 'none');
       setUsersList(users);
         } catch (error) {
@@ -97,6 +101,7 @@ const UserManagementModule = (props) => {
                 width={width * 0.26}
                 x={width * 0.4}
                 y={height * 0.93}
+                orgId={currentOrgId}
                 refreshUserListCallback = {refreshUserList}
             />
         )}

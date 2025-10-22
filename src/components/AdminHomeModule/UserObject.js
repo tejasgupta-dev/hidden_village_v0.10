@@ -3,7 +3,7 @@ import { Container, Sprite, Text } from "@inlet/react-pixi";
 import { TextStyle } from "@pixi/text";
 import RectButton from '../RectButton'; 
 import UserManagementModule from '../../components/AdminHomeModule/UserManagementModule'
-import { changeUserRoleInDatabase, getUserNameFromDatabase } from '../../firebase/userDatabase'
+import { updateUserRoleInOrg, getUserNameFromDatabase } from '../../firebase/userDatabase'
 
 import { green, neonGreen, black, blue, white, pink, orange, red, transparent, turquoise } from "../../utils/colors";
 
@@ -17,7 +17,7 @@ async function getUserName(){
 }
 
 const UserObject = (props) => {
-    const { width, height, x, y, username, index, role, userId, refreshUserListCallback } = props;
+    const { width, height, x, y, username, index, role, userId, refreshUserListCallback, orgId } = props;
 
     const UserPermissions = {
         Admin: 'Admin',
@@ -46,7 +46,12 @@ const UserObject = (props) => {
     // Function to handle role change
     const handleChangeRole = async () => {
         try {
-            const result = await changeUserRoleInDatabase(userId, getNextRole(role));
+            if (!orgId) {
+                console.error("No organization ID provided");
+                return;
+            }
+            
+            const result = await updateUserRoleInOrg(userId, orgId, getNextRole(role));
 
             if (result) {
                 // Success

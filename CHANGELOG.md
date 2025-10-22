@@ -137,3 +137,18 @@ Classes: [ADDED, FIXED, CHANGED, UPDATED, REMOVED]
 ### Interface Enhancements
 - UPDATED: various button visuals for improved aesthetics.
 - ADDED: a back button to the conjecture editor, facilitating easy navigation back to the home screen.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,6 +1,7 @@
 import { ref, push, getDatabase, set, query, equalTo, get, orderByChild, remove } from "firebase/database";
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, setPersistence, browserSessionPersistence  } from "firebase/auth";
 import { async } from "regenerator-runtime";
+import { v4 as uuidv4 } from 'uuid';
 
 const db = getDatabase();
 
@@ -140,6 +141,62 @@ export const writeCurrentUserToDatabaseNewUser = async (newID,newEmail,newRole, 
 // .catch((error) => {
 //     console.error("Error retrieving user role:", error);
 // });
+
+// Create a new organization
+export const createOrganization = async (name, ownerUid) => {
+    try {
+        const orgId = uuidv4();
+        const now = new Date().toISOString();
+        
+        const orgData = {
+            name: name,
+            ownerUid: ownerUid,
+            createdAt: now,
+            isArchived: false,
+            members: {
+                [ownerUid]: {
+                    uid: ownerUid,
+                    role: 'Admin',
+                    status: 'active'
+                }
+            }
+        };
+        
+        // Create organization
+        await set(ref(db, `orgs/${orgId}`), orgData);
+        
+        // Add organization to user's org list
+        const userOrgData = {
+            joinedAt: now,
+            roleSnapshot: 'Admin',
+            status: 'active',
+            updatedAt: now
+        };
+        
+        await set(ref(db, `users/${ownerUid}/orgs/${orgId}`), userOrgData);
+        
+        return orgId;
+    } catch (error) {
+        console.error('Error creating organization:', error);
+        throw error;
+    }
+};
+
+// Get organization information by ID
+export const getOrganizationInfo = async (orgId) => {
+    try {
+        const orgRef = ref(db, `orgs/${orgId}`);
+        const orgSnapshot = await get(orgRef);
+        
+        if (orgSnapshot.exists()) {
+            return { id: orgId, ...orgSnapshot.val() };
+        }
+        return null;
+    } catch (error) {
+        console.error('Error getting organization info:', error);
+        return null;
+    }
+};
 
 // Get current user's primary organization and role
 export const getCurrentUserContext = async () => {

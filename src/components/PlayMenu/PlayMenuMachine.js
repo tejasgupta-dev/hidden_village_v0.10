@@ -16,7 +16,8 @@ export const PlayMenuMachine = createMachine({
         NEWGAME: "newGame", //move to new game
         STORYEDITOR: "storyEditor", //move to story editor
         LEVELSELECT: "levelSelect", //move to edit level
-        GAMESELECT: "gameSelect"
+        GAMESELECT: "gameSelect",
+        ORGANIZATIONS: "organizations" // move to organizations
       },
     },
 
@@ -96,6 +97,12 @@ export const PlayMenuMachine = createMachine({
         NEWGAME: "newGame", // move to new game
         MAIN: "main", // move to home
         PLAY: "play",
+      }
+    },
+
+    organizations: {
+      on: {
+        MAIN: "main", // move to home
       }
     }
   }
