@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import Background from "../Background";
 import { blue, white, red, neonGreen, green, black } from "../../utils/colors";
 import RectButton from "../RectButton";
-import { getCurricularList, writeToDatabaseGameSelect, writeToDatabaseNewSession } from "../../firebase/database";
-import { getUserNameFromDatabase, getUserRoleFromDatabase } from "../../firebase/userDatabase";
+import { getCurricularListWithCurrentOrg, writeToDatabaseGameSelect, writeToDatabaseNewSession } from "../../firebase/database";
+import { getUserNameFromDatabase, getCurrentUserContext } from "../../firebase/userDatabase";
 import { CurricularSelectorBoxes } from "./CurricularSelectorModuleBoxes";
 import { useMachine } from "@xstate/react";
 import { Curriculum } from "../CurricularModule/CurricularModule";
@@ -80,7 +80,7 @@ const CurricularSelectModule = (props) => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const result = await getCurricularList(getPlayGame());
+        const result = await getCurricularListWithCurrentOrg(getPlayGame());
         setCurricularList(result);
         setLoading(false);
       } catch (error) {
@@ -135,7 +135,7 @@ const CurricularSelectModule = (props) => {
             color={selectedCurricular && selectedCurricular.UUID === curricular["UUID"] ? neonGreen : white}
             fontSize={selectedCurricular && selectedCurricular.UUID === curricular["UUID"] ? totalWidth * fontSizeMultiplier / 1.1 : totalWidth * fontSizeMultiplier / 1.4}
             fontColor={selectedCurricular && selectedCurricular.UUID === curricular["UUID"] ? white : blue}
-            text={curricular["CurricularAuthor"]}
+            text={curricular["author"] || curricular["CurricularAuthor"] || "Unknown"}
             fontWeight="bold"
             callback={() => {
               handleCurricularSelection(curricular);
@@ -153,7 +153,7 @@ const CurricularSelectModule = (props) => {
             color={selectedCurricular && selectedCurricular.UUID === curricular["UUID"] ? neonGreen : white}
             fontSize={selectedCurricular && selectedCurricular.UUID === curricular["UUID"] ? totalWidth * fontSizeMultiplier / 1.1 : totalWidth * fontSizeMultiplier / 1.4}
             fontColor={selectedCurricular && selectedCurricular.UUID === curricular["UUID"] ? white : blue}
-            text={curricular["CurricularName"]}
+            text={curricular["name"] || curricular["CurricularName"] || "Untitled"}
             fontWeight="bold"
             callback={() => {
               handleCurricularSelection(curricular);
@@ -171,7 +171,7 @@ const CurricularSelectModule = (props) => {
             color={selectedCurricular && selectedCurricular.UUID === curricular["UUID"] ? neonGreen : white}
             fontSize={selectedCurricular && selectedCurricular.UUID === curricular["UUID"] ? totalWidth * fontSizeMultiplier / 1.1 : totalWidth * fontSizeMultiplier / 1.4}
             fontColor={selectedCurricular && selectedCurricular.UUID === curricular["UUID"] ? white : blue}
-            text={curricular["CurricularKeywords"]}
+            text={curricular["keywords"] || curricular["CurricularKeywords"] || ""}
             fontWeight="bold"
             callback={() => {
               handleCurricularSelection(curricular);

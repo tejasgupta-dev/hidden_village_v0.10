@@ -6,7 +6,7 @@ import RectButton from "../RectButton";
 // Import necessary Firebase functions
 import { getDatabase, ref, get, update } from "firebase/database";
 import { getAuth } from "firebase/auth"; // Import getAuth
-import { getConjectureDataByUUID, deleteFromDatabaseCurricular, loadGameDialoguesFromFirebase, saveGame } from "../../firebase/database";
+import { getConjectureDataByUUIDWithCurrentOrg, deleteFromDatabaseCurricularWithCurrentOrg, loadGameDialoguesFromFirebaseWithCurrentOrg, saveGameWithCurrentOrg } from "../../firebase/database";
 import { CurricularContentEditor } from "../CurricularModule/CurricularModuleBoxes";
 import { setAddtoCurricular } from '../ConjectureSelector/ConjectureSelectorModule';
 import Settings from '../Settings';
@@ -68,7 +68,7 @@ export const Curriculum = {
     this.CurrentConjectures = []; // remove previous list of levels
     if (curricular["ConjectureUUIDs"]) { // only fill in existing values
       for (let i = 0; i < curricular.ConjectureUUIDs.length; i++) {
-        const conjectureList = await getConjectureDataByUUID(curricular.ConjectureUUIDs[i]);
+        const conjectureList = await getConjectureDataByUUIDWithCurrentOrg(curricular.ConjectureUUIDs[i]);
         const conjecture = conjectureList[curricular.ConjectureUUIDs[i]];
         this.CurrentConjectures.push(conjecture);
       }
@@ -238,7 +238,7 @@ const CurricularModule = (props) => {
             text={"SAVE DRAFT"}
             fontWeight={800}
             callback={async () => {
-              const success = await saveGame(Curriculum.getCurrentUUID(), false);
+              const success = await saveGameWithCurrentOrg(Curriculum.getCurrentUUID(), false);
               if (success) {
                 enhancedMainCallback();
               }
@@ -255,7 +255,7 @@ const CurricularModule = (props) => {
             text={"PUBLISH"}
             fontWeight={800}
             callback={async () => {
-              const success = await saveGame(Curriculum.getCurrentUUID(), true);
+              const success = await saveGameWithCurrentOrg(Curriculum.getCurrentUUID(), true);
               if (success) {
                 enhancedMainCallback();
               }

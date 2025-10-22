@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Background from "../Background";
 import { blue, white, red, neonGreen, green, black } from "../../utils/colors";
 import RectButton from "../RectButton";
-import { getConjectureList, searchConjecturesByWord } from "../../firebase/database";
+import { getConjectureListWithCurrentOrg, searchConjecturesByWordWithCurrentOrg } from "../../firebase/database";
 import { ConjectureSelectorBoxes } from "./ConjectureSelectorModuleBoxes";
 import { useMachine } from "@xstate/react";
 import { Curriculum } from "../CurricularModule/CurricularModule";
@@ -63,7 +63,7 @@ const ConjectureSelectModule = (props) => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const result = await getConjectureList(addToCurricular);
+        const result = await getConjectureListWithCurrentOrg(addToCurricular);
         setConjectureList(result);
         setLoading(false);
       } catch (error) {
@@ -94,7 +94,7 @@ const ConjectureSelectModule = (props) => {
   const searchConjectures = async (searchWord) => {
     try {
       console.log("Search Button")
-      const result = await searchConjecturesByWord(searchWord);
+      const result = await searchConjecturesByWordWithCurrentOrg(searchWord);
       console.log(result)
 
       setConjectureList(result);

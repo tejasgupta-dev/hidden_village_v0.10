@@ -4,7 +4,7 @@ import { TextStyle } from "@pixi/text";
 import { orange, black, white, darkGray, yellow, red, blue } from "../../utils/colors";
 import Button from "../Button";
 import RectButton from "../RectButton";
-import { getConjectureDataByUUID } from "../../firebase/database";
+import { getConjectureDataByUUIDWithCurrentOrg } from "../../firebase/database";
 import { useCallback } from "react";
 import React, { useState, useEffect } from 'react';
 import { Container } from "postcss";

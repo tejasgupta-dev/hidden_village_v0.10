@@ -9,7 +9,7 @@ import { generateRowAndColumnFunctions } from "./utilities/layoutFunction";
 import firebase from "firebase/compat/app";
 import "firebase/compat/auth";
 import PlayMenu from "./PlayMenu/PlayMenu.js";
-import { getUserRoleFromDatabase, getUserNameFromDatabase } from "../firebase/userDatabase";
+import { getCurrentUserContext, getUserNameFromDatabase, getCurrentUserOrgInfo } from "../firebase/userDatabase";
 
 // Layout constants
 const [
@@ -27,6 +27,7 @@ const Story = () => {
   const [state, send] = useMachine(StoryMachine);
   const [userName, setUserName] = useState(null);
   const [userRole, setUserRole] = useState(null);
+  const [userOrg, setUserOrg] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   let [rowDimensions, columnDimensions] = generateRowAndColumnFunctions(
@@ -58,9 +59,10 @@ const Story = () => {
 
     const fetchUserData = async () => {
       try {
-        const [name, role] = await Promise.all([
+        const [name, userContext, orgInfo] = await Promise.all([
           getUserNameFromDatabase(),
-          getUserRoleFromDatabase(),
+          getCurrentUserContext(),
+          getCurrentUserOrgInfo(),
         ]);
 
         if (name && name !== "USER NOT FOUND") {
@@ -69,7 +71,8 @@ const Story = () => {
           console.warn("User name not found.");
         }
 
-        setUserRole(role);
+        setUserRole(userContext.role);
+        setUserOrg(orgInfo.orgName);
       } catch (error) {
         console.error("Error fetching user data:", error);
       }
@@ -106,14 +109,15 @@ const Story = () => {
       userName &&
       userName !== "USER NOT FOUND" &&
       userRole &&
+      userOrg &&
       state.value === "loading"
     ) {
       send("TOGGLE"); // Go to "ready"
     }
-  }, [isAuthenticated, userName, userRole, state, send]);
+  }, [isAuthenticated, userName, userRole, userOrg, state, send]);
 
   const loading =
-    !isAuthenticated || !userName || userName === "USER NOT FOUND" || !userRole;
+    !isAuthenticated || !userName || userName === "USER NOT FOUND" || !userRole || !userOrg;
 
   return (
     <>
@@ -147,6 +151,7 @@ const Story = () => {
               rowDimensions={rowDimensions}
               userName={userName}
               role={userRole}
+              organization={userOrg}
               logoutCallback={() => firebase.auth().signOut()}
             />
           )}

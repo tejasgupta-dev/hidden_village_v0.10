@@ -9,7 +9,7 @@ import Tween from '../Tween';
 
 import LevelPlayMachine from './LevelPlayMachine';
 import {
-  getConjectureDataByUUID,
+  getConjectureDataByUUIDWithCurrentOrg,
   writeToDatabaseIntuitionStart,
   writeToDatabaseIntuitionEnd,
 } from '../../firebase/database';
@@ -52,7 +52,7 @@ export default function LevelPlay(props) {
 
   /* ---------- load conjecture data ---------- */
   useEffect(() => {
-    getConjectureDataByUUID(UUID)
+    getConjectureDataByUUIDWithCurrentOrg(UUID)
       .then((d) => {
         setConjectureData(d);
 

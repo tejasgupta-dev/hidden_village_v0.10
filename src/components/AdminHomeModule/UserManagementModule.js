@@ -5,7 +5,7 @@ import { TextStyle } from "@pixi/text";
 import { green, neonGreen, black, blue, white, pink, orange, red, transparent, turquoise, purple, navyBlue, royalBlue, dodgerBlue, powderBlue, midnightBlue, steelBlue, cornflowerBlue } from "../../utils/colors";
 import Button from "../Button";
 import RectButton from "../RectButton";
-import { getConjectureDataByUUID } from "../../firebase/database";
+import { getConjectureDataByUUIDWithCurrentOrg } from "../../firebase/database";
 import {getUsersByOrganizationFromDatabase, getUserOrganizationFromDatabase} from "../../firebase/userDatabase";
 
 import UserList from './UserList';

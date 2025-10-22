@@ -9,7 +9,7 @@ import chapterMachine from "../machines/chapterMachine.js";
 import { Sprite } from "@inlet/react-pixi";
 import script from "../scripts/chapters.toml";
 import { Curriculum } from "./CurricularModule/CurricularModule";
-import { loadGameDialoguesFromFirebase } from "../firebase/database.js";
+import { loadGameDialoguesFromFirebaseWithCurrentOrg } from "../firebase/database.js";
 
 const characterRenderOrder = {
   aboveground: 1,
@@ -211,7 +211,7 @@ const Chapter = (props) => {
         }
 
         try {
-          const rawDialogues = await loadGameDialoguesFromFirebase(gameId);
+          const rawDialogues = await loadGameDialoguesFromFirebaseWithCurrentOrg(gameId);
           const allDialogues = Object.values(rawDialogues || {});
           
           const currentChapterName = `${currentConjectureIdx + 1}`;

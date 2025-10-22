@@ -9,7 +9,7 @@ import CurricularModule from "../CurricularModule/CurricularModule.js";
 import ConjectureSelectorModule, { getAddToCurricular, setAddtoCurricular } from "../ConjectureSelector/ConjectureSelectorModule.js";
 import CurricularSelectorModule, { getPlayGame, setPlayGame } from "../CurricularSelector/CurricularSelector.js";
 import StoryEditorModule from "../StoryEditorModule/StoryEditorModule.js"; 
-import { getUserRoleFromDatabase } from "../../firebase/userDatabase";
+import { getCurrentUserContext } from "../../firebase/userDatabase";
 import firebase from "firebase/compat";
 import { Curriculum } from "../CurricularModule/CurricularModule.js";
 import Settings from "../Settings";

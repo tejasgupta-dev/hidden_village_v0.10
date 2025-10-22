@@ -6,7 +6,7 @@ import RectButton from "../RectButton";
 import InputBox from "../InputBox";
 import { ConjectureBox, KeywordsBox, NameBox, PINBox } from "./ConjectureModuleBoxes";
 import { EndBox, IntermediateBox, StartBox } from "../PoseAuth/PoseAuthoringBoxes";
-import { writeToDatabaseConjecture, writeToDatabaseConjectureDraft, keysToPush, searchConjecturesByWord, deleteFromDatabaseConjecture} from "../../firebase/database";
+import { writeToDatabaseConjectureWithCurrentOrg, writeToDatabaseConjectureDraftWithCurrentOrg, keysToPush, searchConjecturesByWordWithCurrentOrg, deleteFromDatabaseConjectureWithCurrentOrg} from "../../firebase/database";
 import { useMachine } from "@xstate/react";
 import { ConjectureEditorMachine } from "../../machines/conjectureEditorMachine";
 
@@ -174,7 +174,7 @@ const ConjectureModule = (props) => {
     
     if (confirmDelete) {
       try {
-        await deleteFromDatabaseConjecture(currentUUID);
+        await deleteFromDatabaseConjectureWithCurrentOrg(currentUUID);
         // Reset everything after successful deletion
         currentConjecture.clearConjecture();
         resetConjectureValues();
@@ -188,7 +188,7 @@ const ConjectureModule = (props) => {
   };
   
   const handlePublish = async (currentUUID) => {
-    const success = await writeToDatabaseConjecture(currentUUID);
+    const success = await writeToDatabaseConjectureWithCurrentOrg(currentUUID);
     if (success) {
       currentConjecture.clearConjecture();
       resetConjectureValues();
@@ -197,7 +197,7 @@ const ConjectureModule = (props) => {
   };
 
   const handleSaveDraft = async (currentUUID) => {
-    const success = await writeToDatabaseConjectureDraft(currentUUID);
+    const success = await writeToDatabaseConjectureDraftWithCurrentOrg(currentUUID);
     if (success) {
       currentConjecture.clearConjecture();
       resetConjectureValues();

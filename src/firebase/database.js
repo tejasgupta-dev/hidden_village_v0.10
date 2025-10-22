@@ -299,14 +299,154 @@ export const forceEventTypeCheck = async (gameId, UUID, frameRate = 12) => {
   return await checkEventTypeChange(gameId, UUID, frameRate);
 };
 
-export const loadGameDialoguesFromFirebase = async (gameId) => {
+export const loadGameDialoguesFromFirebase = async (gameId, orgId) => {
   if (!gameId) {
     alert("No gameId provided!");
     return [];
   }
-  const dbRef = ref(db, `Game/${gameId}/Dialogues`);
+  const dbRef = ref(db, `orgs/${orgId}/games/${gameId}/Dialogues`);
   const snapshot = await get(dbRef);
   return snapshot.exists() ? snapshot.val() : [];
+};
+
+// Helper function to get current user's organization context
+const getCurrentOrgContext = async () => {
+  try {
+    // Import here to avoid circular dependency
+    const { getCurrentUserContext } = await import('./userDatabase.js');
+    return await getCurrentUserContext();
+  } catch (error) {
+    console.error('Error getting current org context:', error);
+    return { orgId: null, role: null };
+  }
+};
+
+// Wrapper functions for backward compatibility - automatically use current user's org
+export const writeToDatabaseConjectureWithCurrentOrg = async (existingUUID) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    alert("User is not in any organization. Please contact administrator.");
+    return false;
+  }
+  return writeToDatabaseConjecture(existingUUID, orgId);
+};
+
+export const writeToDatabaseConjectureDraftWithCurrentOrg = async (existingUUID) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    alert("User is not in any organization. Please contact administrator.");
+    return false;
+  }
+  return writeToDatabaseConjectureDraft(existingUUID, orgId);
+};
+
+export const deleteFromDatabaseConjectureWithCurrentOrg = async (existingUUID) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    alert("User is not in any organization. Please contact administrator.");
+    return false;
+  }
+  return deleteFromDatabaseConjecture(existingUUID, orgId);
+};
+
+export const getConjectureListWithCurrentOrg = async (final) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    console.warn("User is not in any organization.");
+    return [];
+  }
+  return getConjectureList(final, orgId);
+};
+
+export const getCurricularListWithCurrentOrg = async (final) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    console.warn("User is not in any organization.");
+    return [];
+  }
+  return getCurricularList(final, orgId);
+};
+
+export const searchConjecturesByWordWithCurrentOrg = async (searchWord) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    console.warn("User is not in any organization.");
+    return [];
+  }
+  return searchConjecturesByWord(searchWord, orgId);
+};
+
+export const saveGameWithCurrentOrg = async (UUID = null, isFinal = false) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    alert("User is not in any organization. Please contact administrator.");
+    return false;
+  }
+  return saveGame(UUID, isFinal, orgId);
+};
+
+export const deleteFromDatabaseCurricularWithCurrentOrg = async (UUID) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    alert("User is not in any organization. Please contact administrator.");
+    return false;
+  }
+  return deleteFromDatabaseCurricular(UUID, orgId);
+};
+
+export const saveNarrativeDraftToFirebaseWithCurrentOrg = async (UUID, dialogues) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    alert("User is not in any organization. Please contact administrator.");
+    return;
+  }
+  return saveNarrativeDraftToFirebase(UUID, dialogues, orgId);
+};
+
+// Wrapper functions for data retrieval with current org
+export const getConjectureDataByUUIDWithCurrentOrg = async (conjectureID) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    console.warn("User is not in any organization.");
+    return null;
+  }
+  return getConjectureDataByUUID(conjectureID, orgId);
+};
+
+export const getCurricularDataByUUIDWithCurrentOrg = async (curricularID) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    console.warn("User is not in any organization.");
+    return null;
+  }
+  return getCurricularDataByUUID(curricularID, orgId);
+};
+
+export const getLevelNameByUUIDWithCurrentOrg = async (levelUUID) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    console.warn("User is not in any organization.");
+    return 'UnknownLevel';
+  }
+  return getLevelNameByUUID(levelUUID, orgId);
+};
+
+export const getGameNameByUUIDWithCurrentOrg = async (gameID) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    console.warn("User is not in any organization.");
+    return 'UnknownGame';
+  }
+  return getGameNameByUUID(gameID, orgId);
+};
+
+export const loadGameDialoguesFromFirebaseWithCurrentOrg = async (gameId) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    console.warn("User is not in any organization.");
+    return [];
+  }
+  return loadGameDialoguesFromFirebase(gameId, orgId);
 };
 
 
@@ -335,7 +475,7 @@ export const writeToDatabasePoseAuth = async (poseData, state, tolerance) => {
   return promise;
 };
 
-export const writeToDatabaseConjecture = async (existingUUID) => {
+export const writeToDatabaseConjecture = async (existingUUID, orgId) => {
   try {
     const dateObj = new Date();
     const timestamp = dateObj.toISOString();
@@ -392,8 +532,8 @@ export const writeToDatabaseConjecture = async (existingUUID) => {
       if (cleanWord) searchWordsToPushToDatabase[cleanWord] = cleanWord;
     });
 
-    // Firebase path
-    const conjecturePath = `Level/${conjectureID}`;
+    // Firebase path - now under organization
+    const conjecturePath = `orgs/${orgId}/levels/${conjectureID}`;
 
     // Push to Firebase
     const promises = [
@@ -410,7 +550,10 @@ export const writeToDatabaseConjecture = async (existingUUID) => {
       set(ref(db, `${conjecturePath}/Start Tolerance`), localStorage.getItem('Start Tolerance')),
       set(ref(db, `${conjecturePath}/Intermediate Tolerance`), localStorage.getItem('Intermediate Tolerance')),
       set(ref(db, `${conjecturePath}/End Tolerance`), localStorage.getItem('End Tolerance')),
-      set(ref(db, `${conjecturePath}/isFinal`), true)
+      set(ref(db, `${conjecturePath}/isFinal`), true),
+      set(ref(db, `${conjecturePath}/createdBy`), userId),
+      set(ref(db, `${conjecturePath}/createdAt`), timestamp),
+      set(ref(db, `${conjecturePath}/updatedAt`), timestamp)
     ];
 
     await Promise.all(promises);
@@ -426,7 +569,7 @@ export const writeToDatabaseConjecture = async (existingUUID) => {
 
 
 // save a draft of the current conjecture so it can be published later
-export const writeToDatabaseConjectureDraft = async (existingUUID) => {
+export const writeToDatabaseConjectureDraft = async (existingUUID, orgId) => {
   try {
     const dateObj = new Date();
     const timestamp = dateObj.toISOString();
@@ -480,8 +623,8 @@ export const writeToDatabaseConjectureDraft = async (existingUUID) => {
     const intermediatePoseData = await createPoseObjects(intermediateJson, 'IntermediatePose', localStorage.getItem('Intermediate Tolerance'));
     const endPoseData = await createPoseObjects(endJson, 'EndPose', localStorage.getItem('End Tolerance'));
 
-    // Firebase path
-    const conjecturePath = `Level/${conjectureID}`;
+    // Firebase path - now under organization
+    const conjecturePath = `orgs/${orgId}/levels/${conjectureID}`;
 
     const promises = [
       set(ref(db, `${conjecturePath}/Time`), timestamp),
@@ -494,7 +637,10 @@ export const writeToDatabaseConjectureDraft = async (existingUUID) => {
       set(ref(db, `${conjecturePath}/Start Tolerance`), localStorage.getItem('Start Tolerance')),
       set(ref(db, `${conjecturePath}/Intermediate Tolerance`), localStorage.getItem('Intermediate Tolerance')),
       set(ref(db, `${conjecturePath}/End Tolerance`), localStorage.getItem('End Tolerance')),
-      set(ref(db, `${conjecturePath}/isFinal`), false)
+      set(ref(db, `${conjecturePath}/isFinal`), false),
+      set(ref(db, `${conjecturePath}/createdBy`), userId),
+      set(ref(db, `${conjecturePath}/createdAt`), timestamp),
+      set(ref(db, `${conjecturePath}/updatedAt`), timestamp)
     ];
 
     await Promise.all(promises);
@@ -510,17 +656,17 @@ export const writeToDatabaseConjectureDraft = async (existingUUID) => {
 
 
 
-export const deleteFromDatabaseConjecture = async (existingUUID) => {
+export const deleteFromDatabaseConjecture = async (existingUUID, orgId) => {
   if (!existingUUID) {
     return alert("No level ID provided for deletion.");
   }
   
   try {
-    // First, remove the level from any curricular games that reference it
-    await removeLevelFromCurricularGames(existingUUID);
+    // First, remove the level from any curricular games that reference it within the organization
+    await removeLevelFromCurricularGames(existingUUID, orgId);
     
     // Then, remove the level itself from the database
-    const conjecturePath = `Level/${existingUUID}`;
+    const conjecturePath = `orgs/${orgId}/levels/${existingUUID}`;
     const dbRef = ref(db, conjecturePath);
     
     // Remove the entire level from database
@@ -533,15 +679,15 @@ export const deleteFromDatabaseConjecture = async (existingUUID) => {
   }
 };
 
-// Helper function to remove a level from all curricular games that reference it
-const removeLevelFromCurricularGames = async (levelUUID) => {
+// Helper function to remove a level from all curricular games that reference it within an organization
+const removeLevelFromCurricularGames = async (levelUUID, orgId) => {
   try {
-    // Get all games from the database
-    const gamesRef = ref(db, 'Game');
+    // Get all games from the organization
+    const gamesRef = ref(db, `orgs/${orgId}/games`);
     const gamesSnapshot = await get(gamesRef);
     
     if (!gamesSnapshot.exists()) {
-      console.log("No games found in database");
+      console.log("No games found in organization");
       return;
     }
     
@@ -552,19 +698,19 @@ const removeLevelFromCurricularGames = async (levelUUID) => {
     for (const gameKey in games) {
       const game = games[gameKey];
       
-      // Check if this game has ConjectureUUIDs and if it contains the level we're deleting
-      if (game.ConjectureUUIDs && Array.isArray(game.ConjectureUUIDs)) {
-        const levelIndex = game.ConjectureUUIDs.indexOf(levelUUID);
+      // Check if this game has levelIds and if it contains the level we're deleting
+      if (game.levelIds && Array.isArray(game.levelIds)) {
+        const levelIndex = game.levelIds.indexOf(levelUUID);
         
         if (levelIndex !== -1) {
           // Remove the level UUID from the array
-          const updatedConjectureUUIDs = game.ConjectureUUIDs.filter(uuid => uuid !== levelUUID);
+          const updatedLevelIds = game.levelIds.filter(uuid => uuid !== levelUUID);
           
           // Update the game in the database
-          const gameRef = ref(db, `Game/${gameKey}/ConjectureUUIDs`);
-          updatePromises.push(set(gameRef, updatedConjectureUUIDs));
+          const gameRef = ref(db, `orgs/${orgId}/games/${gameKey}/levelIds`);
+          updatePromises.push(set(gameRef, updatedLevelIds));
           
-          console.log(`Removed level ${levelUUID} from game ${game.CurricularName || gameKey}`);
+          console.log(`Removed level ${levelUUID} from game ${game.name || gameKey}`);
         }
       }
     }
@@ -679,14 +825,15 @@ const countRejectedPromises = async (promises) => {
   /**
    * @function handleSave
    * @description Saves the current game as a draft or publishes it.
-   * It performs a check to ensure the game name is unique before saving.
+   * It performs a check to ensure the game name is unique within the organization before saving.
    * @param {string|null} UUID - The unique identifier for the game. If null, a new UUID will be generated.
    * @param {boolean} isFinal - True to publish, false to save as a draft.
+   * @param {string} orgId - The organization ID where the game will be saved.
    * @returns {Promise<boolean>} - Returns true if the save was successful, false otherwise.
    * Files using this function: CurricularModule.js
    * TODO: Add a last edited by field
    */
-  export const saveGame = async (UUID = null, isFinal = false) => {
+  export const saveGame = async (UUID = null, isFinal = false, orgId) => {
     const db = getDatabase();
     const auth = getAuth();
     const user = auth.currentUser;
@@ -706,13 +853,19 @@ const countRejectedPromises = async (promises) => {
 
     const gameNameKey = gameName.trim();
 
-    // --- START: UNIQUE NAME VALIDATION ---
-    const gameNamesRef = ref(db, `gameNames/${gameNameKey}`);
-    const snapshot = await get(gameNamesRef);
-
-    if (snapshot.exists() && snapshot.val() !== currentUUID) {
-      alert("This game name is already taken. Please choose a different name.");
-      return false;
+    // --- START: UNIQUE NAME VALIDATION WITHIN ORGANIZATION ---
+    const gamesRef = ref(db, `orgs/${orgId}/games`);
+    const gamesSnapshot = await get(gamesRef);
+    
+    if (gamesSnapshot.exists()) {
+      const games = gamesSnapshot.val();
+      for (const gameKey in games) {
+        const game = games[gameKey];
+        if (game.name === gameNameKey && gameKey !== currentUUID) {
+          alert("This game name is already taken in this organization. Please choose a different name.");
+          return false;
+        }
+      }
     }
     // --- END: UNIQUE NAME VALIDATION ---
 
@@ -738,30 +891,30 @@ const countRejectedPromises = async (promises) => {
 
     // Proceed with saving the game
     try {
-      const conjectureUUIDs = Curriculum.getCurrentConjectures().map(c => c.UUID);
-      const existingDialogues = await loadGameDialoguesFromFirebase(currentUUID) || [];
+      const levelIds = Curriculum.getCurrentConjectures().map(c => c.UUID);
+      const existingDialogues = await loadGameDialoguesFromFirebase(currentUUID, orgId) || [];
       const userId = user.uid;
       const userName = user.email.split('@')[0];
 
       const gameData = {
-        CurricularName: gameName,
-        CurricularAuthor: localStorage.getItem('CurricularAuthor') || "Unknown",
-        CurricularKeywords: localStorage.getItem('CurricularKeywords') || "",
-        CurricularPIN: localStorage.getItem('CurricularPIN') || "",
-        ConjectureUUIDs: conjectureUUIDs,
+        name: gameName,
+        author: localStorage.getItem('CurricularAuthor') || "Unknown",
+        keywords: localStorage.getItem('CurricularKeywords') || "",
+        pin: localStorage.getItem('CurricularPIN') || "",
+        levelIds: levelIds,
         isFinal: isFinal,
         UUID: currentUUID,
         Time: new Date().toISOString(),
         Author: userName,
         AuthorID: userId,
-        Dialogues: existingDialogues
+        Dialogues: existingDialogues,
+        createdBy: userId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       };
 
-      const updates = {};
-      updates[`/Game/${currentUUID}`] = gameData;
-      updates[`/gameNames/${gameNameKey}`] = currentUUID;
-
-      await update(ref(db), updates);
+      const gamePath = `orgs/${orgId}/games/${currentUUID}`;
+      await set(ref(db, gamePath), gameData);
 
       alert(`Game ${isFinal ? "published" : "saved as draft"} successfully!`);
       Curriculum.setCurrentUUID(currentUUID);
@@ -774,13 +927,13 @@ const countRejectedPromises = async (promises) => {
     }
 };
 
-export const deleteFromDatabaseCurricular = async (UUID) => {
+export const deleteFromDatabaseCurricular = async (UUID, orgId) => {
   if (!UUID) {
     return alert("No game ID provided for deletion.");
   }
 
   try {
-    const CurricularPath = `Game/${UUID}`;
+    const CurricularPath = `orgs/${orgId}/games/${UUID}`;
     const dbRef = ref(db, CurricularPath);
     
     // Remove the entire game from database
@@ -794,31 +947,31 @@ export const deleteFromDatabaseCurricular = async (UUID) => {
 };
 
 
-// save dialogues to firebase
-export const saveNarrativeDraftToFirebase = async (UUID, dialogues) => {
+// save dialogues to firebase within an organization
+export const saveNarrativeDraftToFirebase = async (UUID, dialogues, orgId) => {
   const timestamp = new Date().toISOString();
   const gameId = UUID ?? uuidv4(); // Use provided UUID or create new one
-  const dbRef = ref(db, `Game/${gameId}/Dialogues`);
+  const dbRef = ref(db, `orgs/${orgId}/games/${gameId}/Dialogues`);
 
   const promises = [
-    set(ref(db, `Game/${gameId}/Dialogues`), dialogues),
-    set(ref(db, `Game/${gameId}/LastSaved`), timestamp),
-    set(ref(db, `Game/${gameId}/UUID`), gameId),
-    //set(ref(db, `Game/${gameId}/isFinal`), false),   DONT MODIFY THE ORIGINAL VALUE
+    set(ref(db, `orgs/${orgId}/games/${gameId}/Dialogues`), dialogues),
+    set(ref(db, `orgs/${orgId}/games/${gameId}/LastSaved`), timestamp),
+    set(ref(db, `orgs/${orgId}/games/${gameId}/UUID`), gameId),
+    //set(ref(db, `orgs/${orgId}/games/${gameId}/isFinal`), false),   DONT MODIFY THE ORIGINAL VALUE
     // Optional: auto-set author again for traceability
-    set(ref(db, `Game/${gameId}/AuthorID`), userId),
-    set(ref(db, `Game/${gameId}/Author`), userName),
+    set(ref(db, `orgs/${orgId}/games/${gameId}/AuthorID`), userId),
+    set(ref(db, `orgs/${orgId}/games/${gameId}/Author`), userName),
   ];
 
   await Promise.all(promises);
 };
 
 
-// Define a function to retrieve a conjecture based on UUID
-export const getConjectureDataByUUID = async (conjectureID) => {
+// Define a function to retrieve a conjecture based on UUID within an organization
+export const getConjectureDataByUUID = async (conjectureID, orgId) => {
   try {
-    // ref the realtime db
-    const dbRef = ref(db, 'Level');
+    // ref the realtime db - now under organization
+    const dbRef = ref(db, `orgs/${orgId}/levels`);
     // query to find data with the UUID
     const q = query(dbRef, orderByChild('UUID'), equalTo(conjectureID));
     
@@ -837,11 +990,11 @@ export const getConjectureDataByUUID = async (conjectureID) => {
   }
 };
 
-// Define a function to retrieve a conjecture based on UUID
-export const getCurricularDataByUUID = async (curricularID) => {
+// Define a function to retrieve a game based on UUID within an organization
+export const getCurricularDataByUUID = async (curricularID, orgId) => {
   try {
-    // ref the realtime db
-    const dbRef = ref(db, 'Game');
+    // ref the realtime db - now under organization
+    const dbRef = ref(db, `orgs/${orgId}/games`);
     // query to find data with the UUID
     const q = query(dbRef, orderByChild('UUID'), equalTo(curricularID));
     
@@ -914,20 +1067,15 @@ export const getConjectureDataByPIN = async (PIN) => {
   }
 };
 
-// get a list of all the levels
-export const getConjectureList = async (final) => {
+// get a list of all the levels within an organization
+export const getConjectureList = async (final, orgId) => {
   try {
-    // ref the realtime db
-    const dbRef = ref(db, 'Level');
+    // ref the realtime db - now under organization
+    const dbRef = ref(db, `orgs/${orgId}/levels`);
 
-    // query to find data
+    // query to find data - temporarily always use direct ref to avoid index issues
     let q;
-    if (final){ //return only the final (complete) conjectures
-      q = query(dbRef, orderByChild('isFinal'), equalTo(final));
-    }
-    else{ // return both final conjectures (complete) and drafts of conjectures (incomplete)
-      q = query(dbRef, orderByChild('isFinal'));
-    }
+    q = dbRef; // Always get all data without filtering for now
     
     // Execute the query
     const querySnapshot = await get(q);
@@ -949,27 +1097,22 @@ export const getConjectureList = async (final) => {
 };
 
 
-// get a list of all the games
-export const getCurricularList = async (final) => {
+// get a list of all the games within an organization
+export const getCurricularList = async (final, orgId) => {
   try {
-    // ref the realtime db
-    const dbRef = ref(db, 'Game');
+    // ref the realtime db - now under organization
+    const dbRef = ref(db, `orgs/${orgId}/games`);
 
-    // query to find data
+    // query to find data - temporarily always use direct ref to avoid index issues
     let q;
-    if (final){ //return only the final (complete) conjectures
-      q = query(dbRef, orderByChild('isFinal'), equalTo(final));
-    }
-    else{ // return both final conjectures (complete) and drafts of conjectures (incomplete)
-      q = query(dbRef, orderByChild('isFinal'));
-    }
+    q = dbRef; // Always get all data without filtering for now
     
     // Execute the query
     const querySnapshot = await get(q);
 
     // check the snapshot
     if (querySnapshot.exists()) {
-      // get all the conjectures in an array
+      // get all the games in an array
       const curricular = [];
       querySnapshot.forEach((curricularSnapshot) => {
         curricular.push(curricularSnapshot.val());
@@ -983,10 +1126,10 @@ export const getCurricularList = async (final) => {
   }
 };
 
-export const searchConjecturesByWord = async (searchWord) => {
+export const searchConjecturesByWord = async (searchWord, orgId) => {
   try {
-    // Reference the realtime db
-    const dbRef = ref(db, 'Level');
+    // Reference the realtime db - now under organization
+    const dbRef = ref(db, `orgs/${orgId}/levels`);
 
     // Query to find data
     const q = query(dbRef, orderByChild('Search Words'));
@@ -1329,10 +1472,10 @@ export const removeFromDatabaseByGame = async (selectedGame, selectedStart, sele
   }
 };
 
-export const checkGameAuthorization = async (gameName) => {
+export const checkGameAuthorization = async (gameName, orgId) => {
   try {
-    const dbRef = ref(db, 'Game');
-    const q = query(dbRef, orderByChild('CurricularName'), equalTo(gameName));
+    const dbRef = ref(db, `orgs/${orgId}/games`);
+    const q = query(dbRef, orderByChild('name'), equalTo(gameName));
     const qSnapshot = await get(q);
 
     if (qSnapshot.exists()) {
@@ -1354,20 +1497,20 @@ export const checkGameAuthorization = async (gameName) => {
   }
 };
 
-export const getAuthorizedGameList = async () => {
+export const getAuthorizedGameList = async (orgId) => {
   try {
-    const dbRef = ref(db, 'Game');
+    const dbRef = ref(db, `orgs/${orgId}/games`);
     const q = query(dbRef, orderByChild('AuthorID'), equalTo(userId));
     const querySnapshot = await get(q);
     console.log("Query snapshot:", querySnapshot.val());
 
     if (querySnapshot.exists()) {
-      // get all the conjectures in an array
+      // get all the games in an array
       const authorizedCurricular = [];
 
       querySnapshot.forEach((authorizedCurricularSnapshot) => {
         // push name string into list of authorized games
-        authorizedCurricular.push(authorizedCurricularSnapshot.val().CurricularName);
+        authorizedCurricular.push(authorizedCurricularSnapshot.val().name);
       })
       return authorizedCurricular;
 
@@ -1382,17 +1525,17 @@ export const getAuthorizedGameList = async () => {
   }
 };
 
-// Get game name using game UUID
-export const getGameNameByUUID = async (gameID) => {
+// Get game name using game UUID within an organization
+export const getGameNameByUUID = async (gameID, orgId) => {
   try {
     // if (!gameID) return 'UnknownGame';
     
-    const gameData = await getCurricularDataByUUID(gameID);
+    const gameData = await getCurricularDataByUUID(gameID, orgId);
     console.log('Game data', gameData);
     if (gameData && Object.keys(gameData).length > 0) {
       const gameKey = Object.keys(gameData)[0];
-      console.log('Game name:', gameData[gameKey].CurricularName);
-      return gameData[gameKey].CurricularName || 'UnknownGame';
+      console.log('Game name:', gameData[gameKey].name);
+      return gameData[gameKey].name || 'UnknownGame';
     }
     return 'UnknownGame';
   } catch (error) {
@@ -1401,12 +1544,12 @@ export const getGameNameByUUID = async (gameID) => {
   }
 };
 
-// Get level name using level UUID
-export const getLevelNameByUUID = async (levelUUID) => {
+// Get level name using level UUID within an organization
+export const getLevelNameByUUID = async (levelUUID, orgId) => {
   try {
     if (!levelUUID) return 'UnknownLevel';
     
-    const levelData = await getConjectureDataByUUID(levelUUID);
+    const levelData = await getConjectureDataByUUID(levelUUID, orgId);
     if (levelData && Object.keys(levelData).length > 0) {
       const levelKey = Object.keys(levelData)[0];
       // First try to get the level Name field
@@ -1428,12 +1571,12 @@ export const getLevelNameByUUID = async (levelUUID) => {
   }
 };
 
-// Find game that contains a specific level UUID
-export const findGameByLevelUUID = async (levelUUID) => {
+// Find game that contains a specific level UUID within an organization
+export const findGameByLevelUUID = async (levelUUID, orgId) => {
   try {
     if (!levelUUID) return null;
     
-    const gamesRef = ref(db, 'Game');
+    const gamesRef = ref(db, `orgs/${orgId}/games`);
     const gamesSnapshot = await get(gamesRef);
     
     if (!gamesSnapshot.exists()) return null;
@@ -1442,9 +1585,9 @@ export const findGameByLevelUUID = async (levelUUID) => {
     
     for (const gameKey in games) {
       const game = games[gameKey];
-      if (game.ConjectureUUIDs && Array.isArray(game.ConjectureUUIDs) && 
-          game.ConjectureUUIDs.includes(levelUUID)) {
-        // console.log('Game found:', game.CurricularName);
+      if (game.levelIds && Array.isArray(game.levelIds) && 
+          game.levelIds.includes(levelUUID)) {
+        // console.log('Game found:', game.name);
         return game;
       }
     }
@@ -1456,11 +1599,11 @@ export const findGameByLevelUUID = async (levelUUID) => {
   }
 };
 
-// Get game name from level UUID by finding the game that contains this level
-export const getGameNameByLevelUUID = async (levelUUID) => {
+// Get game name from level UUID by finding the game that contains this level within an organization
+export const getGameNameByLevelUUID = async (levelUUID, orgId) => {
   try {
-    const game = await findGameByLevelUUID(levelUUID);
-    return game?.CurricularName || 'UnknownGame';
+    const game = await findGameByLevelUUID(levelUUID, orgId);
+    return game?.name || 'UnknownGame';
   } catch (error) {
     console.error('Error getting game name by level UUID:', error);
     return 'UnknownGame';
@@ -1492,11 +1635,11 @@ export const convertDateFormat = (dateStr) => {
     return `${year}-${month}-${day}`;
 };
 
-export const findGameIdByName = async (name) => {
+export const findGameIdByName = async (name, orgId) => {
   try {
     if (!name) return null;
     
-    const gamesRef = ref(db, 'Game');
+    const gamesRef = ref(db, `orgs/${orgId}/games`);
     const gamesSnapshot = await get(gamesRef);
     
     if (!gamesSnapshot.exists()) return null;
@@ -1505,8 +1648,8 @@ export const findGameIdByName = async (name) => {
     
     for (const gameKey in games) {
       const game = games[gameKey];
-      if (game.CurricularName && game.CurricularName.includes(name)) {
-        // console.log('Game found:', game.CurricularName);
+      if (game.name && game.name.includes(name)) {
+        // console.log('Game found:', game.name);
         return game.UUID;
       }
     }

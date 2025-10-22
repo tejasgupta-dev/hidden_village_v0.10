@@ -9,7 +9,7 @@ import { setAddtoCurricular } from '../ConjectureSelector/ConjectureSelectorModu
 import { StoryEditorContentEditor } from "./StoryEditorModuleBoxes";
 import Settings from '../Settings'; // Import the Settings component
 import { idToSprite } from "../Chapter"; //Import list of sprites
-import { saveGameDialoguesToFirebase, loadGameDialoguesFromFirebase } from "../../firebase/database";
+import { saveGameDialoguesToFirebase, loadGameDialoguesFromFirebaseWithCurrentOrg } from "../../firebase/database";
 import { useEffect } from "react";import { saveNarrativeDraftToFirebase } from "../../firebase/database";
 import { Curriculum } from '../CurricularModule/CurricularModule';
 import PixiLoader from '../utilities/PixiLoader';
@@ -108,7 +108,7 @@ const StoryEditorModule = (props) => {
       console.warn("No real gameId—skipping dialogues load.");
       return;
     }
-    loadGameDialoguesFromFirebase(gameId).then((loaded) => {
+    loadGameDialoguesFromFirebaseWithCurrentOrg(gameId).then((loaded) => {
       if (loaded) {
         const maxChapter = Math.max(1, Curriculum.getCurrentConjectures().length);
         
