@@ -70,17 +70,17 @@ const PlayMenu = (props) => {
                 {text: "SETTINGS", callback: () => send("SETTINGS"), color: cornflowerBlue},
             );
         } else if (role === "Student"){
-            list.push({text: "Play", callback: () => (setPlayGame(true), send("GAMESELECT")), color: royalBlue}, {text: "Settings", callback: () => send("SETTINGS"), color: cornflowerBlue})
+            list.push(
+                {text: "ORGANIZATIONS", callback: () => send("ORGANIZATIONS"), color: yellow},
+                {text: "PLAY", callback: () => (setPlayGame(true), send("GAMESELECT")), color: royalBlue},
+                {text: "SETTINGS", callback: () => send("SETTINGS"), color: cornflowerBlue}
+            );
         } else if (role === "Teacher"){
             list.push(
-                {text: "ORGANIZATIONS", callback: () => {
-                    console.log('ORGANIZATIONS button clicked (Teacher)!');
-                    console.log('Setting isOrganizationManagerVisible to true');
-                    setIsOrganizationManagerVisible(true);
-                }, color: yellow},
+                {text: "ORGANIZATIONS", callback: () => send("ORGANIZATIONS"), color: yellow},
                 {text: "NEW GAME", callback: () => send("NEWGAME"), color: purple},
                 {text: "EDIT GAME", callback: () => (setPlayGame(false), send("GAMESELECT")), color: powderBlue},
-                {text: "PLAY", callback: () => send("PLAY"), color: royalBlue},
+                {text: "PLAY", callback: () => (setPlayGame(true), send("GAMESELECT")), color: royalBlue},
                 {text: "NEW LEVEL", callback: () => (setEditLevel(true), send("NEWLEVEL")), color: dodgerBlue},
                 {text: "EDIT LEVEL", callback: () => (setAddtoCurricular(false),send("LEVELSELECT")), color: steelBlue},
                 {text: "SETTINGS", callback: () => send("SETTINGS"), color: cornflowerBlue},

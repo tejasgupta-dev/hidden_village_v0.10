@@ -330,7 +330,7 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
         }}
       />
       
-      {/* Create New Organization Button */}
+      {/* Create New Organization Button - Available for all users */}
       <RectButton
         height={height * 0.13}
         width={width * 0.26}
