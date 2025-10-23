@@ -4,7 +4,7 @@ import { TextStyle } from "@pixi/text";
 import { green, blue, red, white, black } from "../utils/colors";
 import RectButton from "./RectButton";
 import Background from "./Background";
-import { getUserOrgsFromDatabase, getOrganizationInfo, getCurrentUserContext } from "../firebase/userDatabase";
+import { getUserOrgsFromDatabase, getOrganizationInfo, getCurrentUserContext, refreshUserContext } from "../firebase/userDatabase";
 import firebase from "firebase/compat/app";
 
 const OrganizationSelector = ({ width, height, onOrganizationSelected }) => {
@@ -101,8 +101,11 @@ const OrganizationSelector = ({ width, height, onOrganizationSelected }) => {
       
       console.log('Primary organization updated:', orgId);
       
-      // Reload the page to refresh user context
-      window.location.reload();
+      // Refresh user context and call callback
+      await refreshUserContext(firebaseApp);
+      if (onOrganizationSelected) {
+        onOrganizationSelected();
+      }
       
     } catch (err) {
       console.error('Error selecting organization:', err);

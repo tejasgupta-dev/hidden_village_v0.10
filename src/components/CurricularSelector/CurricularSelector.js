@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { Text } from "@inlet/react-pixi";
+import { TextStyle } from "@pixi/text";
 import Background from "../Background";
 import { blue, white, red, neonGreen, green, black } from "../../utils/colors";
 import RectButton from "../RectButton";
@@ -87,9 +89,8 @@ const CurricularSelectModule = (props) => {
           const { classId, orgId } = await getCurrentClassContext(firebaseApp);
           
           if (!classId || !orgId) {
-            console.warn('No class context found, showing all games');
-            const result = await getCurricularListWithCurrentOrg(isPlayMode);
-            setCurricularList(result);
+            console.warn('No class context found');
+            setCurricularList([]); // Empty list to show message
             setLoading(false);
             return;
           }
@@ -104,7 +105,7 @@ const CurricularSelectModule = (props) => {
           const allGames = await getCurricularListWithCurrentOrg(isPlayMode);
           
           // Filter only games assigned to current class
-          const classGames = allGames.filter(game => assignedGameIds.includes(game.UUID));
+          const classGames = allGames ? allGames.filter(game => assignedGameIds.includes(game.UUID)) : [];
           
           console.log('Filtered games for class:', classGames.length, 'out of', allGames.length);
           setCurricularList(classGames);
@@ -112,7 +113,7 @@ const CurricularSelectModule = (props) => {
           // EDIT mode: show all games created by current user
           console.log('EDIT mode: showing all user games');
           const result = await getCurricularListWithCurrentOrg(isPlayMode);
-          setCurricularList(result);
+          setCurricularList(result || []);
         }
         
         setLoading(false);
@@ -311,7 +312,25 @@ const CurricularSelectModule = (props) => {
       />
 
       <CurricularSelectorBoxes height={height} width={width} />
-      {drawCurricularList(0.15, 0.3, 0.018, width, height)}
+      
+      {curricularList.length === 0 ? (
+        <Text
+          text={getPlayGame() 
+            ? "No games available. Contact your teacher to be assigned to a class or to have games assigned to your class."
+            : "No games found. Create some games first."}
+          x={width * 0.15}
+          y={height * 0.4}
+          style={new TextStyle({
+            fontFamily: "Arial",
+            fontSize: 24,
+            fill: [blue],
+            wordWrap: true,
+            wordWrapWidth: width * 0.7,
+          })}
+        />
+      ) : (
+        drawCurricularList(0.15, 0.3, 0.018, width, height)
+      )}
     </>
   );
 };

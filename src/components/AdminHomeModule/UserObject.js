@@ -3,7 +3,7 @@ import { Container, Sprite, Text } from "@inlet/react-pixi";
 import { TextStyle } from "@pixi/text";
 import RectButton from '../RectButton'; 
 import UserManagementModule from '../../components/AdminHomeModule/UserManagementModule'
-import { updateUserRoleInOrg, getUserNameFromDatabase, removeUserFromOrganization, getCurrentUserContext } from '../../firebase/userDatabase'
+import { updateUserRoleInOrg, getUserNameFromDatabase, removeUserFromOrganization, getCurrentUserContext, isDefaultOrganization } from '../../firebase/userDatabase'
 import firebase from 'firebase/compat/app';
 
 import { green, neonGreen, black, blue, white, pink, orange, red, transparent, turquoise } from "../../utils/colors";
@@ -20,6 +20,21 @@ async function getUserName(){
 
 const UserObject = (props) => {
     const { width, height, x, y, username, index, role, userId, refreshUserListCallback, orgId, currentUserRole } = props;
+    
+    // Get current user UID
+    const getCurrentUserUid = () => {
+        try {
+            const firebaseApp = firebase.app();
+            const auth = firebaseApp.auth();
+            return auth.currentUser?.uid;
+        } catch (error) {
+            console.error('Error getting current user UID:', error);
+            return null;
+        }
+    };
+    
+    const currentUserUid = getCurrentUserUid();
+    const isCurrentUser = currentUserUid === userId;
 
     const UserPermissions = {
         Admin: 'Admin',
@@ -129,6 +144,13 @@ const UserObject = (props) => {
                 return;
             }
             
+            // Check if this is Default Organization
+            const isDefault = await isDefaultOrganization(orgId, firebaseApp);
+            if (isDefault) {
+                alert("Cannot remove users from Default Organization.\n\nUsers can leave this organization voluntarily through the ORGANIZATIONS menu.");
+                return;
+            }
+            
             // Show confirmation dialog
             const confirmDelete = window.confirm(
                 `Are you sure you want to remove ${username} from the organization?\n\nThis action cannot be undone.`
@@ -211,19 +233,36 @@ const UserObject = (props) => {
                 />
             )}
                 
-                {/* Delete Button */}
-                <RectButton
-                    height={55}
-                    width={200}
-                    x={width * 7}
-                    y={y * 1.1 + height *0.25}
-                    color={red}
-                    fontSize={15}
-                    fontColor={white}
-                    text={"DELETE"}
-                    fontWeight={800}
-                    callback={handleDeleteUser}
-                />
+                {/* Delete Button - hide for current user */}
+                {!isCurrentUser && (
+                    <RectButton
+                        height={55}
+                        width={200}
+                        x={width * 7}
+                        y={y * 1.1 + height *0.25}
+                        color={red}
+                        fontSize={15}
+                        fontColor={white}
+                        text={"DELETE"}
+                        fontWeight={800}
+                        callback={handleDeleteUser}
+                    />
+                )}
+                
+                {/* Current User Indicator */}
+                {isCurrentUser && (
+                    <Text
+                        x={width * 7}
+                        y={y * 1.1 + height * 0.25 + 20}
+                        text="(YOU)"
+                        style={new TextStyle({
+                            fontFamily: 'Arial',
+                            fontSize: 14,
+                            fontWeight: 'bold',
+                            fill: [blue],
+                        })}
+                    />
+                )}
         
         </>
     );

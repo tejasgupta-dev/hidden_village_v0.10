@@ -4,12 +4,14 @@ import { TextStyle } from "@pixi/text";
 import { blue, white, black } from "../../utils/colors";
 import RectButton from "../RectButton";
 import ClassObject from "./ClassObject";
+import { getUserEmailByUid } from "../../firebase/userDatabase";
 
 const ClassList = (props) => {
     const { width, height, x, y, classes, currentClassId, currentUserRole, onSwitch, onDelete, firebaseApp } = props;
 
     const [startIndex, setStartIndex] = useState(0);
     const [classStats, setClassStats] = useState({});
+    const [creatorEmails, setCreatorEmails] = useState({});
     const classesPerPage = Math.floor(height / 80);
 
     const handleNextPage = () => {
@@ -24,12 +26,14 @@ const ClassList = (props) => {
         }
     };
 
-    // Load class statistics
+    // Load class statistics and creator emails
     useEffect(() => {
-        const loadClassStats = async () => {
+        const loadClassData = async () => {
             if (!classes || classes.length === 0 || !firebaseApp) return;
             
             const stats = {};
+            const emails = {};
+            
             for (const classItem of classes) {
                 try {
                     // Count students and teachers
@@ -43,15 +47,22 @@ const ClassList = (props) => {
                         studentCount: studentCount + teacherCount, // Include teachers in total
                         gameCount: gameCount
                     };
+                    
+                    // Get creator email
+                    if (classItem.createdBy) {
+                        const email = await getUserEmailByUid(classItem.createdBy, firebaseApp);
+                        emails[classItem.id] = email;
+                    }
                 } catch (error) {
-                    console.error(`Error loading stats for class ${classItem.id}:`, error);
+                    console.error(`Error loading data for class ${classItem.id}:`, error);
                     stats[classItem.id] = { studentCount: 0, gameCount: 0 };
                 }
             }
             setClassStats(stats);
+            setCreatorEmails(emails);
         };
         
-        loadClassStats();
+        loadClassData();
     }, [classes, firebaseApp]);
 
     if (!classes || classes.length === 0) {
@@ -91,6 +102,7 @@ const ClassList = (props) => {
             {displayedClasses.map((classItem, index) => {
                 const isCurrent = classItem.id === currentClassId;
                 const stats = classStats[classItem.id] || { studentCount: 0, gameCount: 0 };
+                const creatorEmail = creatorEmails[classItem.id] || classItem.createdBy || 'Unknown';
                 
                 return (
                     <ClassObject
@@ -105,6 +117,7 @@ const ClassList = (props) => {
                         currentUserRole={currentUserRole}
                         studentCount={stats.studentCount}
                         gameCount={stats.gameCount}
+                        creatorEmail={creatorEmail}
                         onSwitch={() => onSwitch(classItem.id)}
                         onDelete={() => onDelete(classItem)}
                     />

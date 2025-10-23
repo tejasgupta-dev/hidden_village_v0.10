@@ -18,7 +18,8 @@ import {
   createClass,
   deleteClass,
   switchUserClass,
-  ensureDefaultClass
+  ensureDefaultClass,
+  refreshUserContext
 } from "../../firebase/userDatabase";
 
 const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
@@ -29,6 +30,9 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
   const [currentUserRole, setCurrentUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
   const [currentView, setCurrentView] = useState('main'); // 'main', 'assignContent', 'assignStudents'
+
+  // Debug: Check if mainCallback is passed
+  console.log('ClassManager - mainCallback:', typeof mainCallback, mainCallback);
 
   useEffect(() => {
     loadClasses();
@@ -91,8 +95,11 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
       const auth = getAuth(firebaseApp);
       await switchUserClass(auth.currentUser.uid, currentOrgId, classId, firebaseApp);
       
-      // Reload page to refresh context
-      window.location.reload();
+      // Refresh user context and reload class data
+      await refreshUserContext(firebaseApp);
+      await loadClasses(); // Reload classes to get updated context
+      
+      console.log('Class switched successfully');
     } catch (error) {
       console.error('Error switching class:', error);
       alert('Failed to switch class');
@@ -259,13 +266,17 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
       {/* Management Buttons based on role */}
       {currentUserRole === 'Student' && (
         <Text
-          text="Select a class to view available content"
+          text={classes.length === 0 
+            ? "You are not assigned to any class yet. Contact your teacher to be added to a class."
+            : "Select a class to view available content"}
           x={width * 0.1}
           y={height * 0.25}
           style={new TextStyle({
             fontFamily: "Arial",
             fontSize: 18,
             fill: [black],
+            wordWrap: true,
+            wordWrapWidth: width * 0.8,
           })}
         />
       )}
@@ -324,7 +335,6 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
       )}
       
       {/* Class List */}
-      {console.log('ClassManager - classes:', classes, 'length:', classes?.length)}
       {classes && classes.length > 0 ? (
         <ClassList
           classes={classes}
@@ -353,16 +363,23 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
       
       {/* Back Button */}
       <RectButton
-        height={height * 0.1}
-        width={width * 0.2}
-        x={width * 0.1}
-        y={height * 0.85}
+        height={height * 0.08}
+        width={width * 0.15}
+        x={width * 0.8}
+        y={height * 0.9}
         color={red}
         fontSize={width * 0.012}
         fontColor={white}
         text="BACK"
         fontWeight={800}
-        callback={mainCallback}
+        callback={() => {
+          console.log('BACK button clicked in ClassManager');
+          if (mainCallback) {
+            mainCallback();
+          } else {
+            console.error('mainCallback is not defined');
+          }
+        }}
       />
     </>
   );

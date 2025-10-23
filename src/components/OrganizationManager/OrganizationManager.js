@@ -5,7 +5,7 @@ import { blue, white, red, green, black, navyBlue } from "../../utils/colors";
 import RectButton from "../RectButton";
 import Background from "../Background";
 import OrganizationList from "./OrganizationList";
-import { getCurrentUserContext, getUserOrgsFromDatabase, getOrganizationInfo, findOrganizationByName, createOrganization, useInviteCode, deleteOrganization } from "../../firebase/userDatabase";
+import { getCurrentUserContext, getUserOrgsFromDatabase, getOrganizationInfo, findOrganizationByName, createOrganization, useInviteCode, deleteOrganization, leaveOrganization, refreshUserContext } from "../../firebase/userDatabase";
 import { getAuth } from "firebase/auth";
 import { getDatabase, ref, get, set } from "firebase/database";
 
@@ -102,8 +102,11 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
         // Show success message (optional)
         console.log('Successfully switched to organization:', organization.name);
         
-        // Refresh the page to reload all data with new organization context
-        window.location.reload();
+        // Refresh user context and reload organization data
+        await refreshUserContext(firebaseApp);
+        await loadOrganizations(); // Reload organizations to get updated context
+        
+        console.log('Organization switched successfully');
       }
     } catch (error) {
       console.error('Error switching organization:', error);
@@ -190,6 +193,38 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
     } catch (error) {
       console.error('Error deleting organization:', error);
       alert(`Failed to delete organization: ${error.message}`);
+    }
+  };
+
+  const handleLeaveOrganization = async (organization) => {
+    try {
+      // Check if user has other organizations
+      if (organizations.length === 1) {
+        alert('Cannot leave your only organization.');
+        return;
+      }
+      
+      // Confirm leaving
+      const confirmLeave = confirm(
+        `Are you sure you want to leave "${organization.name}"?\n\n` +
+        `You will no longer have access to this organization's content.`
+      );
+      
+      if (!confirmLeave) return;
+      
+      // Leave organization
+      await leaveOrganization(currentUserId, organization.id, firebaseApp);
+      
+      alert(`You have left "${organization.name}" successfully.`);
+      
+      // Refresh user context and reload organization data
+      await refreshUserContext(firebaseApp);
+      await loadOrganizations(); // Reload organizations to get updated context
+      
+      console.log('Left organization successfully');
+    } catch (error) {
+      console.error('Error leaving organization:', error);
+      alert(`Failed to leave organization: ${error.message}`);
     }
   };
 
@@ -293,6 +328,7 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
           currentOrgId={currentOrgId}
           onOrganizationSelect={handleOrganizationSelect}
           onOrganizationDelete={handleDeleteOrganization}
+          onOrganizationLeave={handleLeaveOrganization}
           currentUserId={currentUserId}
         />
       )}

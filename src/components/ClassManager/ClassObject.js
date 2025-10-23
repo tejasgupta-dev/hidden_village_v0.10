@@ -5,14 +5,14 @@ import { blue, white, black, red, green } from "../../utils/colors";
 import RectButton from "../RectButton";
 
 const ClassObject = (props) => {
-    const { width, height, x, y, classData, index, isCurrent, currentUserRole, onSwitch, onDelete, studentCount, gameCount } = props;
+    const { width, height, x, y, classData, index, isCurrent, currentUserRole, onSwitch, onDelete, studentCount, gameCount, creatorEmail } = props;
 
     if (!classData) {
         return null;
     }
 
     const className = classData.name || 'Unknown Class';
-    const createdBy = classData.createdBy || 'Unknown';
+    const createdBy = creatorEmail || 'Unknown';
     const isDefault = classData.isDefault || false;
 
     // Check if user can delete this class

@@ -5,7 +5,7 @@ import RectButton from '../RectButton';
 import { green, blue, white, red, orange, black } from "../../utils/colors";
 
 const OrganizationObject = (props) => {
-    const { width, height, x, y, organization, index, isCurrent, onSelect, onDelete, currentUserId } = props;
+    const { width, height, x, y, organization, index, isCurrent, onSelect, onDelete, onLeave, currentUserId } = props;
 
 
     // Don't render if organization is not defined
@@ -70,6 +70,21 @@ const OrganizationObject = (props) => {
                     text={"DELETE"}
                     fontWeight={800}
                     callback={() => onDelete(organization)}
+                />
+            )}
+            {/* Leave button - always show except for current organization */}
+            {!isCurrent && onLeave && (
+                <RectButton
+                    height={55}
+                    width={150}
+                    x={width * (canDelete ? 8.5 : 7)}
+                    y={y * 1.1 + height * 0.25}
+                    color={orange}
+                    fontSize={15}
+                    fontColor={white}
+                    text={"LEAVE"}
+                    fontWeight={800}
+                    callback={() => onLeave(organization)}
                 />
             )}
             {/* Current indicator */}

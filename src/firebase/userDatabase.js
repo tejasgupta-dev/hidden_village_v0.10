@@ -13,6 +13,66 @@ const UserPermissions = {
     Student: 'Student',
 };
 
+// Default Organization name constant
+const DEFAULT_ORG_NAME = 'Default Organization';
+
+// Helper function to check if organization is the Default Organization
+export const isDefaultOrganization = async (orgId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const orgRef = ref(db, `orgs/${orgId}`);
+        const snapshot = await get(orgRef);
+        
+        if (!snapshot.exists()) {
+            return false;
+        }
+        
+        const orgData = snapshot.val();
+        return orgData.name === DEFAULT_ORG_NAME;
+    } catch (error) {
+        console.error('Error checking if default organization:', error);
+        return false;
+    }
+};
+
+// Helper function to get user email by UID
+export const getUserEmailByUid = async (uid, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const userRef = ref(db, `users/${uid}`);
+        const snapshot = await get(userRef);
+        
+        if (!snapshot.exists()) {
+            return uid; // Return UID if user not found
+        }
+        
+        const userData = snapshot.val();
+        return userData.userEmail || uid; // Return email or UID as fallback
+    } catch (error) {
+        console.error('Error getting user email:', error);
+        return uid; // Return UID on error
+    }
+};
+
+// Function to refresh user context after organization/class changes
+export const refreshUserContext = async (firebaseApp) => {
+    try {
+        // This function can be called after switching organizations/classes
+        // to trigger a context refresh in components that use getCurrentUserContext
+        console.log('User context refresh requested');
+        
+        // We can dispatch a custom event that components can listen to
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('userContextChanged'));
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('Error refreshing user context:', error);
+        return false;
+    }
+};
+
 export const writeNewUserToDatabase = async (userEmail, userRole) => {
     // Create a new date object to get a timestamp
     const dateObj = new Date();
@@ -155,29 +215,37 @@ export const createOrganization = async (name, ownerUid, firebaseApp) => {
         // Create organization
         await set(ref(db, `orgs/${orgId}`), orgData);
         
-        // CREATE DEFAULT CLASS
-        await createDefaultClass(orgId, firebaseApp);
+        // CREATE DEFAULT CLASS ONLY FOR DEFAULT ORGANIZATION
+        const isDefaultOrg = name === DEFAULT_ORG_NAME;
         
-        // Add owner to default class as teacher
-        await set(ref(db, `orgs/${orgId}/classes/default/teachers/${ownerUid}`), {
-            addedAt: now,
-            addedBy: 'system'
-        });
+        if (isDefaultOrg) {
+            await createDefaultClass(orgId, firebaseApp);
+            
+            // Add owner to default class as teacher
+            await set(ref(db, `orgs/${orgId}/classes/default/teachers/${ownerUid}`), {
+                addedAt: now,
+                addedBy: 'system'
+            });
+        }
         
-        // Add organization to user's org list with default class
+        // Add organization to user's org list
         const userOrgData = {
             joinedAt: now,
             roleSnapshot: 'Admin',
             status: 'active',
-            updatedAt: now,
-            currentClassId: 'default', // Set default as current
-            classes: {
+            updatedAt: now
+        };
+        
+        // Only set currentClassId if Default Organization
+        if (isDefaultOrg) {
+            userOrgData.currentClassId = 'default';
+            userOrgData.classes = {
                 default: {
                     joinedAt: now,
                     role: 'teacher'
                 }
-            }
-        };
+            };
+        }
         
         await set(ref(db, `users/${ownerUid}/orgs/${orgId}`), userOrgData);
         
@@ -198,6 +266,12 @@ export const deleteOrganization = async (orgId, firebaseApp) => {
         
         if (!currentUser) {
             throw new Error('No authenticated user');
+        }
+        
+        // Check if this is Default Organization - cannot be deleted
+        const isDefault = await isDefaultOrganization(orgId, firebaseApp);
+        if (isDefault) {
+            throw new Error('Cannot delete Default Organization. This organization is protected.');
         }
         
         // Get organization info
@@ -472,39 +546,59 @@ export const addUserToOrganization = async (uid, orgId, role, firebaseApp) => {
         const db = getDatabase(firebaseApp);
         const timestamp = new Date().toISOString();
         
+        // Check if Default Class exists in this organization
+        const defaultClassRef = ref(db, `orgs/${orgId}/classes/default`);
+        const defaultClassSnapshot = await get(defaultClassRef);
+        const hasDefaultClass = defaultClassSnapshot.exists();
+        
         // Determine class role based on organization role
         const classRole = (role === 'Teacher' || role === 'Admin' || role === 'Developer') ? 'teacher' : 'student';
         const classRoleGroup = (role === 'Teacher' || role === 'Admin' || role === 'Developer') ? 'teachers' : 'students';
         
-        await Promise.all([
-            // Add to users/orgs with default class
-            set(ref(db, `users/${uid}/orgs/${orgId}`), {
-                roleSnapshot: role,
-                status: 'active',
-                joinedAt: timestamp,
-                updatedAt: timestamp,
-                currentClassId: 'default', // Auto-assign to default class
-                classes: {
-                    default: {
-                        joinedAt: timestamp,
-                        role: classRole
-                    }
+        const updates = [];
+        
+        // Prepare user org data
+        const userOrgData = {
+            roleSnapshot: role,
+            status: 'active',
+            joinedAt: timestamp,
+            updatedAt: timestamp
+        };
+        
+        // Only add to Default Class if it exists
+        if (hasDefaultClass) {
+            userOrgData.currentClassId = 'default';
+            userOrgData.classes = {
+                default: {
+                    joinedAt: timestamp,
+                    role: classRole
                 }
-            }),
+            };
+            
+            // Add to default class in organization
+            updates.push(
+                set(ref(db, `orgs/${orgId}/classes/default/${classRoleGroup}/${uid}`), {
+                    addedAt: timestamp,
+                    addedBy: 'system'
+                })
+            );
+        }
+        
+        updates.push(
+            // Add to users/orgs
+            set(ref(db, `users/${uid}/orgs/${orgId}`), userOrgData),
             // Add to orgs/members
             set(ref(db, `orgs/${orgId}/members/${uid}`), {
                 uid,
                 role,
                 status: 'active'
-            }),
-            // Add to default class in organization
-            set(ref(db, `orgs/${orgId}/classes/default/${classRoleGroup}/${uid}`), {
-                addedAt: timestamp,
-                addedBy: 'system'
             })
-        ]);
+        );
         
-        console.log(`User ${uid} added to organization ${orgId} with role ${role} and added to Default Class`);
+        await Promise.all(updates);
+        
+        const classMsg = hasDefaultClass ? ' and added to Default Class' : '';
+        console.log(`User ${uid} added to organization ${orgId} with role ${role}${classMsg}`);
         return true;
     } catch (error) {
         console.error("Error adding user to organization:", error);
@@ -515,6 +609,12 @@ export const addUserToOrganization = async (uid, orgId, role, firebaseApp) => {
 // Remove user from organization
 export const removeUserFromOrganization = async (uid, orgId, firebaseApp) => {
     try {
+        // Check if this is Default Organization - users cannot be removed by admin
+        const isDefault = await isDefaultOrganization(orgId, firebaseApp);
+        if (isDefault) {
+            throw new Error('Cannot remove users from Default Organization. Users can leave voluntarily.');
+        }
+        
         const db = getDatabase(firebaseApp);
         await Promise.all([
             remove(ref(db, `users/${uid}/orgs/${orgId}`)),
@@ -525,7 +625,73 @@ export const removeUserFromOrganization = async (uid, orgId, firebaseApp) => {
         return true;
     } catch (error) {
         console.error("Error removing user from organization:", error);
-        return false;
+        throw error;
+    }
+};
+
+// Leave organization (self-initiated by user)
+export const leaveOrganization = async (userId, orgId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        
+        // Check if user has other organizations
+        const userOrgsRef = ref(db, `users/${userId}/orgs`);
+        const userOrgsSnapshot = await get(userOrgsRef);
+        
+        if (!userOrgsSnapshot.exists()) {
+            throw new Error('User has no organizations');
+        }
+        
+        const userOrgs = userOrgsSnapshot.val();
+        const orgIds = Object.keys(userOrgs);
+        
+        if (orgIds.length === 1 && orgIds[0] === orgId) {
+            throw new Error('Cannot leave your only organization');
+        }
+        
+        // Get user's primary org to check if switching is needed
+        const userRef = ref(db, `users/${userId}`);
+        const userSnapshot = await get(userRef);
+        const userData = userSnapshot.val();
+        const primaryOrgId = userData?.primaryOrgId;
+        
+        // Remove user from all classes in this organization
+        const classesRef = ref(db, `users/${userId}/orgs/${orgId}/classes`);
+        const classesSnapshot = await get(classesRef);
+        
+        if (classesSnapshot.exists()) {
+            const classes = classesSnapshot.val();
+            const classIds = Object.keys(classes);
+            
+            for (const classId of classIds) {
+                // Remove from class students/teachers
+                await Promise.all([
+                    remove(ref(db, `orgs/${orgId}/classes/${classId}/students/${userId}`)),
+                    remove(ref(db, `orgs/${orgId}/classes/${classId}/teachers/${userId}`))
+                ]);
+            }
+        }
+        
+        // Remove user from organization
+        await Promise.all([
+            remove(ref(db, `users/${userId}/orgs/${orgId}`)),
+            remove(ref(db, `orgs/${orgId}/members/${userId}`))
+        ]);
+        
+        // If leaving current organization, switch to another one
+        if (primaryOrgId === orgId) {
+            const remainingOrgIds = orgIds.filter(id => id !== orgId);
+            if (remainingOrgIds.length > 0) {
+                await set(ref(db, `users/${userId}/primaryOrgId`), remainingOrgIds[0]);
+                console.log(`Switched primary organization to: ${remainingOrgIds[0]}`);
+            }
+        }
+        
+        console.log(`User ${userId} left organization ${orgId}`);
+        return true;
+    } catch (error) {
+        console.error('Error leaving organization:', error);
+        throw error;
     }
 };
 
@@ -583,19 +749,48 @@ export const registerNewUser = async (email, password, firebaseApp) => {
         // 2. Get database instance with the app
         const db = getDatabase(firebaseApp);
         
-        // 3. Find Admin Organization (simplified - just get first org for now)
+        // 3. Find or create Default Organization
         const orgsRef = ref(db, 'orgs');
         const orgsSnapshot = await get(orgsRef);
-        let adminOrgId = null;
+        let defaultOrgId = null;
         
         if (orgsSnapshot.exists()) {
             const orgs = orgsSnapshot.val();
-            // Find first organization (assuming it's Admin Organization)
-            adminOrgId = Object.keys(orgs)[0];
+            // Find Default Organization by name
+            for (const [orgId, orgData] of Object.entries(orgs)) {
+                if (orgData.name === DEFAULT_ORG_NAME) {
+                    defaultOrgId = orgId;
+                    break;
+                }
+            }
         }
         
-        if (!adminOrgId) {
-            throw new Error('No organizations found. Please create an organization first.');
+        // Create Default Organization if it doesn't exist
+        if (!defaultOrgId) {
+            console.log('Default Organization not found, creating it...');
+            const newOrgId = uuidv4();
+            const now = new Date().toISOString();
+            const defaultOrgData = {
+                name: DEFAULT_ORG_NAME,
+                createdAt: now,
+                createdBy: uid,
+                isProtected: true  // Mark as protected
+            };
+            
+            await set(ref(db, `orgs/${newOrgId}`), defaultOrgData);
+            
+            // Create Default Class for Default Organization
+            const defaultClassId = 'default';
+            const defaultClassData = {
+                name: 'Default Class',
+                createdAt: now,
+                createdBy: uid,
+                isDefault: true
+            };
+            await set(ref(db, `orgs/${newOrgId}/classes/${defaultClassId}`), defaultClassData);
+            
+            defaultOrgId = newOrgId;
+            console.log('Default Organization created:', defaultOrgId);
         }
         
         // 4. Extract username from email (part before @)
@@ -609,14 +804,14 @@ export const registerNewUser = async (email, password, firebaseApp) => {
             userId: uid,
             dateCreated: now,
             dateLastAccessed: now,
-            primaryOrgId: adminOrgId  // Set primary organization
+            primaryOrgId: defaultOrgId  // Set primary organization
         };
         
         await set(ref(db, `users/${uid}`), userData);
         
-        // 6. Add user to Admin Organization with Admin role (for testing)
-        console.log('Adding user to organization:', { uid, adminOrgId, role: 'Admin' });
-        const addResult = await addUserToOrganization(uid, adminOrgId, 'Admin', firebaseApp);
+        // 6. Add user to Default Organization with Student role
+        console.log('Adding user to Default Organization:', { uid, defaultOrgId, role: 'Student' });
+        const addResult = await addUserToOrganization(uid, defaultOrgId, 'Student', firebaseApp);
         console.log('Add user result:', addResult);
         
         console.log('User registered successfully:', uid);
@@ -1077,6 +1272,13 @@ export const getCurrentClassContext = async (firebaseApp) => {
 // Check and create Default Class if missing
 export const ensureDefaultClass = async (orgId, firebaseApp) => {
     try {
+        // Only create Default Class for Default Organization
+        const isDefault = await isDefaultOrganization(orgId, firebaseApp);
+        if (!isDefault) {
+            console.log('Not Default Organization, skipping Default Class creation');
+            return true;
+        }
+        
         const db = getDatabase(firebaseApp);
         const defaultClassRef = ref(db, `orgs/${orgId}/classes/default`);
         const snapshot = await get(defaultClassRef);
