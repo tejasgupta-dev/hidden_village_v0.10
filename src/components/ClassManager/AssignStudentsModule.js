@@ -9,6 +9,7 @@ import { getAuth } from "firebase/auth";
 import {
   getCurrentUserContext,
   getClassesInOrg,
+  getUserClassesInOrg,
   getClassInfo,
   getUsersByOrganizationFromDatabase,
   assignStudentsToClasses
@@ -24,6 +25,14 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
   const [assigning, setAssigning] = useState(false);
   const [currentOrgId, setCurrentOrgId] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [currentUserRole, setCurrentUserRole] = useState(null);
+  
+  // Search and pagination states
+  const [userSearchTerm, setUserSearchTerm] = useState('');
+  const [userCurrentPage, setUserCurrentPage] = useState(0);
+  const [assignedUserSearchTerm, setAssignedUserSearchTerm] = useState('');
+  const [assignedUserCurrentPage, setAssignedUserCurrentPage] = useState(0);
+  const itemsPerPage = 8; // Show 8 items per page
 
   useEffect(() => {
     loadData();
@@ -37,15 +46,31 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
       const currentUser = auth.currentUser;
       setCurrentUserId(currentUser.uid);
       
-      const { orgId } = await getCurrentUserContext(firebaseApp);
+      const { orgId, role } = await getCurrentUserContext(firebaseApp);
       setCurrentOrgId(orgId);
+      setCurrentUserRole(role);
       
-      // Load classes
-      const allClasses = await getClassesInOrg(orgId, firebaseApp);
-      const classList = Object.entries(allClasses).map(([id, data]) => ({
-        id,
-        ...data
-      }));
+      // Load classes based on role
+      let classList;
+      if (role === 'Admin' || role === 'Developer') {
+        // Admins and Developers can see all classes
+        const allClasses = await getClassesInOrg(orgId, firebaseApp);
+        classList = Object.entries(allClasses).map(([id, data]) => ({
+          id,
+          ...data
+        }));
+      } else if (role === 'Teacher') {
+        // Teachers can only see classes where they are teachers
+        const userClasses = await getUserClassesInOrg(currentUser.uid, orgId, firebaseApp);
+        const classPromises = Object.keys(userClasses).map(async (classId) => {
+          const classInfo = await getClassInfo(orgId, classId, firebaseApp);
+          return { id: classId, ...classInfo };
+        });
+        classList = await Promise.all(classPromises);
+      } else {
+        // Students can't assign users
+        classList = [];
+      }
       setClasses(classList);
       
       // Load users in organization
@@ -141,6 +166,42 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
     }
   };
 
+  // Filter and paginate users
+  const getFilteredUsers = () => {
+    return users.filter(user => {
+      const userName = user.userName || user.userEmail || 'Unknown';
+      return userName.toLowerCase().includes(userSearchTerm.toLowerCase());
+    });
+  };
+
+  const getPaginatedUsers = () => {
+    const filtered = getFilteredUsers();
+    const startIndex = userCurrentPage * itemsPerPage;
+    return filtered.slice(startIndex, startIndex + itemsPerPage);
+  };
+
+  const getTotalUserPages = () => {
+    return Math.ceil(getFilteredUsers().length / itemsPerPage);
+  };
+
+  // Filter and paginate assigned users
+  const getFilteredAssignedUsers = () => {
+    return assignedUsers.filter(user => {
+      const userName = user.userName || user.userEmail || 'Unknown';
+      return userName.toLowerCase().includes(assignedUserSearchTerm.toLowerCase());
+    });
+  };
+
+  const getPaginatedAssignedUsers = () => {
+    const filtered = getFilteredAssignedUsers();
+    const startIndex = assignedUserCurrentPage * itemsPerPage;
+    return filtered.slice(startIndex, startIndex + itemsPerPage);
+  };
+
+  const getTotalAssignedUserPages = () => {
+    return Math.ceil(getFilteredAssignedUsers().length / itemsPerPage);
+  };
+
   const handleAssign = async () => {
     if (selectedUsers.length === 0) {
       alert('Please select at least one user');
@@ -206,6 +267,20 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
           fill: [blue],
         })}
       />
+      
+      {/* Role-based message */}
+      {currentUserRole === 'Teacher' && (
+        <Text
+          text="You can only assign users to classes where you are a teacher"
+          x={width * 0.1}
+          y={height * 0.12}
+          style={new TextStyle({
+            fontFamily: "Arial",
+            fontSize: 16,
+            fill: [black],
+          })}
+        />
+      )}
 
       {/* Users Section */}
       <Text
@@ -220,14 +295,44 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
         })}
       />
 
+      {/* User Search */}
+      <Text
+        text="Search:"
+        x={width * 0.1}
+        y={height * 0.2}
+        style={new TextStyle({
+          fontFamily: "Arial",
+          fontSize: 16,
+          fill: [black],
+        })}
+      />
+      <RectButton
+        height={25}
+        width={width * 0.25}
+        x={width * 0.15}
+        y={height * 0.2}
+        color={white}
+        fontSize={12}
+        fontColor={black}
+        text={userSearchTerm || "Type to search..."}
+        fontWeight={400}
+        callback={() => {
+          const searchTerm = prompt("Enter search term:", userSearchTerm);
+          if (searchTerm !== null) {
+            setUserSearchTerm(searchTerm);
+            setUserCurrentPage(0); // Reset to first page
+          }
+        }}
+      />
+
       {/* Users List */}
-      {users.map((user, index) => (
+      {getPaginatedUsers().map((user, index) => (
         <React.Fragment key={user.userId}>
           <RectButton
             height={30}
             width={width * 0.35}
             x={width * 0.1}
-            y={height * 0.2 + (index * 35)}
+            y={height * 0.25 + (index * 35)}
             color={selectedUsers.includes(user.userId) ? green : blue}
             fontSize={12}
             fontColor={white}
@@ -237,9 +342,50 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
           />
         </React.Fragment>
       ))}
-      {users.length === 0 && (
+      
+      {/* User Pagination */}
+      {getTotalUserPages() > 1 && (
+        <>
+          <Text
+            text={`Page ${userCurrentPage + 1} of ${getTotalUserPages()}`}
+            x={width * 0.1}
+            y={height * 0.25 + (getPaginatedUsers().length * 35) + 10}
+            style={new TextStyle({
+              fontFamily: "Arial",
+              fontSize: 14,
+              fill: [black],
+            })}
+          />
+          <RectButton
+            height={25}
+            width={60}
+            x={width * 0.1}
+            y={height * 0.25 + (getPaginatedUsers().length * 35) + 35}
+            color={userCurrentPage > 0 ? blue : red}
+            fontSize={12}
+            fontColor={white}
+            text="Prev"
+            fontWeight={400}
+            callback={() => userCurrentPage > 0 && setUserCurrentPage(userCurrentPage - 1)}
+          />
+          <RectButton
+            height={25}
+            width={60}
+            x={width * 0.2}
+            y={height * 0.25 + (getPaginatedUsers().length * 35) + 35}
+            color={userCurrentPage < getTotalUserPages() - 1 ? blue : red}
+            fontSize={12}
+            fontColor={white}
+            text="Next"
+            fontWeight={400}
+            callback={() => userCurrentPage < getTotalUserPages() - 1 && setUserCurrentPage(userCurrentPage + 1)}
+          />
+        </>
+      )}
+      
+      {getFilteredUsers().length === 0 && (
         <Text
-          text="No users found."
+          text={userSearchTerm ? "No users found matching search." : "No users found."}
           x={width * 0.1}
           y={height * 0.3}
           style={new TextStyle({
@@ -263,10 +409,10 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
         })}
       />
 
-      {/* Assigned Users Section */}
+      {/* Classes Section */}
       <Text
-        text="Assigned Users (Click to Remove):"
-        x={width * 0.75}
+        text="Select Classes:"
+        x={width * 0.55}
         y={height * 0.15}
         style={new TextStyle({
           fontFamily: "Arial",
@@ -294,14 +440,61 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
         </React.Fragment>
       ))}
 
+      {/* Assigned Users Section */}
+      <Text
+        text="Assigned Users (Click to Remove):"
+        x={width * 0.75}
+        y={height * 0.15}
+        style={new TextStyle({
+          fontFamily: "Arial",
+          fontSize: 24,
+          fontWeight: "bold",
+          fill: [black],
+        })}
+      />
+
+      {/* Assigned User Search */}
+      {selectedClasses.length > 0 && (
+        <>
+          <Text
+            text="Search:"
+            x={width * 0.75}
+            y={height * 0.2}
+            style={new TextStyle({
+              fontFamily: "Arial",
+              fontSize: 16,
+              fill: [black],
+            })}
+          />
+          <RectButton
+            height={25}
+            width={width * 0.15}
+            x={width * 0.8}
+            y={height * 0.2}
+            color={white}
+            fontSize={12}
+            fontColor={black}
+            text={assignedUserSearchTerm || "Type to search..."}
+            fontWeight={400}
+            callback={() => {
+              const searchTerm = prompt("Enter search term:", assignedUserSearchTerm);
+              if (searchTerm !== null) {
+                setAssignedUserSearchTerm(searchTerm);
+                setAssignedUserCurrentPage(0); // Reset to first page
+              }
+            }}
+          />
+        </>
+      )}
+
       {/* Assigned Users List */}
-      {assignedUsers.map((user, index) => (
+      {selectedClasses.length > 0 && getPaginatedAssignedUsers().map((user, index) => (
         <React.Fragment key={user.userId}>
           <RectButton
             height={30}
             width={width * 0.2}
             x={width * 0.75}
-            y={height * 0.2 + (index * 35)}
+            y={height * 0.25 + (index * 35)}
             color={red}
             fontSize={12}
             fontColor={white}
@@ -311,9 +504,50 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
           />
         </React.Fragment>
       ))}
-      {assignedUsers.length === 0 && selectedClasses.length > 0 && (
+      
+      {/* Assigned User Pagination */}
+      {selectedClasses.length > 0 && getTotalAssignedUserPages() > 1 && (
+        <>
+          <Text
+            text={`Page ${assignedUserCurrentPage + 1} of ${getTotalAssignedUserPages()}`}
+            x={width * 0.75}
+            y={height * 0.25 + (getPaginatedAssignedUsers().length * 35) + 10}
+            style={new TextStyle({
+              fontFamily: "Arial",
+              fontSize: 14,
+              fill: [black],
+            })}
+          />
+          <RectButton
+            height={25}
+            width={60}
+            x={width * 0.75}
+            y={height * 0.25 + (getPaginatedAssignedUsers().length * 35) + 35}
+            color={assignedUserCurrentPage > 0 ? blue : red}
+            fontSize={12}
+            fontColor={white}
+            text="Prev"
+            fontWeight={400}
+            callback={() => assignedUserCurrentPage > 0 && setAssignedUserCurrentPage(assignedUserCurrentPage - 1)}
+          />
+          <RectButton
+            height={25}
+            width={60}
+            x={width * 0.85}
+            y={height * 0.25 + (getPaginatedAssignedUsers().length * 35) + 35}
+            color={assignedUserCurrentPage < getTotalAssignedUserPages() - 1 ? blue : red}
+            fontSize={12}
+            fontColor={white}
+            text="Next"
+            fontWeight={400}
+            callback={() => assignedUserCurrentPage < getTotalAssignedUserPages() - 1 && setAssignedUserCurrentPage(assignedUserCurrentPage + 1)}
+          />
+        </>
+      )}
+      
+      {selectedClasses.length > 0 && getFilteredAssignedUsers().length === 0 && (
         <Text
-          text="No users assigned to this class"
+          text={assignedUserSearchTerm ? "No assigned users found matching search." : "No users assigned to this class"}
           x={width * 0.75}
           y={height * 0.3}
           style={new TextStyle({
@@ -328,7 +562,7 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
       <Text
         text={`Selected: ${selectedUsers.length} user(s), ${selectedClasses.length} class(es)`}
         x={width * 0.1}
-        y={height * 0.65}
+        y={height * 0.7}
         style={new TextStyle({
           fontFamily: "Arial",
           fontSize: 18,
@@ -338,10 +572,10 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
 
       {/* Assign Button */}
       <RectButton
-        height={height * 0.1}
+        height={height * 0.08}
         width={width * 0.2}
         x={width * 0.1}
-        y={height * 0.75}
+        y={height * 0.8}
         color={green}
         fontSize={width * 0.012}
         fontColor={white}
@@ -352,10 +586,10 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
 
       {/* Back Button */}
       <RectButton
-        height={height * 0.1}
+        height={height * 0.08}
         width={width * 0.2}
         x={width * 0.4}
-        y={height * 0.75}
+        y={height * 0.8}
         color={red}
         fontSize={width * 0.012}
         fontColor={white}

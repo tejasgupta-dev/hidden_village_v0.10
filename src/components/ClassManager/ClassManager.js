@@ -147,6 +147,31 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
     }
   };
 
+  const handleDeleteClassPrompt = () => {
+    if (classes.length === 0) {
+      alert('No classes available to delete');
+      return;
+    }
+
+    // Show list of classes for deletion
+    const classNames = classes.map(c => c.name).join('\n');
+    const classId = prompt(
+      `Select class to delete:\n\n${classNames}\n\nEnter the exact class name:`
+    );
+    
+    if (!classId) return;
+
+    // Find the class by name
+    const classToDelete = classes.find(c => c.name === classId);
+    if (!classToDelete) {
+      alert('Class not found. Please enter the exact class name.');
+      return;
+    }
+
+    // Use existing handleDeleteClass function
+    handleDeleteClass(classToDelete);
+  };
+
   const handleAssignContent = () => {
     setCurrentView('assignContent');
   };
@@ -231,12 +256,25 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
         })}
       />
       
-      {/* Management Buttons (Teacher+) */}
+      {/* Management Buttons based on role */}
+      {currentUserRole === 'Student' && (
+        <Text
+          text="Select a class to view available content"
+          x={width * 0.1}
+          y={height * 0.25}
+          style={new TextStyle({
+            fontFamily: "Arial",
+            fontSize: 18,
+            fill: [black],
+          })}
+        />
+      )}
+      
       {(currentUserRole === 'Teacher' || currentUserRole === 'Admin' || currentUserRole === 'Developer') && (
         <>
           <RectButton
             height={height * 0.08}
-            width={width * 0.15}
+            width={width * 0.12}
             x={width * 0.5}
             y={height * 0.25}
             color={green}
@@ -248,8 +286,8 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
           />
           <RectButton
             height={height * 0.08}
-            width={width * 0.15}
-            x={width * 0.67}
+            width={width * 0.12}
+            x={width * 0.63}
             y={height * 0.25}
             color={blue}
             fontSize={width * 0.01}
@@ -260,8 +298,8 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
           />
           <RectButton
             height={height * 0.08}
-            width={width * 0.15}
-            x={width * 0.84}
+            width={width * 0.12}
+            x={width * 0.76}
             y={height * 0.25}
             color={blue}
             fontSize={width * 0.01}
@@ -269,6 +307,18 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
             text="ASSIGN USERS"
             fontWeight={800}
             callback={handleAssignStudents}
+          />
+          <RectButton
+            height={height * 0.08}
+            width={width * 0.12}
+            x={width * 0.89}
+            y={height * 0.25}
+            color={red}
+            fontSize={width * 0.01}
+            fontColor={white}
+            text="DELETE CLASS"
+            fontWeight={800}
+            callback={handleDeleteClassPrompt}
           />
         </>
       )}
