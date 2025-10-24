@@ -65,20 +65,41 @@ export const Curriculum = {
   },
 
   async setCurricularEditor(curricular) { // fill in curriculum data
+    console.log('Curriculum: setCurricularEditor called with:', curricular);
     this.CurrentConjectures = []; // remove previous list of levels
-    if (curricular["ConjectureUUIDs"]) { // only fill in existing values
-      for (let i = 0; i < curricular.ConjectureUUIDs.length; i++) {
-        const conjectureList = await getConjectureDataByUUIDWithCurrentOrg(curricular.ConjectureUUIDs[i]);
-        const conjecture = conjectureList[curricular.ConjectureUUIDs[i]];
+    
+    // Check for both old and new field names for backward compatibility
+    const levelIds = curricular["levelIds"] || curricular["ConjectureUUIDs"];
+    
+    if (levelIds && levelIds.length > 0) { // only fill in existing values
+      console.log('Curriculum: Loading conjectures for UUIDs:', levelIds);
+      for (let i = 0; i < levelIds.length; i++) {
+        console.log(`Curriculum: Loading conjecture ${i + 1}/${levelIds.length}:`, levelIds[i]);
+        const conjectureList = await getConjectureDataByUUIDWithCurrentOrg(levelIds[i]);
+        const conjecture = conjectureList[levelIds[i]];
+        console.log(`Curriculum: Loaded conjecture ${i + 1}:`, conjecture);
         this.CurrentConjectures.push(conjecture);
       }
+      console.log('Curriculum: Total conjectures loaded:', this.CurrentConjectures.length);
+    } else {
+      console.log('Curriculum: No levelIds or ConjectureUUIDs found in curricular data');
     }
-    localStorage.setItem('CurricularName', curricular["CurricularName"]);
-    localStorage.setItem('CurricularAuthor', curricular["CurricularAuthor"]);
-    localStorage.setItem('CurricularKeywords', curricular["CurricularKeywords"]);
-    if (curricular["CurricularPIN"] != "undefined" && curricular["CurricularPIN"] != null) {
-      localStorage.setItem('CurricularPIN', curricular["CurricularPIN"]);
+    
+    console.log('Curriculum: Setting localStorage values...');
+    // Use new field names from the database structure
+    localStorage.setItem('CurricularName', curricular["name"] || curricular["CurricularName"]);
+    localStorage.setItem('CurricularAuthor', curricular["author"] || curricular["CurricularAuthor"]);
+    localStorage.setItem('CurricularKeywords', curricular["keywords"] || curricular["CurricularKeywords"]);
+    const pinValue = curricular["pin"] || curricular["CurricularPIN"];
+    if (pinValue != "undefined" && pinValue != null) {
+      localStorage.setItem('CurricularPIN', pinValue);
     }
+    console.log('Curriculum: localStorage values set:', {
+      name: curricular["name"] || curricular["CurricularName"],
+      author: curricular["author"] || curricular["CurricularAuthor"],
+      keywords: curricular["keywords"] || curricular["CurricularKeywords"],
+      pin: curricular["pin"] || curricular["CurricularPIN"]
+    });
   },
 
   clearCurriculum() {

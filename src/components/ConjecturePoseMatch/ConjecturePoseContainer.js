@@ -8,7 +8,8 @@ import {
   bufferPoseDataWithAutoFlush, 
   startSmartAutoFlush, 
   stopAutoFlush, 
-  endSession 
+  endSession,
+  getCurrentOrgContext
 } from "../../firebase/database.js";
 
 const ConjecturePoseContainer = (props) => {
@@ -51,10 +52,11 @@ const ConjecturePoseContainer = (props) => {
           
           // Initialize session with static data once
           const setupSession = async () => {
-            await initializeSession(gameID, frameRate, UUID);
+            const { orgId } = await getCurrentOrgContext();
+            await initializeSession(gameID, frameRate, UUID, orgId);
             
-            // Start auto-flush with hybrid strategy - now passes UUID
-            autoFlushId = startSmartAutoFlush(gameID, UUID, {
+            // Start auto-flush with hybrid strategy - now passes UUID and orgId
+            autoFlushId = startSmartAutoFlush(gameID, UUID, orgId, {
               maxBufferSize: 100,      
               flushIntervalMs: 7500,  
               minBufferSize: 10,       
@@ -62,27 +64,44 @@ const ConjecturePoseContainer = (props) => {
             });
           };
 
-          // Initialize the session
-          setupSession();
+          // Initialize the session and wait for it to complete
+          const initializeAndStart = async () => {
+            await setupSession();
+            
+            // Create interval to buffer pose data (much lighter than before)
+            const intervalId = setInterval(async () => {
+              // Buffer the pose data - now passes UUID, frameRate, and orgId
+              const { orgId } = await getCurrentOrgContext();
+              bufferPoseDataWithAutoFlush(poseData, gameID, UUID, frameRate, orgId);
+            }, 1000 / frameRate);
+            
+            // Return cleanup function
+            return async () => {
+              // Stop the data collection interval
+              clearInterval(intervalId);
+              
+              // Stop auto-flush
+              if (autoFlushId) {
+                stopAutoFlush(autoFlushId);
+              }
+              
+              // End session - now passes UUID, frameRate, and orgId
+              const { orgId } = await getCurrentOrgContext();
+              await endSession(gameID, UUID, frameRate, orgId);
+            };
+          };
+
+          // Start the initialization and get cleanup function
+          let cleanupFunction;
+          initializeAndStart().then(cleanup => {
+            cleanupFunction = cleanup;
+          });
           
-          // Create interval to buffer pose data (much lighter than before)
-          const intervalId = setInterval(() => {
-            // Buffer the pose data - now passes UUID and frameRate
-            bufferPoseDataWithAutoFlush(poseData, gameID, UUID, frameRate);
-          }, 1000 / frameRate);
-    
-          // Cleanup when component unmounts
+          // Return cleanup function for useEffect
           return async () => {
-            // Stop the data collection interval
-            clearInterval(intervalId);
-            
-            // Stop auto-flush
-            if (autoFlushId) {
-              stopAutoFlush(autoFlushId);
+            if (cleanupFunction) {
+              await cleanupFunction();
             }
-            
-            // End session - now passes UUID and frameRate
-            await endSession(gameID, UUID, frameRate);
           };
         } 
     }, [gameID, UUID]); // Added UUID to dependencies since it's used in setup

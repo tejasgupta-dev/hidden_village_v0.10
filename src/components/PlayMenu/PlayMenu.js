@@ -37,6 +37,12 @@ const PlayMenu = (props) => {
     // Get Firebase app instance
     const firebaseApp = firebase.app();
     
+    // Update userRole when role prop changes
+    useEffect(() => {
+        console.log('PlayMenu: Role prop changed from', userRole, 'to', role);
+        setUserRole(role);
+    }, [role]);
+
     useEffect(() => {
         // Calculate the distance for buttons
         const totalAvailableWidth = width * 0.9;
@@ -49,16 +55,17 @@ const PlayMenu = (props) => {
     
     useEffect(() => {
         let role = userRole;
-        console.log('Building button list for role:', role);
+        console.log('PlayMenu: Building button list for role:', role);
         let list = [];
         
         // Add safety check for undefined role
         if (!role) {
-            console.warn('User role is undefined, using default role');
+            console.warn('PlayMenu: User role is undefined, using default role');
             role = 'Student';
         }
         
         if(role === "Admin" || role === "Developer"){ // if user is not a student
+            console.log('PlayMenu: Building Admin/Developer button list');
             list.push(
                 {text: "ADMIN", callback: () => send("ADMIN"), color: babyBlue},
                 {text: "ORGANIZATIONS", callback: () => send("ORGANIZATIONS"), color: yellow},
@@ -72,6 +79,7 @@ const PlayMenu = (props) => {
                 {text: "SETTINGS", callback: () => send("SETTINGS"), color: cornflowerBlue},
             );
         } else if (role === "Student"){
+            console.log('PlayMenu: Building Student button list');
             list.push(
                 {text: "ORGANIZATIONS", callback: () => send("ORGANIZATIONS"), color: yellow},
                 {text: "CLASSES", callback: () => send("CLASSES"), color: green},
@@ -79,6 +87,7 @@ const PlayMenu = (props) => {
                 {text: "SETTINGS", callback: () => send("SETTINGS"), color: cornflowerBlue}
             );
         } else if (role === "Teacher"){
+            console.log('PlayMenu: Building Teacher button list');
             list.push(
                 {text: "ORGANIZATIONS", callback: () => send("ORGANIZATIONS"), color: yellow},
                 {text: "CLASSES", callback: () => send("CLASSES"), color: green},
@@ -90,7 +99,7 @@ const PlayMenu = (props) => {
                 {text: "SETTINGS", callback: () => send("SETTINGS"), color: cornflowerBlue},
             );
         }
-        console.log('Final button list:', list);
+        console.log('PlayMenu: Final button list:', list.length, 'buttons for role:', role);
         setButtonList(list);
     }, [userRole]);
 

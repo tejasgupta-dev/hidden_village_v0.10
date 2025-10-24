@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMachine } from "@xstate/react";
 import LevelPlayMachine from "./LevelPlayModule/LevelPlayMachine";
 import { getUserNameFromDatabase } from '../firebase/userDatabase';
-import { getGameNameByUUID, getLevelNameByUUID, getGameNameByLevelUUID, getCurricularDataByUUID } from '../firebase/database';
+import { getGameNameByUUID, getLevelNameByUUID, getGameNameByLevelUUID, getCurricularDataByUUID, getCurrentOrgContext } from '../firebase/database';
 import { storage } from '../firebase/init';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
@@ -91,21 +91,33 @@ const VideoRecorder = ({ phase, curricularID, gameID }) => {
 
   // In the VideoRecorder component, get the game name:
   const getGameDetails = async () => {
-    if (gameID) {
-      return getGameNameByUUID(gameID);
-    } else if (curricularID) {
-      // If no game ID but we have level ID, find what game contains this level
-      return getGameNameByLevelUUID(curricularID);
+    try {
+      const { orgId } = await getCurrentOrgContext();
+      if (gameID) {
+        return getGameNameByUUID(gameID, orgId);
+      } else if (curricularID) {
+        // If no game ID but we have level ID, find what game contains this level
+        return getGameNameByLevelUUID(curricularID, orgId);
+      }
+      return 'NoGameID';
+    } catch (error) {
+      console.error('Error getting game details:', error);
+      return 'GameNameNotFound';
     }
-    return 'NoGameID';
   };
 
   // And get the level name:
   const getLevelDetails = async () => {
-    if (curricularID) {
-      return getLevelNameByUUID(curricularID);
+    try {
+      const { orgId } = await getCurrentOrgContext();
+      if (curricularID) {
+        return getLevelNameByUUID(curricularID, orgId);
+      }
+      return 'UnknownLevel';
+    } catch (error) {
+      console.error('Error getting level details:', error);
+      return 'UnknownLevel';
     }
-    return 'UnknownLevel';
   };
 
   // Get game name from gameID

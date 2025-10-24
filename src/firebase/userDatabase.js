@@ -59,16 +59,20 @@ export const refreshUserContext = async (firebaseApp) => {
     try {
         // This function can be called after switching organizations/classes
         // to trigger a context refresh in components that use getCurrentUserContext
-        console.log('User context refresh requested');
+        console.log('refreshUserContext: User context refresh requested');
         
         // We can dispatch a custom event that components can listen to
         if (typeof window !== 'undefined') {
+            console.log('refreshUserContext: Dispatching userContextChanged event');
             window.dispatchEvent(new CustomEvent('userContextChanged'));
+            console.log('refreshUserContext: Event dispatched successfully');
+        } else {
+            console.warn('refreshUserContext: Window object not available, cannot dispatch event');
         }
         
         return true;
     } catch (error) {
-        console.error('Error refreshing user context:', error);
+        console.error('refreshUserContext: Error refreshing user context:', error);
         return false;
     }
 };

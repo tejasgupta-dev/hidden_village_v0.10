@@ -87,6 +87,50 @@ const Story = () => {
     fetchUserData();
   }, [isAuthenticated]);
 
+  // Listen for user context changes (organization/class switches)
+  useEffect(() => {
+    const handleUserContextChange = () => {
+      console.log('Story.js: User context changed, refreshing user data...');
+      const fetchUserData = async () => {
+        try {
+          console.log('Story.js: Fetching updated user data...');
+          const [name, userContext, orgInfo] = await Promise.all([
+            getUserNameFromDatabase(firebaseApp),
+            getCurrentUserContext(firebaseApp),
+            getCurrentUserOrgInfo(firebaseApp),
+          ]);
+
+          if (name && name !== "USER NOT FOUND") {
+            console.log('Story.js: Updated userName:', name);
+            setUserName(name);
+          } else {
+            console.warn("Story.js: User name not found.");
+          }
+
+          console.log('Story.js: Updated user context:', userContext);
+          console.log('Story.js: Updated user role from context:', userContext.role);
+          console.log('Story.js: Updated organization:', orgInfo.orgName);
+          setUserRole(userContext.role);
+          setUserOrg(orgInfo.orgName);
+        } catch (error) {
+          console.error("Story.js: Error refreshing user data:", error);
+        }
+      };
+
+      fetchUserData();
+    };
+
+    // Add event listener
+    console.log('Story.js: Adding userContextChanged event listener');
+    window.addEventListener('userContextChanged', handleUserContextChange);
+
+    // Cleanup
+    return () => {
+      console.log('Story.js: Removing userContextChanged event listener');
+      window.removeEventListener('userContextChanged', handleUserContextChange);
+    };
+  }, [firebaseApp]);
+
   // Handle window resize to update dimensions
   useEffect(() => {
     const handleResize = () => {

@@ -24,22 +24,47 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
     loadOrganizations();
   }, []);
 
+  // Listen for user context changes (organization switches)
+  useEffect(() => {
+    const handleUserContextChange = () => {
+      console.log('OrganizationManager: User context changed, refreshing organization data...');
+      loadOrganizations();
+    };
+
+    // Add event listener
+    console.log('OrganizationManager: Adding userContextChanged event listener');
+    window.addEventListener('userContextChanged', handleUserContextChange);
+
+    // Cleanup
+    return () => {
+      console.log('OrganizationManager: Removing userContextChanged event listener');
+      window.removeEventListener('userContextChanged', handleUserContextChange);
+    };
+  }, []);
+
   const loadOrganizations = async () => {
     try {
+      console.log('OrganizationManager: Starting loadOrganizations...');
       setLoading(true);
       
       // Get current user context
       const { orgId } = await getCurrentUserContext(firebaseApp);
+      console.log('OrganizationManager: Current orgId from context:', orgId);
       setCurrentOrgId(orgId);
       
       // Get user's organizations
       const auth = getAuth(firebaseApp);
       const user = auth.currentUser;
-      if (!user) return;
+      if (!user) {
+        console.warn('OrganizationManager: No authenticated user');
+        return;
+      }
 
+      console.log('OrganizationManager: Current user:', user.uid);
       setCurrentUserId(user.uid);
 
       const userOrgs = await getUserOrgsFromDatabase(user.uid, firebaseApp);
+      console.log('OrganizationManager: User orgs from database:', userOrgs);
       const orgList = [];
       
       // Get full organization data for each org
@@ -55,15 +80,19 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
         }
       }
       
+      console.log('OrganizationManager: Processed org list:', orgList);
       setOrganizations(orgList);
       
       // Set current organization name
       const currentOrg = orgList.find(org => org.id === orgId);
-      setCurrentOrgName(currentOrg ? currentOrg.name : 'None');
+      const orgName = currentOrg ? currentOrg.name : 'None';
+      console.log('OrganizationManager: Setting current org name:', orgName);
+      setCurrentOrgName(orgName);
       
       setLoading(false);
+      console.log('OrganizationManager: loadOrganizations completed');
     } catch (error) {
-      console.error('Error loading organizations:', error);
+      console.error('OrganizationManager: Error loading organizations:', error);
       setCurrentOrgName('Error loading organizations');
       setLoading(false);
     }

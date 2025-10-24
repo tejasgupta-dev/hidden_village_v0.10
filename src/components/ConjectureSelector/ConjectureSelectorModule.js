@@ -38,17 +38,24 @@ export function handlePIN(conjecture, message = "Please Enter the PIN.") { // th
 }
 
 function handleLevelClicked(conjecture, conjectureCallback) {
+  console.log('handleLevelClicked: Called with conjecture:', conjecture);
+  console.log('handleLevelClicked: addToCurricular =', addToCurricular);
+  
   if (addToCurricular) { // if the user wants to preview a level before adding it to the game in the game editor
+    console.log('handleLevelClicked: Preview mode - setting up for curricular preview');
     setEditLevel(false);
     setGoBackFromLevelEdit("LEVELSELECT");
     currentConjecture.setConjecture(conjecture);
     conjectureCallback(conjecture);
   }
   else if (handlePIN(conjecture)) { // when the user pulls up the list of levels in the level editor
+    console.log('handleLevelClicked: Edit mode - setting up for level editing');
     setEditLevel(true);
     setGoBackFromLevelEdit("MAIN");
     currentConjecture.setConjecture(conjecture);
     conjectureCallback(conjecture);
+  } else {
+    console.log('handleLevelClicked: PIN was cancelled or invalid');
   }
 }
 

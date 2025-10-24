@@ -61,14 +61,23 @@ const PoseAuthoring = (props) => {
     end:          localStorage.getItem("end.json"),
   });
 
+  console.log('PoseAuthoring: Initial poses loaded:', {
+    start: initialPosesRef.current.start ? 'present' : 'missing',
+    intermediate: initialPosesRef.current.intermediate ? 'present' : 'missing',
+    end: initialPosesRef.current.end ? 'present' : 'missing'
+  });
+
   const restoreOriginalPoses = () => {
+    console.log('PoseAuthoring: restoreOriginalPoses called');
     const poses = initialPosesRef.current;
     ["start", "intermediate", "end"].forEach((key) => {
       const lsKey = `${key}.json`;
       if (poses[key] != null) {
         localStorage.setItem(lsKey, poses[key]);
+        console.log(`PoseAuthoring: Restored ${lsKey}`);
       } else {
         localStorage.removeItem(lsKey);
+        console.log(`PoseAuthoring: Removed ${lsKey} (was null)`);
       }
     });
   };

@@ -107,15 +107,22 @@ let sessionInitialized = false;
 let flushPromises = []; // Track batch write promises for promise checking
 let lastEventType = null; // Track last known event type for change detection
 
+// Timing trackers for analytics
+let gameStartTime = null;
+let lastEventTime = null;
+
 // Initialize session with static data (call once per session)
-export const initializeSession = async (gameId, frameRate, UUID) => {
+export const initializeSession = async (gameId, frameRate, UUID, orgId) => {
   if (sessionInitialized) return; // Prevent duplicate initialization
   
   const dateObj = new Date();
   const timestampGMT = dateObj.toUTCString();
+  const unixTimestamp = Date.now();
+  gameStartTime = unixTimestamp;
+  lastEventTime = unixTimestamp;
   
   if (eventType !== null) {
-    const sessionRef = ref(db, `_PoseData/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${UUID}`);
+    const sessionRef = ref(db, `_PoseData/${orgId}/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${UUID}`);
     
     // All static data
     const sessionData = {
@@ -126,6 +133,7 @@ export const initializeSession = async (gameId, frameRate, UUID) => {
       frameRate,
       loginTime,
       sessionStartTime: timestampGMT,
+      sessionStartUnix: unixTimestamp,
     };
     
     // Store session metadata once
@@ -137,25 +145,30 @@ export const initializeSession = async (gameId, frameRate, UUID) => {
 };
 
 // Buffer frame data (called every frame)
-export const bufferPoseData = async (poseData, gameId, UUID, frameRate = 12) => {
+export const bufferPoseData = async (poseData, gameId, UUID, frameRate = 12, orgId) => {
   if (eventType === null) return;
   
   // Check for event type change and flush if needed
   if (eventType !== lastEventType && frameBuffer.length > 0) {
     console.log(`Event type changed from ${lastEventType} to ${eventType}, flushing buffer`);
-    await flushFrameBuffer(gameId, UUID, frameRate);
+    await flushFrameBuffer(gameId, UUID, frameRate, orgId);
   }
   
+  const now = Date.now();
   const frameData = {
     pose: JSON.stringify(poseData),
     timestamp: new Date().toUTCString(),
+    unixTimestamp: now,
+    timeSinceGameStart: gameStartTime ? now - gameStartTime : 0,
+    timeSinceLastEvent: lastEventTime ? now - lastEventTime : 0,
   };
   
+  lastEventTime = now;
   frameBuffer.push(frameData);
 };
 
 // Batch write all buffered frames (call periodically)
-export const flushFrameBuffer = async (gameId, UUID, frameRate = 12) => {
+export const flushFrameBuffer = async (gameId, UUID, frameRate = 12, orgId) => {
   if (frameBuffer.length === 0 || eventType === null) return;
   
   // Ensure session is initialized before writing frames
@@ -165,7 +178,7 @@ export const flushFrameBuffer = async (gameId, UUID, frameRate = 12) => {
   }
   
   try {
-    const framesRef = ref(db, `_PoseData/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${UUID}/frames/${eventType}`);
+    const framesRef = ref(db, `_PoseData/${orgId}/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${UUID}/frames/${eventType}`);
     
     // Create batch update object
     const updates = {};
@@ -203,10 +216,10 @@ export const flushFrameBuffer = async (gameId, UUID, frameRate = 12) => {
 };
 
 // Check for event type change and flush if needed
-const checkEventTypeChange = async (gameId, UUID, frameRate = 12) => {
+const checkEventTypeChange = async (gameId, UUID, frameRate = 12, orgId) => {
   if (eventType !== lastEventType && frameBuffer.length > 0) {
     console.log(`Event type changed from ${lastEventType} to ${eventType}, flushing buffer`);
-    await flushFrameBuffer(gameId, UUID, frameRate);
+    await flushFrameBuffer(gameId, UUID, frameRate, orgId);
     return true;
   }
   return false;
@@ -216,9 +229,9 @@ const checkEventTypeChange = async (gameId, UUID, frameRate = 12) => {
 export const getBufferSize = () => frameBuffer.length;
 
 // Force flush and reset session (call on session end)
-export const endSession = async (gameId, UUID, frameRate = 12) => {
+export const endSession = async (gameId, UUID, frameRate = 12, orgId) => {
   // Flush any remaining frames
-  await flushFrameBuffer(gameId, UUID, frameRate);
+  await flushFrameBuffer(gameId, UUID, frameRate, orgId);
   
   // Wait for all pending flush promises to settle (like original implementation)
   await Promise.allSettled(flushPromises);
@@ -235,11 +248,11 @@ export const endSession = async (gameId, UUID, frameRate = 12) => {
 // Hybrid flush strategy
 let MAX_BUFFER_SIZE = 50; // Make it mutable so it can be updated by options
 
-export const bufferPoseDataWithAutoFlush = async (poseData, gameId, UUID, frameRate = 12) => {
+export const bufferPoseDataWithAutoFlush = async (poseData, gameId, UUID, frameRate = 12, orgId) => {
   if (eventType === null) return;
   
   // Check for event type change first and flush if needed
-  await checkEventTypeChange(gameId, UUID, frameRate);
+  await checkEventTypeChange(gameId, UUID, frameRate, orgId);
   
   // Add to buffer
   bufferPoseData(poseData);
@@ -247,16 +260,16 @@ export const bufferPoseDataWithAutoFlush = async (poseData, gameId, UUID, frameR
   // Immediate flush if buffer is getting too big (uses MAX_BUFFER_SIZE)
   if (frameBuffer.length >= MAX_BUFFER_SIZE) {
     console.log('Buffer size limit reached, flushing immediately');
-    await flushFrameBuffer(gameId, UUID, frameRate);
+    await flushFrameBuffer(gameId, UUID, frameRate, orgId);
   }
 };
 
 // Enhanced buffer function that checks for event changes
-export const bufferPoseDataWithEventCheck = async (poseData, gameId, UUID, frameRate = 12) => {
+export const bufferPoseDataWithEventCheck = async (poseData, gameId, UUID, frameRate = 12, orgId) => {
   if (eventType === null) return;
   
   // Check for event type change and flush if needed
-  const flushedDueToEventChange = await checkEventTypeChange(gameId, UUID, frameRate);
+  const flushedDueToEventChange = await checkEventTypeChange(gameId, UUID, frameRate, orgId);
   
   // Add to buffer after potential flush
   bufferPoseData(poseData);
@@ -265,7 +278,7 @@ export const bufferPoseDataWithEventCheck = async (poseData, gameId, UUID, frame
 };
 
 // Start hybrid auto-flush (time-based + size-based + event-change-based)
-export const startSmartAutoFlush = (gameId, UUID, options = {}) => {
+export const startSmartAutoFlush = (gameId, UUID, orgId, options = {}) => {
   const { 
     maxBufferSize = 100,     // This sets MAX_BUFFER_SIZE for immediate flushes
     flushIntervalMs = 8000,
@@ -278,12 +291,12 @@ export const startSmartAutoFlush = (gameId, UUID, options = {}) => {
   
   return setInterval(async () => {
     // Check for event type change first
-    const flushedDueToEventChange = await checkEventTypeChange(gameId, UUID, frameRate);
+    const flushedDueToEventChange = await checkEventTypeChange(gameId, UUID, frameRate, orgId);
     
     // Only do time-based flush if we didn't just flush due to event change
     if (!flushedDueToEventChange && frameBuffer.length >= minBufferSize) {
       console.log(`Auto-flushing ${frameBuffer.length} frames`);
-      await flushFrameBuffer(gameId, UUID, frameRate);
+      await flushFrameBuffer(gameId, UUID, frameRate, orgId);
     }
   }, flushIntervalMs);
 };
@@ -295,8 +308,8 @@ export const stopAutoFlush = (intervalId) => {
 };
 
 // Utility function to manually trigger event change check
-export const forceEventTypeCheck = async (gameId, UUID, frameRate = 12) => {
-  return await checkEventTypeChange(gameId, UUID, frameRate);
+export const forceEventTypeCheck = async (gameId, UUID, frameRate = 12, orgId) => {
+  return await checkEventTypeChange(gameId, UUID, frameRate, orgId);
 };
 
 export const loadGameDialoguesFromFirebase = async (gameId, orgId) => {
@@ -310,13 +323,16 @@ export const loadGameDialoguesFromFirebase = async (gameId, orgId) => {
 };
 
 // Helper function to get current user's organization context
-const getCurrentOrgContext = async () => {
+export const getCurrentOrgContext = async () => {
   try {
+    console.log('getCurrentOrgContext: Getting current user context...');
     // Import here to avoid circular dependency
     const { getCurrentUserContext } = await import('./userDatabase.js');
-    return await getCurrentUserContext();
+    const result = await getCurrentUserContext();
+    console.log('getCurrentOrgContext: Result:', result);
+    return result;
   } catch (error) {
-    console.error('Error getting current org context:', error);
+    console.error('getCurrentOrgContext: Error getting current org context:', error);
     return { orgId: null, role: null };
   }
 };
@@ -405,12 +421,17 @@ export const saveNarrativeDraftToFirebaseWithCurrentOrg = async (UUID, dialogues
 
 // Wrapper functions for data retrieval with current org
 export const getConjectureDataByUUIDWithCurrentOrg = async (conjectureID) => {
+  console.log('getConjectureDataByUUIDWithCurrentOrg: Called with conjectureID:', conjectureID);
   const { orgId } = await getCurrentOrgContext();
+  console.log('getConjectureDataByUUIDWithCurrentOrg: Current orgId:', orgId);
   if (!orgId) {
-    console.warn("User is not in any organization.");
+    console.warn("getConjectureDataByUUIDWithCurrentOrg: User is not in any organization.");
     return null;
   }
-  return getConjectureDataByUUID(conjectureID, orgId);
+  console.log('getConjectureDataByUUIDWithCurrentOrg: Calling getConjectureDataByUUID with:', { conjectureID, orgId });
+  const result = await getConjectureDataByUUID(conjectureID, orgId);
+  console.log('getConjectureDataByUUIDWithCurrentOrg: Result:', result);
+  return result;
 };
 
 export const getCurricularDataByUUIDWithCurrentOrg = async (curricularID) => {
@@ -970,22 +991,36 @@ export const saveNarrativeDraftToFirebase = async (UUID, dialogues, orgId) => {
 // Define a function to retrieve a conjecture based on UUID within an organization
 export const getConjectureDataByUUID = async (conjectureID, orgId) => {
   try {
+    console.log('getConjectureDataByUUID: Called with:', { conjectureID, orgId });
     // ref the realtime db - now under organization
     const dbRef = ref(db, `orgs/${orgId}/levels`);
-    // query to find data with the UUID
-    const q = query(dbRef, orderByChild('UUID'), equalTo(conjectureID));
+    console.log('getConjectureDataByUUID: Database ref:', `orgs/${orgId}/levels`);
     
-    // Execute the query
-    const querySnapshot = await get(q);
-
-    // check the snapshot
-    if (querySnapshot.exists()) {
-      const data = querySnapshot.val();
-      return data; // return the data if its good
+    // Load all levels and find by UUID (avoiding index requirement)
+    console.log('getConjectureDataByUUID: Loading all levels to find by UUID...');
+    const snapshot = await get(dbRef);
+    console.log('getConjectureDataByUUID: Snapshot exists:', snapshot.exists());
+    
+    if (snapshot.exists()) {
+      const allLevels = snapshot.val();
+      console.log('getConjectureDataByUUID: Total levels loaded:', Object.keys(allLevels).length);
+      
+      // Find the level with matching UUID
+      for (const [levelId, levelData] of Object.entries(allLevels)) {
+        if (levelData.UUID === conjectureID) {
+          console.log('getConjectureDataByUUID: Found matching level:', levelId);
+          return { [levelId]: levelData };
+        }
+      }
+      
+      console.log('getConjectureDataByUUID: No level found with UUID:', conjectureID);
+      return null;
     } else {
-      return null; // This will happen if data not found
+      console.log('getConjectureDataByUUID: No levels found in organization');
+      return null;
     }
   } catch (error) {
+    console.error('getConjectureDataByUUID: Error occurred:', error);
     throw error; // this is an actual bad thing
   }
 };
@@ -1178,10 +1213,15 @@ export const writeToDatabaseNewSession = async (CurrId, CurrName, role) => {
   const dateObj = new Date();
   const timestamp = dateObj.toISOString();
   const timestampGMT = dateObj.toUTCString();
+  const unixTimestamp = Date.now();
  
   // Change game ID appropriately
   gameId = CurrName;
   userRole = role;
+  
+  // Get game mode
+  const isPlayMode = getPlayGame();
+  const gameMode = isPlayMode ? 'Teaching' : 'Research';
 
   // UPDATED: include device layer
   const sessionRoot = `_GameData/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}`;
@@ -1194,8 +1234,11 @@ export const writeToDatabaseNewSession = async (CurrId, CurrName, role) => {
     set(ref(db, `${sessionRoot}/UserRole`), userRole),
     set(ref(db, `${sessionRoot}/DeviceID`), deviceId),               // NEW
     set(ref(db, `${sessionRoot}/DeviceNickname`), deviceNickname),   // NEW
-    set(ref(db, `${sessionRoot}/GameStart`), timestamp),
+    // TODO: Uncomment line below to also store ISO format timestamp
+    // set(ref(db, `${sessionRoot}/GameStart`), timestamp),
     set(ref(db, `${sessionRoot}/GameStartGMT`), timestampGMT),
+    set(ref(db, `${sessionRoot}/GameStartUnix`), unixTimestamp),
+    set(ref(db, `${sessionRoot}/GameMode`), gameMode),
     set(ref(db, `${sessionRoot}/DaRep`), 'null'),
     set(ref(db, `${sessionRoot}/Hints/HintEnabled`), "null"),
     set(ref(db, `${sessionRoot}/Hints/HintCount`), "null"),
@@ -1223,7 +1266,8 @@ export const writeToDatabasePoseStart = async (poseNumber, ConjectureId, gameId)
 
   // Create an object to send to the database
   const promises = [
-    set(ref(db, `${userSession}/${poseNumber} Begin`), timestamp),
+    // TODO: Uncomment line below to also store ISO format timestamp
+    // set(ref(db, `${userSession}/${poseNumber} Begin`), timestamp),
     set(ref(db, `${userSession}/${poseNumber} Begin GMT`), timestampGMT),
   ];
 
@@ -1243,7 +1287,8 @@ export const writeToDatabasePoseMatch = async (poseNumber, gameId) => {
 
   // Create an object to send to the database
   const promises = [
-    set(ref(db, `${userSession}/${poseNumber} Match`), timestamp),
+    // TODO: Uncomment line below to also store ISO format timestamp
+    // set(ref(db, `${userSession}/${poseNumber} Match`), timestamp),
     set(ref(db, `${userSession}/${poseNumber} Match GMT`), timestampGMT),
   ];
 
@@ -1266,7 +1311,8 @@ export const writeToDatabaseIntuitionStart = async (gameId) => {
 
   // Create an object to send to the database
   const promises = [
-    set(ref(db, `${userSession}/Intuition Start`), timestamp),
+    // TODO: Uncomment line below to also store ISO format timestamp
+    // set(ref(db, `${userSession}/Intuition Start`), timestamp),
     set(ref(db, `${userSession}/Intuition Start GMT`), timestampGMT),
   ];
 
@@ -1289,11 +1335,52 @@ export const writeToDatabaseIntuitionEnd = async (gameId) => {
 
   // Create an object to send to the database
   const promises = [
-    set(ref(db, `${userSession}/Intuition End/`), timestamp),
+    // TODO: Uncomment line below to also store ISO format timestamp
+    // set(ref(db, `${userSession}/Intuition End/`), timestamp),
     set(ref(db, `${userSession}/Intuition End GMT/`), timestampGMT),
   ];
 
   // Return the promise that push() returns
+  await Promise.all(promises);
+};
+
+// Write True/False answer to database
+export const writeToDatabaseTFAnswer = async (answer, correctAnswer, gameId) => {
+  const dateObj = new Date();
+  const timestampGMT = dateObj.toUTCString();
+  const unixTimestamp = Date.now();
+  
+  const isCorrect = answer === correctAnswer;
+  
+  const userSession = `_GameData/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${conjectureId}`;
+  
+  const promises = [
+    set(ref(db, `${userSession}/TF Given Answer`), answer),
+    set(ref(db, `${userSession}/TF Correct`), isCorrect),
+    set(ref(db, `${userSession}/TF Answer Time GMT`), timestampGMT),
+    set(ref(db, `${userSession}/TF Answer Time Unix`), unixTimestamp),
+  ];
+  
+  await Promise.all(promises);
+};
+
+// Write Multiple Choice answer to database
+export const writeToDatabaseMCAnswer = async (answer, correctAnswer, gameId) => {
+  const dateObj = new Date();
+  const timestampGMT = dateObj.toUTCString();
+  const unixTimestamp = Date.now();
+  
+  const isCorrect = answer === correctAnswer;
+  
+  const userSession = `_GameData/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${conjectureId}`;
+  
+  const promises = [
+    set(ref(db, `${userSession}/MC Given Answer`), answer),
+    set(ref(db, `${userSession}/MC Correct`), isCorrect),
+    set(ref(db, `${userSession}/MC Answer Time GMT`), timestampGMT),
+    set(ref(db, `${userSession}/MC Answer Time Unix`), unixTimestamp),
+  ];
+  
   await Promise.all(promises);
 };
 
@@ -1309,7 +1396,8 @@ export const writeToDatabaseInsightStart = async (gameId = undefined) => {
 
   // Create an object to send to the database
   const promises = [
-    set(ref(db, `${userSession}/Insight Start/`), timestamp),
+    // TODO: Uncomment line below to also store ISO format timestamp
+    // set(ref(db, `${userSession}/Insight Start/`), timestamp),
     set(ref(db, `${userSession}/Insight Start GMT/`), timestampGMT),
   ];
 
@@ -1329,7 +1417,8 @@ export const writeToDatabaseInsightEnd = async (gameId = undefined) => {
 
   // Create an object to send to the database
   const promises = [
-    set(ref(db, `${userSession}/Insight End`), timestamp),
+    // TODO: Uncomment line below to also store ISO format timestamp
+    // set(ref(db, `${userSession}/Insight End`), timestamp),
     set(ref(db, `${userSession}/Insight End GMT`), timestampGMT),
   ];
 

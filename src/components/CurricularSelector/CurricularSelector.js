@@ -126,6 +126,70 @@ const CurricularSelectModule = (props) => {
     fetchData();
   }, []);
 
+  // Listen for user context changes (organization/class switches)
+  useEffect(() => {
+    const handleUserContextChange = () => {
+      console.log('CurricularSelector: User context changed, refreshing curricular list...');
+      const fetchData = async () => {
+        try {
+          const isPlayMode = getPlayGame();
+          console.log('CurricularSelector: Play mode:', isPlayMode);
+          
+          if (isPlayMode) {
+            // PLAY mode: show only games assigned to current class
+            const { classId, orgId } = await getCurrentClassContext(firebaseApp);
+            console.log('CurricularSelector: Current class context:', { classId, orgId });
+            
+            if (!classId || !orgId) {
+              console.warn('CurricularSelector: No class context found');
+              setCurricularList([]); // Empty list to show message
+              setLoading(false);
+              return;
+            }
+            
+            // Get games assigned to current class
+            const classInfo = await getClassInfo(orgId, classId, firebaseApp);
+            const assignedGameIds = classInfo?.assignedGames ? Object.keys(classInfo.assignedGames) : [];
+            
+            console.log('CurricularSelector: Updated current class:', classId, 'Assigned games:', assignedGameIds);
+            
+            // Get all games
+            const allGames = await getCurricularListWithCurrentOrg(isPlayMode);
+            
+            // Filter only games assigned to current class
+            const classGames = allGames ? allGames.filter(game => assignedGameIds.includes(game.UUID)) : [];
+            
+            console.log('CurricularSelector: Updated filtered games for class:', classGames.length, 'out of', allGames.length);
+            setCurricularList(classGames);
+          } else {
+            // EDIT mode: show all games created by current user
+            console.log('CurricularSelector: EDIT mode: showing all user games');
+            const result = await getCurricularListWithCurrentOrg(isPlayMode);
+            console.log('CurricularSelector: Updated games for edit mode:', result?.length || 0);
+            setCurricularList(result || []);
+          }
+          
+          setLoading(false);
+        } catch (error) {
+          console.error('CurricularSelector: Error refreshing data:', error);
+          setLoading(false);
+        }
+      };
+
+      fetchData();
+    };
+
+    // Add event listener
+    console.log('CurricularSelector: Adding userContextChanged event listener');
+    window.addEventListener('userContextChanged', handleUserContextChange);
+
+    // Cleanup
+    return () => {
+      console.log('CurricularSelector: Removing userContextChanged event listener');
+      window.removeEventListener('userContextChanged', handleUserContextChange);
+    };
+  }, [firebaseApp]);
+
   //use to get a fixed number of conjectures per page and to navigate between the pages
   const curricularPerPage = 7;
   const totalPages = Math.ceil((curricularList?.length || 0) / curricularPerPage);

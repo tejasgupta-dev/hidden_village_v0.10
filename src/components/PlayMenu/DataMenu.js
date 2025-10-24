@@ -172,7 +172,7 @@ const DataMenu = (props) => {
         const includesName = name ? item.name.includes(gameNameNoSpaces) : true;
   
         if (isInDateRange && includesAuthor && includesName) {
-          // console.log(`  ✅ ADDING ${item.name} to filteredVideos`);
+          // console.log(`  ADDING ${item.name} to filteredVideos`);
           // console.log("Video date: ", videoDate)
           // console.log("Author: ", item.author)
           // console.log("Name: ", item.name)
@@ -180,7 +180,7 @@ const DataMenu = (props) => {
         }
         else {
           // --- ADD THIS LOG ---
-          // console.log(`  ❌ SKIPPING ${item.name} because one or more conditions failed.`);
+          // console.log(`  SKIPPING ${item.name} because one or more conditions failed.`);
           // console.log("Video date: ", videoDate)
           // console.log("Author: ", author)
           // console.log("Name: ", name)
