@@ -345,29 +345,56 @@ const Chapter = (props) => {
   }, [service]);
 
   useEffect(() => {
-      let spriteImage;
+      // Early return if currentText is not available
+      if (!currentText) {
+        setSpeaker(null);
+        return;
+      }
+
+      let spriteImage = null;
       
-      if (characters && currentText && currentText.speaker && idToSprite[currentText.speaker]) {
-        // console.log("There are characters and current text is set.");
-        // console.log("Characters", characters);
-        // console.log("Current Text", currentText);
-        spriteImage = idToSprite[currentText.speaker];
-      } else {
-        // Use default speaker for any error condition
-        if (currentText && currentText.speaker && !idToSprite[currentText.speaker]) {
-          console.warn(`Speaker "${currentText.speaker}" not found in idToSprite mapping, using default`);
+      // Check if we have a valid speaker mapped to a sprite
+      if (currentText.speaker) {
+        if (currentText.speaker === 'narrator') {
+          // Narrator should not show a sprite
+          spriteImage = null;
+        } else if (idToSprite[currentText.speaker]) {
+          // Speaker exists in mapping - validate it's a string/valid path
+          const imagePath = idToSprite[currentText.speaker];
+          if (imagePath && typeof imagePath === 'string' && imagePath.trim() !== '') {
+            spriteImage = imagePath;
+          } else {
+            spriteImage = null;
+          }
+        } else {
+          // Unknown speaker, use default (but validate it exists)
+          const defaultImg = idToSprite.equilateralTriangle || idToSprite.player;
+          spriteImage = (defaultImg && typeof defaultImg === 'string' && defaultImg.trim() !== '') 
+            ? defaultImg 
+            : null;
         }
-        spriteImage = idToSprite.equilateralTriangle;
+      } else {
+        // No speaker specified, use default (but validate it exists)
+        const defaultImg = idToSprite.equilateralTriangle || idToSprite.player;
+        spriteImage = (defaultImg && typeof defaultImg === 'string' && defaultImg.trim() !== '') 
+          ? defaultImg 
+          : null;
       }
       
-      setSpeaker(
-        <Sprite
-          image={spriteImage}
-          x={0}
-          y={0}
-          anchor={0}
-        />
-      );
+      // Ensure spriteImage is valid before rendering
+      if (spriteImage && typeof spriteImage === 'string' && spriteImage.trim() !== '') {
+        setSpeaker(
+          <Sprite
+            image={spriteImage}
+            x={0}
+            y={0}
+            anchor={0}
+          />
+        );
+      } else {
+        // Fallback: don't render sprite if no valid image
+        setSpeaker(null);
+      }
     }, [characters, currentText]);
 
   // Show loading state

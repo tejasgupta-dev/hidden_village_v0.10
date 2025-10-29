@@ -31,8 +31,7 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
   const [loading, setLoading] = useState(true);
   const [currentView, setCurrentView] = useState('main'); // 'main', 'assignContent', 'assignStudents'
 
-  // Debug: Check if mainCallback is passed
-  console.log('ClassManager - mainCallback:', typeof mainCallback, mainCallback);
+  // Debug: Check if mainCallback is passed (removed console.log for production)
 
   useEffect(() => {
     loadClasses();
@@ -61,27 +60,41 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
       // Admin/Developer see all classes, others see only their classes
       let classList;
       if (role === 'Admin' || role === 'Developer') {
-        console.log('Loading all classes for Admin/Developer...');
+        // console.log('Loading all classes for Admin/Developer...'); // Debug log
         const allClasses = await getClassesInOrg(orgId, firebaseApp);
-        console.log('Raw classes from DB:', allClasses);
+        // console.log('Raw classes from DB:', allClasses); // Debug log
         classList = Object.entries(allClasses).map(([id, data]) => ({
           id,
           ...data
         }));
-        console.log('Processed classList:', classList);
-      } else {
-        console.log('Loading user classes for Teacher/Student...');
+        // console.log('Processed classList:', classList); // Debug log
+      } else if (role === 'Teacher') {
+        // Teachers can only see classes where they are teachers
+        // console.log('Loading user classes for Teacher...'); // Debug log
         const userClasses = await getUserClassesInOrg(currentUser.uid, orgId, firebaseApp);
-        console.log('User classes from DB:', userClasses);
+        // console.log('User classes from DB:', userClasses); // Debug log
         const classPromises = Object.keys(userClasses).map(async (classId) => {
           const classInfo = await getClassInfo(orgId, classId, firebaseApp);
           return { id: classId, ...classInfo };
         });
         classList = await Promise.all(classPromises);
-        console.log('Processed classList:', classList);
+        // console.log('Processed classList:', classList); // Debug log
+      } else if (role === 'Student') {
+        // Students see classes where they are students
+        // console.log('Loading user classes for Student...'); // Debug log
+        const userClasses = await getUserClassesInOrg(currentUser.uid, orgId, firebaseApp);
+        // console.log('User classes from DB:', userClasses); // Debug log
+        const classPromises = Object.keys(userClasses).map(async (classId) => {
+          const classInfo = await getClassInfo(orgId, classId, firebaseApp);
+          return { id: classId, ...classInfo };
+        });
+        classList = await Promise.all(classPromises);
+        // console.log('Processed classList:', classList); // Debug log
+      } else {
+        classList = [];
       }
       
-      console.log('Final classList to set:', classList);
+      // console.log('Final classList to set:', classList); // Debug log
       setClasses(classList);
       setLoading(false);
     } catch (error) {
@@ -99,7 +112,7 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
       await refreshUserContext(firebaseApp);
       await loadClasses(); // Reload classes to get updated context
       
-      console.log('Class switched successfully');
+      // console.log('Class switched successfully'); // Debug log
     } catch (error) {
       console.error('Error switching class:', error);
       alert('Failed to switch class');
@@ -373,7 +386,6 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
         text="BACK"
         fontWeight={800}
         callback={() => {
-          console.log('BACK button clicked in ClassManager');
           if (mainCallback) {
             mainCallback();
           } else {

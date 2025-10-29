@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Text } from "@inlet/react-pixi";
 import { TextStyle } from "@pixi/text";
 import { blue, white, red, green, black } from "../../utils/colors";
@@ -23,9 +23,13 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
   const [assignedGames, setAssignedGames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [assigning, setAssigning] = useState(false);
+  const [removingGame, setRemovingGame] = useState(false);
   const [currentOrgId, setCurrentOrgId] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [currentUserRole, setCurrentUserRole] = useState(null);
+  
+  // Track if component is mounted to prevent state updates on unmounted component
+  const isMountedRef = useRef(true);
   
   // Search and pagination states
   const [gameSearchTerm, setGameSearchTerm] = useState('');
@@ -35,20 +39,33 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
   const itemsPerPage = 8; // Show 8 items per page
 
   useEffect(() => {
+    isMountedRef.current = true;
     loadData();
+    
+    return () => {
+      isMountedRef.current = false;
+    };
   }, []);
 
   const loadData = async () => {
     try {
-      setLoading(true);
+      if (isMountedRef.current) {
+        setLoading(true);
+      }
       
       const auth = getAuth(firebaseApp);
       const currentUser = auth.currentUser;
-      setCurrentUserId(currentUser.uid);
       
       const { orgId, role } = await getCurrentUserContext(firebaseApp);
-      setCurrentOrgId(orgId);
-      setCurrentUserRole(role);
+      
+      // Check if component is still mounted before continuing
+      if (!isMountedRef.current) return;
+      
+      if (isMountedRef.current) {
+        setCurrentUserId(currentUser.uid);
+        setCurrentOrgId(orgId);
+        setCurrentUserRole(role);
+      }
       
       // Load classes based on role
       let classList;
@@ -71,19 +88,26 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
         // Students can't assign content
         classList = [];
       }
-      setClasses(classList);
       
       // Load user's games (only games created by current user)
       const allGames = await getCurricularListWithCurrentOrg(false);
-      const userGames = allGames.filter(game => {
+      const userGames = allGames ? allGames.filter(game => {
         return game.AuthorID === currentUser.uid;
-      });
-      setGames(userGames);
+      }) : [];
       
-      setLoading(false);
+      // Check again if component is still mounted before updating state
+      if (!isMountedRef.current) return;
+      
+      if (isMountedRef.current) {
+        setClasses(classList);
+        setGames(userGames);
+        setLoading(false);
+      }
     } catch (error) {
-      console.error('Error loading data:', error);
-      setLoading(false);
+      // console.error('Error loading data:', error); // Убираем вывод ошибки
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -124,11 +148,15 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
       const assignedGameIds = Array.from(allAssignedGameIds);
       const assignedGamesList = games.filter(game => assignedGameIds.includes(game.UUID));
       
-      console.log(`Found ${assignedGamesList.length} unique games across ${classIds.length} classes`);
-      setAssignedGames(assignedGamesList);
+      // console.log(`Found ${assignedGamesList.length} unique games across ${classIds.length} classes`); // Убираем лишний лог
+      if (isMountedRef.current) {
+        setAssignedGames(assignedGamesList);
+      }
     } catch (error) {
-      console.error('Error loading assigned games:', error);
-      setAssignedGames([]);
+      // console.error('Error loading assigned games:', error); // Убираем вывод ошибки
+      if (isMountedRef.current) {
+        setAssignedGames([]);
+      }
     }
   };
 
@@ -138,11 +166,20 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
       return;
     }
 
+    // Prevent multiple simultaneous calls
+    if (removingGame) {
+      return;
+    }
+
     const classId = selectedClasses[0];
     
     try {
+      setRemovingGame(true);
       const { removeGameFromClass } = await import('../../firebase/userDatabase');
       await removeGameFromClass(currentOrgId, classId, gameId, firebaseApp);
+      
+      // Check if component is still mounted before updating state
+      if (!isMountedRef.current) return;
       
       alert('Game removed from class successfully');
       
@@ -150,14 +187,30 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
       await loadAssignedGames([classId]);
       
     } catch (error) {
-      console.error('Error removing game from class:', error);
+      // Check if component is still mounted before showing error
+      if (!isMountedRef.current) return;
+      
+      // console.error('Error removing game from class:', error); // Убираем вывод ошибки
       alert('Failed to remove game: ' + error.message);
+    } finally {
+      if (isMountedRef.current) {
+        setRemovingGame(false);
+      }
     }
   };
 
   // Filter and paginate games
   const getFilteredGames = () => {
+    // Get IDs of games already assigned to selected classes
+    const assignedGameIds = new Set(assignedGames.map(game => game.UUID));
+    
     return games.filter(game => {
+      // Exclude games already assigned to selected classes
+      if (selectedClasses.length > 0 && assignedGameIds.has(game.UUID)) {
+        return false;
+      }
+      
+      // Filter by search term
       const gameName = game.name || 'Unnamed Game';
       return gameName.toLowerCase().includes(gameSearchTerm.toLowerCase());
     });
@@ -208,17 +261,29 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
       const auth = getAuth(firebaseApp);
       await assignGamesToClasses(currentOrgId, selectedGames, selectedClasses, auth.currentUser.uid, firebaseApp);
       
+      // Check if component is still mounted before updating state
+      if (!isMountedRef.current) return;
+      
       alert(`Successfully assigned ${selectedGames.length} game(s) to ${selectedClasses.length} class(es)`);
       
-      // Reset selections
+      // Refresh assigned games list to reflect new assignments
+      if (selectedClasses.length > 0) {
+        await loadAssignedGames(selectedClasses);
+      }
+      
+      // Reset game selections (keep class selection)
       setSelectedGames([]);
-      setSelectedClasses([]);
       
     } catch (error) {
-      console.error('Error assigning games:', error);
+      // Check if component is still mounted before showing error
+      if (!isMountedRef.current) return;
+      
+      // console.error('Error assigning games:', error); // Убираем вывод ошибки
       alert('Failed to assign games: ' + error.message);
     } finally {
-      setAssigning(false);
+      if (isMountedRef.current) {
+        setAssigning(false);
+      }
     }
   };
 

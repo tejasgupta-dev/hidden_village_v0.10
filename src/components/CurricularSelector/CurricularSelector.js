@@ -107,7 +107,7 @@ const CurricularSelectModule = (props) => {
           // Filter only games assigned to current class
           const classGames = allGames ? allGames.filter(game => assignedGameIds.includes(game.UUID)) : [];
           
-          console.log('Filtered games for class:', classGames.length, 'out of', allGames.length);
+          console.log('Filtered games for class:', classGames.length, 'out of', allGames ? allGames.length : 0);
           setCurricularList(classGames);
         } else {
           // EDIT mode: show all games created by current user
@@ -118,7 +118,7 @@ const CurricularSelectModule = (props) => {
         
         setLoading(false);
       } catch (error) {
-        console.error('Error fetching data:', error);
+        // console.error('Error fetching data:', error);
         setLoading(false);
       }
     };

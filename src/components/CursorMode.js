@@ -4,11 +4,14 @@ import { Container, Sprite } from "@inlet/react-pixi";
 import { useState, useEffect, useRef } from "react";
 import CursorMachine from "../machines/cursorMachine";
 import { useMachine, useSelector } from "@xstate/react";
-import cursorIcon from "../assets/cursor.png";
-import nextBtn from "../assets/next_button.png";
-import nextBtnHover from "../assets/next_button_hover.png";
+
+// Import images using URL constructor similar to Chapter.js
+const cursorIcon = new URL("../assets/cursor.png", import.meta.url).href;
+const nextBtn = new URL("../assets/next_button.png", import.meta.url).href;
+const nextBtnHover = new URL("../assets/next_button_hover.png", import.meta.url).href;
 
 const hitAreasIntersect = (cursorArea, buttonArea) => {
+  if (!cursorArea || !buttonArea) return false;
   const s = 0.7;
   return (
     cursorArea.x < buttonArea.x + buttonArea.width &&
@@ -74,15 +77,23 @@ export default function CursorMode({ callback, rowDimensions, colAttr, poseData 
 
     setCursorPos(newPos);
 
-    if (
-      hitAreasIntersect(
-        new Rectangle(newPos.x, newPos.y, 76, 76),
-        nextRef.current?.hitArea
-      )
-    ) {
-      send("TRIGGER");
+    // Only check intersection if nextRef is available and has hitArea
+    if (nextRef.current?.hitArea) {
+      if (
+        hitAreasIntersect(
+          new Rectangle(newPos.x, newPos.y, 76, 76),
+          nextRef.current.hitArea
+        )
+      ) {
+        send("TRIGGER");
+      }
     }
   }, [poseData, colAttr, send]);
+
+  // Validate images before rendering
+  if (!btnImg || !cursorIcon) {
+    return <Container />;
+  }
 
   return (
     <Container>

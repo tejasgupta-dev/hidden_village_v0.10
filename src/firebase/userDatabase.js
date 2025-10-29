@@ -778,7 +778,14 @@ export const registerNewUser = async (email, password, firebaseApp) => {
                 name: DEFAULT_ORG_NAME,
                 createdAt: now,
                 createdBy: uid,
-                isProtected: true  // Mark as protected
+                isProtected: true,  // Mark as protected
+                members: {
+                    [uid]: {
+                        uid: uid,
+                        role: 'Admin',
+                        status: 'active'
+                    }
+                }
             };
             
             await set(ref(db, `orgs/${newOrgId}`), defaultOrgData);
@@ -1162,6 +1169,12 @@ export const assignStudentsToClasses = async (orgId, studentUids, classIds, assi
 // Remove user from class
 export const removeUserFromClass = async (orgId, classId, userId, firebaseApp) => {
     try {
+        // Check if trying to remove from Default Class in Default Organization
+        const isDefaultOrg = await isDefaultOrganization(orgId, firebaseApp);
+        if (isDefaultOrg && classId === 'default') {
+            throw new Error('Cannot remove users from Default Class in Default Organization.');
+        }
+        
         const db = getDatabase(firebaseApp);
         const updates = [];
         
@@ -1184,6 +1197,10 @@ export const removeUserFromClass = async (orgId, classId, userId, firebaseApp) =
         console.log(`User ${userId} removed from class ${classId}`);
         return true;
     } catch (error) {
+        // Не логируем ошибку, если это ожидаемое исключение (для Default Class)
+        if (error.message && error.message.includes('Default Class')) {
+            throw error; // Просто пробрасываем ошибку дальше для UI
+        }
         console.error('Error removing user from class:', error);
         throw error;
     }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Text } from "@inlet/react-pixi";
 import { TextStyle } from "@pixi/text";
 import { blue, white, red, green, black } from "../../utils/colors";
@@ -23,9 +23,13 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
   const [assignedUsers, setAssignedUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [assigning, setAssigning] = useState(false);
+  const [removingUser, setRemovingUser] = useState(false);
   const [currentOrgId, setCurrentOrgId] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [currentUserRole, setCurrentUserRole] = useState(null);
+  
+  // Track if component is mounted to prevent state updates on unmounted component
+  const isMountedRef = useRef(true);
   
   // Search and pagination states
   const [userSearchTerm, setUserSearchTerm] = useState('');
@@ -35,20 +39,33 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
   const itemsPerPage = 8; // Show 8 items per page
 
   useEffect(() => {
+    isMountedRef.current = true;
     loadData();
+    
+    return () => {
+      isMountedRef.current = false;
+    };
   }, []);
 
   const loadData = async () => {
     try {
-      setLoading(true);
+      if (isMountedRef.current) {
+        setLoading(true);
+      }
       
       const auth = getAuth(firebaseApp);
       const currentUser = auth.currentUser;
-      setCurrentUserId(currentUser.uid);
       
       const { orgId, role } = await getCurrentUserContext(firebaseApp);
-      setCurrentOrgId(orgId);
-      setCurrentUserRole(role);
+      
+      // Check if component is still mounted before continuing
+      if (!isMountedRef.current) return;
+      
+      if (isMountedRef.current) {
+        setCurrentUserId(currentUser.uid);
+        setCurrentOrgId(orgId);
+        setCurrentUserRole(role);
+      }
       
       // Load classes based on role
       let classList;
@@ -71,7 +88,6 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
         // Students can't assign users
         classList = [];
       }
-      setClasses(classList);
       
       // Load users in organization
       const orgUsers = await getUsersByOrganizationFromDatabase(orgId, firebaseApp);
@@ -82,12 +98,19 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
         return userRole === 'Student' || userRole === 'Teacher';
       });
       
-      setUsers(filteredUsers);
+      // Check again if component is still mounted before updating state
+      if (!isMountedRef.current) return;
       
-      setLoading(false);
+      if (isMountedRef.current) {
+        setClasses(classList);
+        setUsers(filteredUsers);
+        setLoading(false);
+      }
     } catch (error) {
-      console.error('Error loading data:', error);
-      setLoading(false);
+      // console.error('Error loading data:', error); // Убираем вывод ошибки
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -135,11 +158,15 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
       const assignedUserIds = Array.from(allAssignedUserIds);
       const assignedUsersList = users.filter(user => assignedUserIds.includes(user.userId));
       
-      console.log(`Found ${assignedUsersList.length} unique users across ${classIds.length} classes`);
-      setAssignedUsers(assignedUsersList);
+      // console.log(`Found ${assignedUsersList.length} unique users across ${classIds.length} classes`); // Убираем лишний лог
+      if (isMountedRef.current) {
+        setAssignedUsers(assignedUsersList);
+      }
     } catch (error) {
-      console.error('Error loading assigned users:', error);
-      setAssignedUsers([]);
+      // console.error('Error loading assigned users:', error); // Убираем вывод ошибки
+      if (isMountedRef.current) {
+        setAssignedUsers([]);
+      }
     }
   };
 
@@ -149,11 +176,20 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
       return;
     }
 
+    // Prevent multiple simultaneous calls
+    if (removingUser) {
+      return;
+    }
+
     const classId = selectedClasses[0];
     
     try {
+      setRemovingUser(true);
       const { removeUserFromClass } = await import('../../firebase/userDatabase');
       await removeUserFromClass(currentOrgId, classId, userId, firebaseApp);
+      
+      // Check if component is still mounted before updating state
+      if (!isMountedRef.current) return;
       
       alert('User removed from class successfully');
       
@@ -161,14 +197,30 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
       await loadAssignedUsers([classId]);
       
     } catch (error) {
-      console.error('Error removing user from class:', error);
+      // Check if component is still mounted before showing error
+      if (!isMountedRef.current) return;
+      
+      // console.error('Error removing user from class:', error); // Убираем вывод ошибки в консоль
       alert('Failed to remove user: ' + error.message);
+    } finally {
+      if (isMountedRef.current) {
+        setRemovingUser(false);
+      }
     }
   };
 
   // Filter and paginate users
   const getFilteredUsers = () => {
+    // Get IDs of users already assigned to selected classes
+    const assignedUserIds = new Set(assignedUsers.map(user => user.userId));
+    
     return users.filter(user => {
+      // Exclude users already assigned to selected classes
+      if (selectedClasses.length > 0 && assignedUserIds.has(user.userId)) {
+        return false;
+      }
+      
+      // Filter by search term
       const userName = user.userName || user.userEmail || 'Unknown';
       return userName.toLowerCase().includes(userSearchTerm.toLowerCase());
     });
@@ -219,17 +271,29 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
       const auth = getAuth(firebaseApp);
       await assignStudentsToClasses(currentOrgId, selectedUsers, selectedClasses, auth.currentUser.uid, firebaseApp);
       
+      // Check if component is still mounted before updating state
+      if (!isMountedRef.current) return;
+      
       alert(`Successfully assigned ${selectedUsers.length} user(s) to ${selectedClasses.length} class(es)`);
       
-      // Reset selections
+      // Refresh assigned users list to reflect new assignments
+      if (selectedClasses.length > 0) {
+        await loadAssignedUsers(selectedClasses);
+      }
+      
+      // Reset user selections (keep class selection)
       setSelectedUsers([]);
-      setSelectedClasses([]);
       
     } catch (error) {
-      console.error('Error assigning users:', error);
+      // Check if component is still mounted before showing error
+      if (!isMountedRef.current) return;
+      
+      // console.error('Error assigning users:', error); // Убираем вывод ошибки
       alert('Failed to assign users: ' + error.message);
     } finally {
-      setAssigning(false);
+      if (isMountedRef.current) {
+        setAssigning(false);
+      }
     }
   };
 

@@ -371,7 +371,30 @@ export const getConjectureListWithCurrentOrg = async (final) => {
     console.warn("User is not in any organization.");
     return [];
   }
-  return getConjectureList(final, orgId);
+  
+  // Get current user context to filter by role
+  const { getCurrentUserContext } = await import('./userDatabase.js');
+  const userContext = await getCurrentUserContext();
+  const role = userContext?.role;
+  const userId = userContext?.uid || getAuth().currentUser?.uid;
+  
+  // Get all levels in organization
+  const allLevels = await getConjectureList(final, orgId);
+  
+  // Handle null/undefined case
+  if (!allLevels) {
+    return [];
+  }
+  
+  // Filter by role: Teachers see only their own levels
+  if (role === 'Teacher' && userId) {
+    return allLevels.filter(level => 
+      level.AuthorID === userId || level.createdBy === userId
+    );
+  }
+  
+  // Admins and Developers see all levels
+  return allLevels;
 };
 
 export const getCurricularListWithCurrentOrg = async (final) => {
@@ -380,7 +403,30 @@ export const getCurricularListWithCurrentOrg = async (final) => {
     console.warn("User is not in any organization.");
     return [];
   }
-  return getCurricularList(final, orgId);
+  
+  // Get current user context to filter by role
+  const { getCurrentUserContext } = await import('./userDatabase.js');
+  const userContext = await getCurrentUserContext();
+  const role = userContext?.role;
+  const userId = userContext?.uid || getAuth().currentUser?.uid;
+  
+  // Get all games in organization
+  const allGames = await getCurricularList(final, orgId);
+  
+  // Handle null/undefined case
+  if (!allGames) {
+    return [];
+  }
+  
+  // Filter by role: Teachers see only their own games
+  if (role === 'Teacher' && userId) {
+    return allGames.filter(game => 
+      game.AuthorID === userId || game.createdBy === userId
+    );
+  }
+  
+  // Admins and Developers see all games
+  return allGames;
 };
 
 export const searchConjecturesByWordWithCurrentOrg = async (searchWord) => {
@@ -389,7 +435,30 @@ export const searchConjecturesByWordWithCurrentOrg = async (searchWord) => {
     console.warn("User is not in any organization.");
     return [];
   }
-  return searchConjecturesByWord(searchWord, orgId);
+  
+  // Get current user context to filter by role
+  const { getCurrentUserContext } = await import('./userDatabase.js');
+  const userContext = await getCurrentUserContext();
+  const role = userContext?.role;
+  const userId = userContext?.uid || getAuth().currentUser?.uid;
+  
+  // Get search results
+  const searchResults = await searchConjecturesByWord(searchWord, orgId);
+  
+  // Handle null/undefined case
+  if (!searchResults) {
+    return [];
+  }
+  
+  // Filter by role: Teachers see only their own levels
+  if (role === 'Teacher' && userId) {
+    return searchResults.filter(level => 
+      level.AuthorID === userId || level.createdBy === userId
+    );
+  }
+  
+  // Admins and Developers see all search results
+  return searchResults;
 };
 
 export const saveGameWithCurrentOrg = async (UUID = null, isFinal = false) => {
@@ -970,9 +1039,17 @@ export const deleteFromDatabaseCurricular = async (UUID, orgId) => {
 
 // save dialogues to firebase within an organization
 export const saveNarrativeDraftToFirebase = async (UUID, dialogues, orgId) => {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  
+  if (!user) {
+    throw new Error("User is not authenticated");
+  }
+  
   const timestamp = new Date().toISOString();
   const gameId = UUID ?? uuidv4(); // Use provided UUID or create new one
-  const dbRef = ref(db, `orgs/${orgId}/games/${gameId}/Dialogues`);
+  const userId = user.uid;
+  const userName = user.email ? user.email.split('@')[0] : 'Unknown';
 
   const promises = [
     set(ref(db, `orgs/${orgId}/games/${gameId}/Dialogues`), dialogues),

@@ -9,8 +9,8 @@ import { setAddtoCurricular } from '../ConjectureSelector/ConjectureSelectorModu
 import { StoryEditorContentEditor } from "./StoryEditorModuleBoxes";
 import Settings from '../Settings'; // Import the Settings component
 import { idToSprite } from "../Chapter"; //Import list of sprites
-import { saveGameDialoguesToFirebase, loadGameDialoguesFromFirebaseWithCurrentOrg } from "../../firebase/database";
-import { useEffect } from "react";import { saveNarrativeDraftToFirebase } from "../../firebase/database";
+import { saveNarrativeDraftToFirebaseWithCurrentOrg, loadGameDialoguesFromFirebaseWithCurrentOrg } from "../../firebase/database";
+import { useEffect } from "react";
 import { Curriculum } from '../CurricularModule/CurricularModule';
 import PixiLoader from '../utilities/PixiLoader';
 
@@ -142,7 +142,7 @@ const StoryEditorModule = (props) => {
         // If we made changes during loading, save them back to database
         if (hasChanges) {
           console.log("Saving capped chapter numbers back to database...");
-          saveNarrativeDraftToFirebase(gameId, sortedDialogues).then(() => {
+          saveNarrativeDraftToFirebaseWithCurrentOrg(gameId, sortedDialogues).then(() => {
             console.log("Capped chapter numbers saved to database");
           }).catch(error => {
             console.error("Error saving capped chapter updates:", error);
@@ -278,7 +278,7 @@ const StoryEditorModule = (props) => {
   
     try {
       // Save dialogues in their current order
-      await saveNarrativeDraftToFirebase(gameId, dialogues);
+      await saveNarrativeDraftToFirebaseWithCurrentOrg(gameId, dialogues);
       alert("Dialogues saved for this game!");
       if (typeof curricularCallback === 'function') {
         curricularCallback();
