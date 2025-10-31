@@ -7,10 +7,10 @@ const UserPermissions = {
     Student: 'Student',
 };
 
-const adminUserEmail = "admin@email.com"
+const adminUserEmail = "admin@outlook.com"
 const adminUserRole = UserPermissions.Admin
 const adminUserOrganization = "admin org"
-const adminUserPassword = "admin1"
+const adminUserPassword = "Admin2"
 
 writeNewUserToDatabase(adminUserEmail,adminUserRole,adminUserPassword,adminUserOrganization);
 

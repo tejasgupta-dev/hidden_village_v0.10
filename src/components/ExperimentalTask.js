@@ -3,7 +3,7 @@ import { Graphics, Text } from "@inlet/react-pixi";
 import CursorMode from "./CursorMode.js";
 import Pose from "./Pose/index";
 import { white, darkGray, yellow } from "../utils/colors";
-import { writeToDatabase } from "../firebase/database.js";
+import { bufferPoseDataWithAutoFlush } from "../firebase/database.js";
 
 /**
  * A non-blocking error handler for database writes. This is a safe way to log
@@ -50,7 +50,7 @@ const ExperimentalTask = (props) => {
       const intervalId = setInterval(() => {
         if (poseData) {
           // Write data but don't block the main thread. This prevents the freeze.
-          writeToDatabase(poseData, UUID, frameRate, gameID).catch(handleWriteError);
+          bufferPoseDataWithAutoFlush(poseData, gameID, UUID, frameRate).catch(handleWriteError);
         }
       }, 1000 / frameRate);
       // Cleanup function to stop the interval when the component is removed.

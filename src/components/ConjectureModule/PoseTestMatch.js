@@ -9,7 +9,7 @@ import { useCallback } from "react";
 import React, { useState, useEffect } from 'react';
 import { Container } from "postcss";
 import { set } from "firebase/database";
-import  PoseMatching  from "../PoseMatching";
+import PoseMatchingSimplified from "../PoseMatching";
 
 
 const PoseTestMatch = (props) => {
@@ -52,13 +52,9 @@ return(
       {poses != null && (
         <Graphics draw={drawModalBackground} >
         <>
-        <PoseMatching
+        <PoseMatchingSimplified
           poseData={poseData}
-          posesToMatch={[
-            poses,
-            poses,
-            poses
-          ].flat()}
+          posesToMatch={poses}
           columnDimensions={columnDimensions}
           onComplete={conjectureCallback}
           gameID={gameID}

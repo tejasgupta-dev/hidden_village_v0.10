@@ -13,6 +13,7 @@ import {
   writeToDatabaseIntuitionStart,
   writeToDatabaseIntuitionEnd,
 } from '../../firebase/database';
+import NewStage from '../NewStage';
 
 export default function LevelPlay(props) {
   const {
@@ -225,6 +226,17 @@ export default function LevelPlay(props) {
           gameID={gameID}
         />
       )} */}
+      {state.value === 'mcq' && (
+        <NewStage
+          width={width}
+          height={height}
+          onComplete={() => send('NEXT')}
+          gameID={gameID}
+          poseData={poseData}
+          columnDimensions={columnDimensions}
+          question="How many sides does a triangle have?"
+        />
+      )}
 
       {/* Outro dialogue */}
       {state.value === 'outroDialogue' && conjectureData && (
