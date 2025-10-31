@@ -9,7 +9,7 @@ import { useCallback } from "react";
 import React, { useState, useEffect } from 'react';
 import { Container } from "postcss";
 import { set } from "firebase/database";
-import  PoseMatching  from "../PoseMatching";
+import PoseMatching from "../PoseMatching";
 
 
 const PoseTestMatch = (props) => {
@@ -46,6 +46,9 @@ const PoseTestMatch = (props) => {
     }
   }, []);
 
+  // create grouped array: [pose1,pose1,pose1, pose2,pose2,pose2, ...]
+  const posesToMatchGrouped = (poses || []).flatMap((p) => [p, p, p]);
+
 return(
   <> 
   {/* If poses is not null then start pose matching to test */}
@@ -54,26 +57,23 @@ return(
         <>
         <PoseMatching
           poseData={poseData}
-          posesToMatch={[
-            poses,
-            poses,
-            poses
-          ].flat()}
+          posesToMatch={posesToMatchGrouped}
           columnDimensions={columnDimensions}
           onComplete={conjectureCallback}
           gameID={gameID}
           tolerances={tolerances}
+          singleMatchPerPose={true}
         />
         {/* Back Button */}
         <RectButton
-          height={height * 0.13}
+          height={height * 0.23}
           width={width * 0.26}
-          x={width * 0.15}
-          y={height * 0.93}
+          x={width * 0.025}
+          y={height * 0.85}
           color={black}
           fontSize={width * 0.015}
           fontColor={white}
-          text={"Back Button"}
+          text={"BACK BUTTON"}
           fontWeight={800}
           callback={conjectureCallback}
         />

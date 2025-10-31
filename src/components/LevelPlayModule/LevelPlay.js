@@ -13,6 +13,7 @@ import {
   writeToDatabaseIntuitionStart,
   writeToDatabaseIntuitionEnd,
 } from '../../firebase/database';
+import { getUserSettings } from "../../firebase/userSettings";
 
 export default function LevelPlay(props) {
   const {
@@ -47,6 +48,7 @@ export default function LevelPlay(props) {
   const [poses, setPoses] = useState([]);
   const [tolerances, setTolerances] = useState([]);
   const [expText, setExpText] = useState('');
+  const [settings, setSettings] = useState(null);
   const tweenDuration = 2000;
   const tweenLoopCount = 2;
 
@@ -120,19 +122,42 @@ export default function LevelPlay(props) {
         };
       }, [state.value]);
 
+  // Load settings when component mounts
+  useEffect(() => {
+    const loadSettings = async () => {
+      const userSettings = await getUserSettings();
+      setSettings(userSettings);
+    };
+    loadSettings();
+  }, []);
+
+  // If story is disabled, skip intro/outro so the game continues
+  useEffect(() => {
+    if (!settings) return;
+    if (settings.story === false) {
+      // If we're stuck at the intro, mark it shown and advance
+      if (state.value === 'introDialogue') {
+        try {
+          markIntroShown(currentConjectureIdx);
+        } catch (e) {
+          // no-op if markIntroShown isn't available
+        }
+        send('NEXT');
+      }
+      // If we're at the outro, finish the level immediately
+      if (state.value === 'outroDialogue') {
+        onLevelComplete?.();
+      }
+    }
+  }, [settings, state.value, currentConjectureIdx, markIntroShown, send, onLevelComplete]);
+  
+  // Only show story/dialogue content if settings.story is true
   return (
     <>
-      {/* NOTE: TO OPTIMIZE DATABASE STORAGE AND NOT INCUR ADDITIONAL COSTS, 
-          VIDEO RECORDING IS ONLY RETAINED FOR THE STATES MENTIONED BELOW.
-          SIMPLY ADD THE STATE NAME TO ENABLE RECORDING FOR THAT PHASE */}
-      {(['tween','poseMatching', 'intuition', 'insight'].includes(state.value)) && (
-        <VideoRecorder phase={state.value} curricularID={UUID} gameID={gameID} />
-      )}
-
-      {/* Intro dialogue */}
       {state.value === 'introDialogue' &&
         !hasShownIntro(currentConjectureIdx) &&
-        conjectureData && (
+        conjectureData && 
+        settings?.story && (
           <Chapter
             key={`intro-${UUID}`}
             poseData={poseData}
@@ -148,7 +173,15 @@ export default function LevelPlay(props) {
             }}
             isOutro={false}
           />
-        )}
+      )}
+      {/* NOTE: TO OPTIMIZE DATABASE STORAGE AND NOT INCUR ADDITIONAL COSTS, 
+          VIDEO RECORDING IS ONLY RETAINED FOR THE STATES MENTIONED BELOW.
+          SIMPLY ADD THE STATE NAME TO ENABLE RECORDING FOR THAT PHASE */}
+      {(['tween','poseMatching', 'intuition', 'insight'].includes(state.value)) && (
+        <VideoRecorder phase={state.value} curricularID={UUID} gameID={gameID} />
+      )}
+
+      
 
       {/* Tween animation */}
       {state.value === 'tween' && poses.length > 0 && (

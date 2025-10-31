@@ -1,7 +1,8 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { Container, Graphics, Text } from "@inlet/react-pixi";
 import RectButton from "./RectButton";
 import SettingRow from "./SettingRow";
+import { setUserSettings, getUserSettings } from "../firebase/userSettings.js";
 
 // Typography
 const TITLE_STYLE = {
@@ -34,30 +35,48 @@ const Settings = ({ width, height, x, y, onClose }) => {
   const leftColX = MARGIN + PAD;
   const rightColX = leftColX + COL_W + COL_GAP;
 
-  const firstRowY = 96;        // first toggle row y
-  const rowSpacing = 40;       // vertical spacing between rows
+  const firstRowY = 96; // first toggle row y
+  const rowSpacing = 40; // vertical spacing between rows
 
   // State
   const [settings, setSettings] = useState({
-    sound: true,
-    music: true,
     story: true,
-    mclips: true,
+    poseMatching: true,
+    intuition: true,
+    insight: true,
+    multipleChoice: true,
     tween: true,
-    calibration: true,
-    Hints: true,
-    NumberOfhints: 4,
-    language: "English",
-    fps: 30,
+    repetitions: 3, // number of pose match repetitions
     audioRecording: true,
     videoRecording: true,
+    fps: 30,
     research: true,
     teaching: false,
     closedCaptions: true,
     visualAssist: false,
     textToSpeech: true,
     pip: false,
+    NumberOfhints: 4,
+    language: "English",
   });
+
+  // Load saved settings on mount
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const saved = await getUserSettings();
+        if (mounted && saved) {
+          setSettings((prev) => ({ ...prev, ...saved }));
+        }
+      } catch (e) {
+        console.error("Failed to load settings:", e);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const toggleSetting = (key) =>
     setSettings((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -73,6 +92,19 @@ const Settings = ({ width, height, x, y, onClose }) => {
       ...prev,
       language: prev.language === "English" ? "Spanish" : "English",
     }));
+
+  const saveSettings = async () => {
+    try {
+      await setUserSettings(settings);
+    } catch (e) {
+      console.error("Failed to save settings:", e);
+    }
+  };
+
+  const handleClose = async () => {
+    await saveSettings();
+    onClose();
+  };
 
   // Background & card
   const drawBackground = useCallback(
@@ -121,36 +153,51 @@ const Settings = ({ width, height, x, y, onClose }) => {
       />
 
       {/* LEFT COLUMN */}
-      {/* Audio */}
-      <Text text="AUDIO" style={SECTION_STYLE} x={leftColX} y={firstRowY - 24} />
-      <SettingRow
-        label="Sound:"
-        value={settings.sound}
-        x={leftColX}
-        y={firstRowY + rowSpacing * 0}
-        onToggle={() => toggleSetting("sound")}
-      />
-      <SettingRow
-        label="Music:"
-        value={settings.music}
-        x={leftColX}
-        y={firstRowY + rowSpacing * 1}
-        onToggle={() => toggleSetting("music")}
-      />
-
-      {/* Narrative */}
+      {/* Game Modules */}
       <Text
-        text="NARRATIVE"
+        text="GAME MODULES"
         style={SECTION_STYLE}
         x={leftColX}
-        y={firstRowY + rowSpacing * 2 - 24}
+        y={firstRowY - 24}
       />
+
       <SettingRow
         label="Story:"
         value={settings.story}
         x={leftColX}
-        y={firstRowY + rowSpacing * 2}
+        y={firstRowY + rowSpacing * 0}
         onToggle={() => toggleSetting("story")}
+      />
+      <SettingRow
+        label="Pose Matching:"
+        value={settings.poseMatching}
+        x={leftColX}
+        y={firstRowY + rowSpacing * 1}
+        onToggle={() => toggleSetting("poseMatching")}
+      />
+
+      <SettingRow
+        label="Intuition:"
+        value={settings.intuition}
+        x={leftColX}
+        y={firstRowY + rowSpacing * 2}
+        onToggle={() => toggleSetting("intuition")}
+      />
+
+      <SettingRow
+        label="Insight:"
+        value={settings.insight}
+        x={leftColX}
+        y={firstRowY + rowSpacing * 3}
+        onToggle={() => toggleSetting("insight")}
+      />
+
+      <SettingRow
+        label="Multiple Choice:"
+        value={settings.multipleChoice}
+        x={leftColX}
+        y={firstRowY + rowSpacing * 4}
+        onToggle={() => toggleSetting("multipleChoice")}
       />
 
       {/* Motion */}
@@ -158,93 +205,27 @@ const Settings = ({ width, height, x, y, onClose }) => {
         text="MOTION"
         style={SECTION_STYLE}
         x={leftColX}
-        y={firstRowY + rowSpacing * 3 - 24}
+        y={firstRowY + 200}
       />
-      <SettingRow
-        label="M-Clips:"
-        value={settings.mclips}
-        x={leftColX}
-        y={firstRowY + rowSpacing * 3}
-        onToggle={() => toggleSetting("mclips")}
-      />
+
       <SettingRow
         label="Tween:"
         value={settings.tween}
         x={leftColX}
-        y={firstRowY + rowSpacing * 4}
+        y={firstRowY + rowSpacing * 5.5}
         onToggle={() => toggleSetting("tween")}
       />
 
-      {/* Scaffolds */}
-      <Text
-        text="SCAFFOLDS"
-        style={SECTION_STYLE}
-        x={leftColX}
-        y={firstRowY + rowSpacing * 5 - 24}
-      />
       <SettingRow
-        label="Calibration:"
-        value={settings.calibration}
+        label="Repetitions:"
+        value={settings.repetitions}
         x={leftColX}
-        y={firstRowY + rowSpacing * 5}
-        onToggle={() => toggleSetting("calibration")}
-      />
-      <SettingRow
-        label="Hints:"
-        value={settings.Hints}
-        x={leftColX}
-        y={firstRowY + rowSpacing * 6}
-        onToggle={() => toggleSetting("Hints")}
+        y={firstRowY + rowSpacing * 6.5}
+        onToggle={() => toggleSetting("repetitions")}
       />
 
-      {/* Number of Hints (inline, cleaner) */}
-      <Container position={[leftColX, firstRowY + rowSpacing * 7 - 2]}>
-        <Text text="No. of Hints:" style={LABEL_STYLE} />
-        <RectButton
-          width={30}
-          height={28}
-          x={160}
-          y={-4}
-          text="-"
-          color="#ef4444"
-          fontColor="white"
-          callback={() => updateNumberOfhints(-1)}
-        />
-        <Text
-          text={`${settings.NumberOfhints}`}
-          style={{ fontFamily: "Arial", fontSize: 16, fill: 0x111827 }}
-          x={200}
-          y={0}
-        />
-        <RectButton
-          width={30}
-          height={28}
-          x={240}
-          y={-4}
-          text="+"
-          color="#22c55e"
-          fontColor="white"
-          callback={() => updateNumberOfhints(1)}
-        />
-      </Container>
-
-      {/* Language */}
-      <Text
-        text="LANGUAGE"
-        style={SECTION_STYLE}
-        x={leftColX}
-        y={firstRowY + rowSpacing * 8 - 24}
-      />
-      <RectButton
-        width={128}
-        height={36}
-        x={leftColX}
-        y={firstRowY + rowSpacing * 8 - 4}
-        text={settings.language}
-        color="#2563eb"
-        fontColor="white"
-        callback={updateLanguage}
-      />
+      
+      
 
       {/* RIGHT COLUMN */}
       {/* Data */}
@@ -340,7 +321,7 @@ const Settings = ({ width, height, x, y, onClose }) => {
         color="red"
         fontColor="white"
         fontWeight="bold"
-        callback={onClose}
+        callback={handleClose}
       />
     </Container>
   );

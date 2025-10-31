@@ -31,6 +31,7 @@ return(
           columnDimensions={columnDimensions}
           onComplete={onCompleteCallback}
           gameID={gameID}
+          singleMatchPerPose={false}
         />
         </>
       )}
