@@ -53,7 +53,7 @@ const PlayMenu = (props) => {
                 {text: "SETTINGS", callback: () => send("SETTINGS"), color: cornflowerBlue},
             );
         } else if (role === "Student"){
-            list.push({text: "Play", callback: () => (setPlayGame(true), send("GAMESELECT")), color: royalBlue}, {text: "Settings", callback: () => send("SETTINGS"), color: cornflowerBlue})
+            list.push({text: "PLAY", callback: () => (setPlayGame(true), send("GAMESELECT")), color: royalBlue}, {text: "SETTINGS", callback: () => send("SETTINGS"), color: cornflowerBlue})
         } else if (role === "Teacher"){
             list.push(
                 {text: "NEW GAME", callback: () => send("NEWGAME"), color: purple},
@@ -74,7 +74,7 @@ const PlayMenu = (props) => {
             <Background height={height} width= {width}/>
             <Button
             height={height * 0.01}
-            width={width * 0.05}
+            width={width * 0.065}
             x={width * 0.05}
             y={height * 0.1}
             color={red}
