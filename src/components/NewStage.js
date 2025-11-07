@@ -11,6 +11,8 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
   const [hoverTime, setHoverTime] = useState(0);
   const [cursorPos, setCursorPos] = useState({ x: -100, y: -100 });
   const hoverTimerRef = useRef(null);
+  const onCompleteRef = useRef(onComplete);
+  const mainTimerRef = useRef(null);
 
   // Visual spacing for clearer MCQ boxes
   const H_PAD = 24;   
@@ -62,15 +64,25 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
     g.endFill();
   }, [columnDimensions]);
 
+  // Keep onComplete ref up to date
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
   // 20-second main timer
   useEffect(() => {
-    const timer = setTimeout(() => {
+    mainTimerRef.current = setTimeout(() => {
       console.log("NewStage: Calling onComplete from main timer");
-      onComplete();
+      onCompleteRef.current();
     }, 20000);
 
-    return () => clearTimeout(timer);
-  }, [onComplete]);
+    return () => {
+      if (mainTimerRef.current) {
+        clearTimeout(mainTimerRef.current);
+        mainTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const rectsOverlap = (a, b) => !(
     a.x + a.width  < b.x ||
@@ -132,7 +144,12 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
   
     hoverTimerRef.current && clearTimeout(hoverTimerRef.current);
     hoverTimerRef.current = setTimeout(() => {
-      onComplete();   // will actually fire now
+      // Clear main timer if it exists
+      if (mainTimerRef.current) {
+        clearTimeout(mainTimerRef.current);
+        mainTimerRef.current = null;
+      }
+      onCompleteRef.current();   // will actually fire now
     }, 2000);
   
     // show countdown (optional)
@@ -143,7 +160,7 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
       hoverTimerRef.current = null;
       setHoverTime(0);
     };
-  }, [hoveredBox, onComplete]);
+  }, [hoveredBox]);
 
   const col2 = columnDimensions(2);
 
