@@ -1,5 +1,5 @@
 import { useMachine } from '@xstate/react';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 import VideoRecorder from '../VideoRecorder';
 import Chapter from '../Chapter';
@@ -13,7 +13,7 @@ import {
   writeToDatabaseIntuitionStart,
   writeToDatabaseIntuitionEnd,
 } from '../../firebase/database';
-import { getUserSettings } from "../../firebase/userSettings";
+import NewStage from '../NewStage';
 
 export default function LevelPlay(props) {
   const {
@@ -51,6 +51,11 @@ export default function LevelPlay(props) {
   const [settings, setSettings] = useState(null);
   const tweenDuration = 2000;
   const tweenLoopCount = 2;
+
+  // Memoize onComplete callback to prevent timer resets in child components
+  const handleNext = useCallback(() => {
+    send('NEXT');
+  }, [send]);
 
   /* ---------- load conjecture data ---------- */
   useEffect(() => {
@@ -192,7 +197,7 @@ export default function LevelPlay(props) {
           height={height}
           loop={tweenLoopCount}
           ease={true}    
-          onComplete={() => send('NEXT')}
+          onComplete={handleNext}
         />
       )}
 
@@ -208,7 +213,7 @@ export default function LevelPlay(props) {
           UUID={UUID}
           poses={poses}
           tolerances={tolerances}
-          onCompleteCallback={() => send('NEXT')}
+          onCompleteCallback={handleNext}
           gameID={gameID}
         />
       )}
@@ -223,9 +228,10 @@ export default function LevelPlay(props) {
           rowDimensions={rowDimensions}
           poseData={poseData}
           UUID={UUID}
-          onComplete={() => send('NEXT')}
+          onComplete={handleNext}
           cursorTimer={debugMode ? 1000 : 10000}
           gameID={gameID}
+          stageType="intuition"
         />
       )}
       {state.value === 'insight' && (
@@ -237,7 +243,8 @@ export default function LevelPlay(props) {
           rowDimensions={rowDimensions}
           poseData={poseData}
           UUID={UUID}
-          onComplete={() => send('NEXT')}
+          onComplete={handleNext}
+          stageType="insight"
           cursorTimer={debugMode ? 1000 : 15000}
           gameID={gameID}
         />
@@ -258,6 +265,17 @@ export default function LevelPlay(props) {
           gameID={gameID}
         />
       )} */}
+      {state.value === 'mcq' && (
+        <NewStage
+          width={width}
+          height={height}
+          onComplete={handleNext}
+          gameID={gameID}
+          poseData={poseData}
+          columnDimensions={columnDimensions}
+          question="How many sides does a triangle have?"
+        />
+      )}
 
       {/* Outro dialogue */}
       {state.value === 'outroDialogue' && conjectureData && (

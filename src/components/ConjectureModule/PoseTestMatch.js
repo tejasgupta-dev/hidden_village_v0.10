@@ -55,7 +55,7 @@ return(
       {poses != null && (
         <Graphics draw={drawModalBackground} >
         <>
-        <PoseMatching
+        <PoseMatchingSimplified
           poseData={poseData}
           posesToMatch={posesToMatchGrouped}
           columnDimensions={columnDimensions}

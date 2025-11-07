@@ -101,7 +101,7 @@ const PoseMatching = (props) => {
     }
   }, [tolerances, currentPoseIndex, singleMatchPerPose]);
 
-  // Initialize pose on mount
+  // Initialize pose on mount - SIMPLIFIED LOGGING
   useEffect(() => {
     if (posesToMatch.length > 0 && !isTransitioning && gameID) {
       console.log("Pose is starting...");
@@ -142,7 +142,7 @@ const PoseMatching = (props) => {
     setPoseSimilarity(similarityScores);
   }, [props.poseData, poseMatchData, playerColumn, isTransitioning]);
 
-  // Handle pose matching logic
+  // Handle pose matching logic - SIMPLIFIED (using original robust approach)
   const handlePoseMatch = useCallback(() => {
     if (gameID) {
       if (singleMatchPerPose) {
@@ -232,4 +232,150 @@ const PoseMatching = (props) => {
   );
 };
 
-export default PoseMatching;
+// const PoseMatching = (props) => {
+//   const { posesToMatch, tolerances, columnDimensions, onComplete, UUID, gameID } = props;
+  
+//   const [currentPoseIndex, setCurrentPoseIndex] = useState(0);
+//   const [isTransitioning, setIsTransitioning] = useState(false);
+//   const [text, setText] = useState(`Match pose ${Math.floor(currentPoseIndex / 3) + 1}.${(currentPoseIndex) % 3 + 1} on the left!`);
+//   const [poseSimilarity, setPoseSimilarity] = useState([]);
+  
+//   // Memoized calculations
+//   const modelColumn = useMemo(() => columnDimensions(1), [columnDimensions]);
+//   const col2Dim = useMemo(() => columnDimensions(2), [columnDimensions]);
+//   const playerColumn = useMemo(() => columnDimensions(3), [columnDimensions]);
+  
+//   const currentPose = useMemo(() => {
+//     if (currentPoseIndex >= posesToMatch.length) return {};
+//     return enrichLandmarks(posesToMatch[currentPoseIndex]);
+//   }, [posesToMatch, currentPoseIndex]);
+  
+//   const poseMatchData = useMemo(() => {
+//     if (currentPoseIndex >= posesToMatch.length) return [];
+    
+//     const currentPoseData = posesToMatch[currentPoseIndex];
+//     return MATCH_CONFIG.map((config) => ({
+//       ...config,
+//       landmarks: matchSegmentToLandmarks(config, currentPoseData, modelColumn),
+//     }));
+//   }, [posesToMatch, currentPoseIndex, modelColumn]);
+  
+//   const currentTolerance = useMemo(() => {
+//     if (Array.isArray(tolerances) && 
+//         currentPoseIndex < tolerances.length && 
+//         typeof tolerances[currentPoseIndex] === 'number' &&
+//         !isNaN(tolerances[currentPoseIndex]) &&
+//         tolerances[currentPoseIndex] >= 0) {
+//       return tolerances[currentPoseIndex];
+//     }
+//     return DEFAULT_SIMILARITY_THRESHOLD;
+//   }, [tolerances, currentPoseIndex]);
+
+//   // Initialize pose on mount
+//   useEffect(() => {
+//     if (posesToMatch.length > 0 && !isTransitioning && gameID) {
+//       console.log("Pose is starting...");
+//       writeToDatabasePoseStart(`Pose ${Math.floor(currentPoseIndex / 3) + 1}-${(currentPoseIndex) % 3 + 1}`, UUID, gameID);
+//     }
+//   }, [currentPoseIndex, isTransitioning, posesToMatch.length, UUID, gameID]);
+
+//   // Calculate pose similarity
+//   useEffect(() => {
+//     if (isTransitioning || !poseMatchData.length || !props.poseData.poseLandmarks) {
+//       setPoseSimilarity([{ similarityScore: 0 }]);
+//       return;
+//     }
+
+//     const convertedLandmarks = poseMatchData.map((segmentSet) => ({
+//       segment: segmentSet.segment,
+//       landmarks: matchSegmentToLandmarks(segmentSet, props.poseData, playerColumn),
+//     }));
+
+//     const similarityScores = poseMatchData.map((segmentSet) => {
+//       const playerSet = convertedLandmarks.find(
+//         (converted) => converted.segment === segmentSet.segment
+//       ).landmarks;
+//       const modelSet = segmentSet.landmarks;
+//       const similarityScore = segmentSimilarity(playerSet, modelSet);
+      
+//       return { segment: segmentSet.segment, similarityScore };
+//     });
+    
+//     setPoseSimilarity(similarityScores);
+//   }, [props.poseData, poseMatchData, playerColumn, isTransitioning]);
+
+//   // Handle pose matching logic
+//   const handlePoseMatch = useCallback(() => {
+//     if (gameID) {
+//       writeToDatabasePoseMatch(`Pose ${Math.floor((currentPoseIndex) / 3) + 1}-${(currentPoseIndex) % 3 + 1}`, gameID).catch(console.error);
+//     }
+    
+//     setIsTransitioning(true);
+//     setText("Great!");
+    
+//     setTimeout(() => {
+//       const nextIndex = currentPoseIndex + 1;
+      
+//       if (nextIndex >= posesToMatch.length) {
+//         // All poses completed
+//         setIsTransitioning(false);
+//         onComplete();
+//       } else {
+//         // Move to next pose
+//         setCurrentPoseIndex(nextIndex);
+//         setText(`Match pose ${Math.floor(nextIndex / 3) + 1}.${(nextIndex) % 3 + 1} on the left!`);
+//         setIsTransitioning(false);
+//       }
+//     }, TRANSITION_DELAY);
+//   }, [currentPoseIndex, posesToMatch.length, gameID, onComplete]);
+
+//   // Check if pose matches threshold
+//   useEffect(() => {
+//     if (isTransitioning || poseSimilarity.length === 0) return;
+    
+//     const allSegmentsMatch = poseSimilarity.every(
+//       (segment) => segment.similarityScore > currentTolerance
+//     );
+    
+//     if (allSegmentsMatch) {
+//       console.log(`Pose ${currentPoseIndex + 1} matched with tolerance: ${currentTolerance}`);
+//       handlePoseMatch();
+//     }
+//   }, [poseSimilarity, currentTolerance, isTransitioning, handlePoseMatch, currentPoseIndex]);
+
+//   // Early return if no poses to match
+//   if (posesToMatch.length === 0) {
+//     return null;
+//   }
+
+//   return (
+//     <Container>
+//       <ErrorBoundary>
+//         <Pose poseData={currentPose} colAttr={modelColumn} />
+//         <Text
+//           text={text}
+//           y={col2Dim.height / 2}
+//           x={col2Dim.x + col2Dim.margin}
+//           style={
+//             new PIXI.TextStyle({
+//               align: "center",
+//               fontFamily: "Futura",
+//               fontSize: "4em",
+//               fontWeight: 800,
+//               fill: [white],
+//               wordWrap: true,
+//               wordWrapWidth: col2Dim.width,
+//             })
+//           }
+//         />
+//         <Pose
+//           poseData={props.poseData}
+//           colAttr={playerColumn}
+//           similarityScores={poseSimilarity}   
+//         />
+//       </ErrorBoundary>
+//     </Container>
+//   );
+// };
+
+// export default PoseMatching;
