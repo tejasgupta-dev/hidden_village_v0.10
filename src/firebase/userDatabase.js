@@ -1,4 +1,4 @@
-import { ref, push, getDatabase, set, query, equalTo, get, orderByChild, remove } from "firebase/database";
+import { ref, push, getDatabase, set, query, equalTo, get, orderByChild, remove, update } from "firebase/database";
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, setPersistence, browserSessionPersistence  } from "firebase/auth";
 import { async } from "regenerator-runtime";
 import { v4 as uuidv4 } from 'uuid';
@@ -636,6 +636,12 @@ export const removeUserFromOrganization = async (uid, orgId, firebaseApp) => {
 // Leave organization (self-initiated by user)
 export const leaveOrganization = async (userId, orgId, firebaseApp) => {
     try {
+        // Check if this is Default Organization - cannot leave
+        const isDefault = await isDefaultOrganization(orgId, firebaseApp);
+        if (isDefault) {
+            throw new Error('Cannot leave Default Organization.');
+        }
+        
         const db = getDatabase(firebaseApp);
         
         // Check if user has other organizations
@@ -699,10 +705,92 @@ export const leaveOrganization = async (userId, orgId, firebaseApp) => {
     }
 };
 
-// Update user role in organization
-export const updateUserRoleInOrg = async (uid, orgId, newRole, firebaseApp) => {
+// Switch user's primary organization
+export const switchPrimaryOrganization = async (userId, newOrgId, firebaseApp) => {
     try {
         const db = getDatabase(firebaseApp);
+        const auth = getAuth(firebaseApp);
+        const user = auth.currentUser;
+        
+        if (!user || user.uid !== userId) {
+            throw new Error('Unauthorized');
+        }
+        
+        // Verify user is member of the new organization
+        const userOrgs = await getUserOrgsFromDatabase(userId, firebaseApp);
+        if (!userOrgs[newOrgId]) {
+            throw new Error('User is not a member of this organization');
+        }
+        
+        // Update primary organization
+        const userRef = ref(db, `users/${userId}`);
+        await update(userRef, {
+            primaryOrgId: newOrgId,
+            lastOrgSwitch: new Date().toISOString()
+        });
+        
+        // Trigger context refresh event
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('userContextChanged'));
+        }
+        
+        console.log(`User ${userId} switched primary organization to ${newOrgId}`);
+        return true;
+    } catch (error) {
+        console.error('Error switching primary organization:', error);
+        throw error;
+    }
+};
+
+// Update user role in organization
+export const updateUserRoleInOrg = async (uid, orgId, newRole, firebaseApp, changerRole = null) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const auth = getAuth(firebaseApp);
+        const currentUser = auth.currentUser;
+        
+        if (!currentUser) {
+            throw new Error('No authenticated user');
+        }
+        
+        // Get current role of target user
+        const userOrgRef = ref(db, `users/${uid}/orgs/${orgId}/roleSnapshot`);
+        const userOrgSnapshot = await get(userOrgRef);
+        const currentTargetRole = userOrgSnapshot.exists() ? userOrgSnapshot.val() : null;
+        
+        // Get changer's role if not provided
+        let changerUserRole = changerRole;
+        if (!changerUserRole) {
+            const changerOrgRef = ref(db, `users/${currentUser.uid}/orgs/${orgId}/roleSnapshot`);
+            const changerOrgSnapshot = await get(changerOrgRef);
+            changerUserRole = changerOrgSnapshot.exists() ? changerOrgSnapshot.val() : null;
+        }
+        
+        // Define role hierarchy (lower number = higher role)
+        const roleHierarchy = {
+            'Admin': 0,
+            'Developer': 1,
+            'Teacher': 2,
+            'Student': 3
+        };
+        
+        // Check if changer can modify target user's role
+        if (changerUserRole && currentTargetRole) {
+            const changerLevel = roleHierarchy[changerUserRole] ?? 999;
+            const targetLevel = roleHierarchy[currentTargetRole] ?? 999;
+            const newRoleLevel = roleHierarchy[newRole] ?? 999;
+            
+            // Cannot change roles of users with higher or equal level (unless changing to lower role)
+            if (targetLevel < changerLevel) {
+                throw new Error(`Cannot change role of ${currentTargetRole}. You can only change roles equal to or below your own role (${changerUserRole}).`);
+            }
+            
+            // Cannot assign role higher than changer's role
+            if (newRoleLevel < changerLevel) {
+                throw new Error(`Cannot assign role ${newRole}. You can only assign roles equal to or below your own role (${changerUserRole}).`);
+            }
+        }
+        
         const timestamp = new Date().toISOString();
         
         await Promise.all([
@@ -715,7 +803,7 @@ export const updateUserRoleInOrg = async (uid, orgId, newRole, firebaseApp) => {
         return true;
     } catch (error) {
         console.error("Error updating user role in organization:", error);
-        return false;
+        throw error; // Re-throw to allow UI to show error message
     }
 };
 
@@ -1082,6 +1170,56 @@ export const getUserClassesInOrg = async (uid, orgId, firebaseApp) => {
     }
 };
 
+// Check if user can edit resource without PIN based on hierarchy
+export const canEditWithoutPIN = async (userId, resourceOwnerId, resourceOrgId, userRole, userOrgId, firebaseApp) => {
+    try {
+        // Must be in the same organization
+        if (resourceOrgId !== userOrgId) {
+            return false;
+        }
+        
+        // Admin and Developer can edit everything in their organization
+        if (userRole === 'Admin' || userRole === 'Developer') {
+            return true;
+        }
+        
+        // Teacher can edit resources created by their students
+        if (userRole === 'Teacher') {
+            const db = getDatabase(firebaseApp);
+            
+            // Get all classes where teacher is a teacher
+            const teacherClasses = await getUserClassesInOrg(userId, userOrgId, firebaseApp);
+            const teacherClassIds = Object.keys(teacherClasses).filter(classId => {
+                const classData = teacherClasses[classId];
+                return classData.role === 'teacher';
+            });
+            
+            if (teacherClassIds.length === 0) {
+                return false;
+            }
+            
+            // Check if resource owner is a student in any of teacher's classes
+            for (const classId of teacherClassIds) {
+                const classStudentsRef = ref(db, `orgs/${userOrgId}/classes/${classId}/students/${resourceOwnerId}`);
+                const studentSnapshot = await get(classStudentsRef);
+                
+                if (studentSnapshot.exists()) {
+                    return true; // Resource owner is a student in teacher's class
+                }
+            }
+            
+            return false;
+        }
+        
+        // Students always need PIN for other people's resources
+        // (They can edit their own without PIN, but that's handled elsewhere)
+        return false;
+    } catch (error) {
+        console.error('Error checking edit permission:', error);
+        return false; // Default to requiring PIN on error
+    }
+};
+
 // Get class info
 export const getClassInfo = async (orgId, classId, firebaseApp) => {
     try {
@@ -1138,7 +1276,45 @@ export const assignStudentsToClasses = async (orgId, studentUids, classIds, assi
         const now = new Date().toISOString();
         
         for (const studentUid of studentUids) {
-            for (const classId of classIds) {
+            // Get current classes for this student in this organization
+            const userClasses = await getUserClassesInOrg(studentUid, orgId, firebaseApp);
+            const currentClassIds = Object.keys(userClasses || {});
+            
+            // For students: remove from all other classes before adding to new ones
+            // (Students can only be in one class per organization)
+            const userOrgRef = ref(db, `users/${studentUid}/orgs/${orgId}`);
+            const userOrgSnapshot = await get(userOrgRef);
+            const userRole = userOrgSnapshot.exists() ? userOrgSnapshot.val().roleSnapshot : null;
+            
+            if (userRole === 'Student') {
+                // Remove student from all current classes
+                for (const oldClassId of currentClassIds) {
+                    // Skip if this class is in the new assignment list
+                    if (classIds.includes(oldClassId)) {
+                        continue;
+                    }
+                    
+                    // Remove from class students
+                    updates.push(
+                        remove(ref(db, `orgs/${orgId}/classes/${oldClassId}/students/${studentUid}`))
+                    );
+                    
+                    // Remove from user profile
+                    updates.push(
+                        remove(ref(db, `users/${studentUid}/orgs/${orgId}/classes/${oldClassId}`))
+                    );
+                }
+            }
+            
+            // Add to new classes (only first class for students)
+            const targetClassIds = (userRole === 'Student' && classIds.length > 0) ? [classIds[0]] : classIds;
+            
+            for (const classId of targetClassIds) {
+                // Skip if already in this class
+                if (currentClassIds.includes(classId)) {
+                    continue;
+                }
+                
                 // Add to class
                 updates.push(
                     set(ref(db, `orgs/${orgId}/classes/${classId}/students/${studentUid}`), {
@@ -1154,6 +1330,13 @@ export const assignStudentsToClasses = async (orgId, studentUids, classIds, assi
                         role: 'student'
                     })
                 );
+                
+                // Update currentClassId for students (only one class allowed)
+                if (userRole === 'Student') {
+                    updates.push(
+                        set(ref(db, `users/${studentUid}/orgs/${orgId}/currentClassId`), classId)
+                    );
+                }
             }
         }
         
@@ -1197,9 +1380,9 @@ export const removeUserFromClass = async (orgId, classId, userId, firebaseApp) =
         console.log(`User ${userId} removed from class ${classId}`);
         return true;
     } catch (error) {
-        // Не логируем ошибку, если это ожидаемое исключение (для Default Class)
+        // Don't log error if it's an expected exception (for Default Class)
         if (error.message && error.message.includes('Default Class')) {
-            throw error; // Просто пробрасываем ошибку дальше для UI
+            throw error; // Just re-throw the error for UI handling
         }
         console.error('Error removing user from class:', error);
         throw error;

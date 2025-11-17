@@ -39,6 +39,8 @@ export const PlayMenuMachine = createMachine({
       on: {
         MAIN: "main", // move to home
         ADDNEWUSER: "addNewUser", // move to add new user
+        ORGANIZATIONS: "organizations", // move to organizations
+        CLASSES: "classes" // move to classes
       },
     },
 

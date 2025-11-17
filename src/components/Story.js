@@ -134,11 +134,13 @@ const Story = () => {
   // Handle window resize to update dimensions
   useEffect(() => {
     const handleResize = () => {
-      setHeight(window.innerHeight);
-      setWidth(window.innerWidth);
+      const newHeight = window.innerHeight;
+      const newWidth = window.innerWidth;
+      setHeight(newHeight);
+      setWidth(newWidth);
       [rowDimensions, columnDimensions] = generateRowAndColumnFunctions(
-        width,
-        height,
+        newWidth,
+        newHeight,
         numRows,
         numColumns,
         marginBetweenRows,

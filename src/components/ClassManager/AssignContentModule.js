@@ -104,7 +104,7 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
         setLoading(false);
       }
     } catch (error) {
-      // console.error('Error loading data:', error); // Убираем вывод ошибки
+      // console.error('Error loading data:', error); // Remove error output
       if (isMountedRef.current) {
         setLoading(false);
       }
@@ -148,12 +148,12 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
       const assignedGameIds = Array.from(allAssignedGameIds);
       const assignedGamesList = games.filter(game => assignedGameIds.includes(game.UUID));
       
-      // console.log(`Found ${assignedGamesList.length} unique games across ${classIds.length} classes`); // Убираем лишний лог
+      // console.log(`Found ${assignedGamesList.length} unique games across ${classIds.length} classes`); // Remove unnecessary log
       if (isMountedRef.current) {
         setAssignedGames(assignedGamesList);
       }
     } catch (error) {
-      // console.error('Error loading assigned games:', error); // Убираем вывод ошибки
+      // console.error('Error loading assigned games:', error); // Remove error output
       if (isMountedRef.current) {
         setAssignedGames([]);
       }
@@ -190,7 +190,7 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
       // Check if component is still mounted before showing error
       if (!isMountedRef.current) return;
       
-      // console.error('Error removing game from class:', error); // Убираем вывод ошибки
+      // console.error('Error removing game from class:', error); // Remove error output
       alert('Failed to remove game: ' + error.message);
     } finally {
       if (isMountedRef.current) {
@@ -278,7 +278,7 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
       // Check if component is still mounted before showing error
       if (!isMountedRef.current) return;
       
-      // console.error('Error assigning games:', error); // Убираем вывод ошибки
+      // console.error('Error assigning games:', error); // Remove error output
       alert('Failed to assign games: ' + error.message);
     } finally {
       if (isMountedRef.current) {

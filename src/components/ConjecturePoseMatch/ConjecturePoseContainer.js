@@ -31,7 +31,7 @@ const ConjecturePoseContainer = (props) => {
 
     const drawModalBackground = useCallback((g) => {
         g.beginFill(darkGray, 0.9);
-        g.drawRect(0, 0, window.innerWidth, window.innerHeight);
+        g.drawRect(0, 0, width, height);
         g.endFill();
         const col1 = columnDimensions(1);
         g.beginFill(yellow, 1);
@@ -39,7 +39,7 @@ const ConjecturePoseContainer = (props) => {
         const col3 = columnDimensions(3);
         g.drawRect(col3.x, col3.y, col3.width, col3.height);
         g.endFill();
-    }, [columnDimensions]);
+    }, [columnDimensions, width, height]);
 
     useEffect(() => {
         const isRecording = "true";

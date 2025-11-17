@@ -365,68 +365,98 @@ export const deleteFromDatabaseConjectureWithCurrentOrg = async (existingUUID) =
   return deleteFromDatabaseConjecture(existingUUID, orgId);
 };
 
-export const getConjectureListWithCurrentOrg = async (final) => {
+export const getConjectureListWithCurrentOrg = async (final, includePublicFromOtherOrgs = false) => {
   const { orgId } = await getCurrentOrgContext();
   if (!orgId) {
     console.warn("User is not in any organization.");
     return [];
   }
-  
-  // Get current user context to filter by role
-  const { getCurrentUserContext } = await import('./userDatabase.js');
-  const userContext = await getCurrentUserContext();
-  const role = userContext?.role;
-  const userId = userContext?.uid || getAuth().currentUser?.uid;
   
   // Get all levels in organization
   const allLevels = await getConjectureList(final, orgId);
   
   // Handle null/undefined case
-  if (!allLevels) {
-    return [];
+  let result = allLevels || [];
+  
+  // If requested, also get public levels from other organizations
+  if (includePublicFromOtherOrgs) {
+    try {
+      const db = getDatabase();
+      const orgsRef = ref(db, 'orgs');
+      const orgsSnapshot = await get(orgsRef);
+      
+      if (orgsSnapshot.exists()) {
+        const orgs = orgsSnapshot.val();
+        for (const [otherOrgId, orgData] of Object.entries(orgs)) {
+          if (otherOrgId === orgId) continue; // Skip current org
+          
+          const levelsRef = ref(db, `orgs/${otherOrgId}/levels`);
+          const levelsSnapshot = await get(levelsRef);
+          
+          if (levelsSnapshot.exists()) {
+            const otherLevels = levelsSnapshot.val();
+            for (const [levelId, levelData] of Object.entries(otherLevels)) {
+              // Only include public levels
+              if (levelData.isPublic === true) {
+                result.push(levelData);
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching public levels from other orgs:', error);
+    }
   }
   
-  // Filter by role: Teachers see only their own levels
-  if (role === 'Teacher' && userId) {
-    return allLevels.filter(level => 
-      level.AuthorID === userId || level.createdBy === userId
-    );
-  }
-  
-  // Admins and Developers see all levels
-  return allLevels;
+  return result;
 };
 
-export const getCurricularListWithCurrentOrg = async (final) => {
+export const getCurricularListWithCurrentOrg = async (final, includePublicFromOtherOrgs = false) => {
   const { orgId } = await getCurrentOrgContext();
   if (!orgId) {
     console.warn("User is not in any organization.");
     return [];
   }
   
-  // Get current user context to filter by role
-  const { getCurrentUserContext } = await import('./userDatabase.js');
-  const userContext = await getCurrentUserContext();
-  const role = userContext?.role;
-  const userId = userContext?.uid || getAuth().currentUser?.uid;
-  
   // Get all games in organization
   const allGames = await getCurricularList(final, orgId);
   
   // Handle null/undefined case
-  if (!allGames) {
-    return [];
+  let result = allGames || [];
+  
+  // If requested, also get public games from other organizations
+  if (includePublicFromOtherOrgs) {
+    try {
+      const db = getDatabase();
+      const orgsRef = ref(db, 'orgs');
+      const orgsSnapshot = await get(orgsRef);
+      
+      if (orgsSnapshot.exists()) {
+        const orgs = orgsSnapshot.val();
+        for (const [otherOrgId, orgData] of Object.entries(orgs)) {
+          if (otherOrgId === orgId) continue; // Skip current org
+          
+          const gamesRef = ref(db, `orgs/${otherOrgId}/games`);
+          const gamesSnapshot = await get(gamesRef);
+          
+          if (gamesSnapshot.exists()) {
+            const otherGames = gamesSnapshot.val();
+            for (const [gameId, gameData] of Object.entries(otherGames)) {
+              // Only include public games
+              if (gameData.isPublic === true) {
+                result.push(gameData);
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching public games from other orgs:', error);
+    }
   }
   
-  // Filter by role: Teachers see only their own games
-  if (role === 'Teacher' && userId) {
-    return allGames.filter(game => 
-      game.AuthorID === userId || game.createdBy === userId
-    );
-  }
-  
-  // Admins and Developers see all games
-  return allGames;
+  return result;
 };
 
 export const searchConjecturesByWordWithCurrentOrg = async (searchWord) => {
@@ -436,29 +466,11 @@ export const searchConjecturesByWordWithCurrentOrg = async (searchWord) => {
     return [];
   }
   
-  // Get current user context to filter by role
-  const { getCurrentUserContext } = await import('./userDatabase.js');
-  const userContext = await getCurrentUserContext();
-  const role = userContext?.role;
-  const userId = userContext?.uid || getAuth().currentUser?.uid;
-  
-  // Get search results
+  // Get search results from current organization
   const searchResults = await searchConjecturesByWord(searchWord, orgId);
   
   // Handle null/undefined case
-  if (!searchResults) {
-    return [];
-  }
-  
-  // Filter by role: Teachers see only their own levels
-  if (role === 'Teacher' && userId) {
-    return searchResults.filter(level => 
-      level.AuthorID === userId || level.createdBy === userId
-    );
-  }
-  
-  // Admins and Developers see all search results
-  return searchResults;
+  return searchResults || [];
 };
 
 export const saveGameWithCurrentOrg = async (UUID = null, isFinal = false) => {
@@ -625,6 +637,9 @@ export const writeToDatabaseConjecture = async (existingUUID, orgId) => {
     // Firebase path - now under organization
     const conjecturePath = `orgs/${orgId}/levels/${conjectureID}`;
 
+    // Get isPublic flag from localStorage (default to false)
+    const isPublic = localStorage.getItem('isPublic') === 'true';
+
     // Push to Firebase
     const promises = [
       set(ref(db, `${conjecturePath}/Time`), timestamp),
@@ -641,12 +656,37 @@ export const writeToDatabaseConjecture = async (existingUUID, orgId) => {
       set(ref(db, `${conjecturePath}/Intermediate Tolerance`), localStorage.getItem('Intermediate Tolerance')),
       set(ref(db, `${conjecturePath}/End Tolerance`), localStorage.getItem('End Tolerance')),
       set(ref(db, `${conjecturePath}/isFinal`), true),
+      set(ref(db, `${conjecturePath}/isPublic`), isPublic),
       set(ref(db, `${conjecturePath}/createdBy`), userId),
       set(ref(db, `${conjecturePath}/createdAt`), timestamp),
       set(ref(db, `${conjecturePath}/updatedAt`), timestamp)
     ];
 
     await Promise.all(promises);
+    
+    // If user is a student, automatically assign level to their class
+    try {
+      const { getCurrentUserContext } = await import('./userDatabase.js');
+      const userContext = await getCurrentUserContext();
+      if (userContext?.role === 'Student' && userContext?.orgId === orgId) {
+        // Get current class ID from user profile
+        const userClassRef = ref(db, `users/${userId}/orgs/${orgId}/currentClassId`);
+        const classSnapshot = await get(userClassRef);
+        const classId = classSnapshot.exists() ? classSnapshot.val() : null;
+        
+        if (classId) {
+          // Store the level assignment in the class
+          await set(ref(db, `orgs/${orgId}/classes/${classId}/assignedLevels/${conjectureID}`), {
+            addedAt: timestamp,
+            addedBy: userId
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error assigning level to class:', error);
+      // Don't fail the save if class assignment fails
+    }
+    
     alert("Conjecture successfully published to database.");
     return true;
 
@@ -728,6 +768,7 @@ export const writeToDatabaseConjectureDraft = async (existingUUID, orgId) => {
       set(ref(db, `${conjecturePath}/Intermediate Tolerance`), localStorage.getItem('Intermediate Tolerance')),
       set(ref(db, `${conjecturePath}/End Tolerance`), localStorage.getItem('End Tolerance')),
       set(ref(db, `${conjecturePath}/isFinal`), false),
+      set(ref(db, `${conjecturePath}/isPublic`), localStorage.getItem('isPublic') === 'true'),
       set(ref(db, `${conjecturePath}/createdBy`), userId),
       set(ref(db, `${conjecturePath}/createdAt`), timestamp),
       set(ref(db, `${conjecturePath}/updatedAt`), timestamp)
@@ -986,6 +1027,9 @@ const countRejectedPromises = async (promises) => {
       const userId = user.uid;
       const userName = user.email.split('@')[0];
 
+      // Get isPublic flag from localStorage (default to false)
+      const isPublic = localStorage.getItem('GameIsPublic') === 'true';
+
       const gameData = {
         name: gameName,
         author: localStorage.getItem('CurricularAuthor') || "Unknown",
@@ -993,6 +1037,7 @@ const countRejectedPromises = async (promises) => {
         pin: localStorage.getItem('CurricularPIN') || "",
         levelIds: levelIds,
         isFinal: isFinal,
+        isPublic: isPublic,
         UUID: currentUUID,
         Time: new Date().toISOString(),
         Author: userName,
@@ -1005,6 +1050,29 @@ const countRejectedPromises = async (promises) => {
 
       const gamePath = `orgs/${orgId}/games/${currentUUID}`;
       await set(ref(db, gamePath), gameData);
+
+      // If user is a student, automatically assign game to their class
+      try {
+        const { getCurrentUserContext } = await import('./userDatabase.js');
+        const userContext = await getCurrentUserContext();
+        if (userContext?.role === 'Student' && userContext?.orgId === orgId) {
+          // Get current class ID from user profile
+          const userClassRef = ref(db, `users/${userId}/orgs/${orgId}/currentClassId`);
+          const classSnapshot = await get(userClassRef);
+          const classId = classSnapshot.exists() ? classSnapshot.val() : null;
+          
+          if (classId) {
+            // Store the game assignment in the class
+            await set(ref(db, `orgs/${orgId}/classes/${classId}/assignedGames/${currentUUID}`), {
+              addedAt: new Date().toISOString(),
+              addedBy: userId
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error assigning game to class:', error);
+        // Don't fail the save if class assignment fails
+      }
 
       alert(`Game ${isFinal ? "published" : "saved as draft"} successfully!`);
       Curriculum.setCurrentUUID(currentUUID);

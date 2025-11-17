@@ -308,7 +308,7 @@ const StoryEditorModule = (props) => {
   if (loading) {
     return (
       <>
-        <Background height={height * 1.1} width={width} />
+        <Background height={height} width={width} />
         <PixiLoader height={height} width={width} />
       </>
     );
@@ -319,7 +319,7 @@ const StoryEditorModule = (props) => {
       {/* Render the main page content only when the Settings menu is NOT open */}
       {!showSettingsMenu && (
         <>
-          <Background height={height * 1.1} width={width} />
+          <Background height={height} width={width} />
 
           {/* Render StoryEditorContentEditor */}
           <StoryEditorContentEditor height={height} width={width} dialogues={currentDialogues} onAddDialogue={handleAddDialogue} onMoveUp={handleMoveup} 

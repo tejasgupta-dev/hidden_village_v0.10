@@ -6,11 +6,21 @@ import OrganizationObject from './OrganizationObject';
 import { green, orange, black, white } from "../../utils/colors";
 
 const OrganizationList = (props) => {
-    const { width, height, x, y, organizations, onOrganizationSelect, currentOrgId, onOrganizationDelete, onOrganizationLeave, currentUserId } = props;
+    const { width, height, x, y, organizations, onOrganizationSelect, currentOrgId, onOrganizationDelete, onOrganizationLeave, currentUserId, firebaseApp } = props;
 
     const [startIndex, setStartIndex] = useState(0);
 
-    const orgsPerPage = Math.floor(height / 9);
+    // Calculate table dimensions
+    const tableWidth = width;
+    const tableHeight = height;
+    const rowHeight = 40;
+    const headerHeight = rowHeight;
+    const headerY = y;
+    const firstRowY = y + rowHeight;
+    
+    // Calculate how many organizations fit in the table (excluding header row)
+    const availableHeight = tableHeight - headerHeight;
+    const orgsPerPage = Math.max(1, Math.floor(availableHeight / rowHeight));
 
     // Function to handle incrementing the start index
     const handleNextPage = () => {
@@ -29,7 +39,6 @@ const OrganizationList = (props) => {
     // Slice the organizations based on the current start index and number of orgs per page
     const displayedOrgs = organizations ? organizations.slice(startIndex, startIndex + orgsPerPage) : [];
 
-
     // Don't render if organizations is not defined
     if (!organizations) {
         console.log('OrganizationList: organizations is not defined, returning null');
@@ -38,57 +47,97 @@ const OrganizationList = (props) => {
 
     return (
         <>
+            {/* Table Frame */}
             <Graphics
-                x={width * .3}
-                y={height * 2.2}
+                x={x}
+                y={y}
                 draw={(g) => {
-                    // rectangle
-                    g.beginFill(0xe0c755);
-                    g.drawRect(width * 0.01, height * 0.01, width * 2, (orgsPerPage * 30));
+                    // Slightly darker yellow background (darker than yellow background)
+                    g.beginFill(0xfff8dc); // cornsilk - slightly darker than yellow
+                    g.drawRect(0, 0, tableWidth, tableHeight);
                     g.endFill();
-                    // border
-                    g.lineStyle(4, 0x000000, 1);
-                    g.drawRect(width * 0.01, height * 0.01, width * 2, (orgsPerPage * 30));
+                    // Black border
+                    g.lineStyle(3, 0x000000, 1);
+                    g.drawRect(0, 0, tableWidth, tableHeight);
                 }}
             />
+            
+            {/* Table Headers */}
             <Text
-                x={width * .3}
-                y={height * 1.5}
-                text={'Organization'}
+                x={x + tableWidth * 0.05}
+                y={headerY + rowHeight * 0.3}
+                text={'ORG NAME'}
                 style={
                     new TextStyle({
-                        align: 'center',
-                        fontFamily: 'Futura',
-                        fontSize: 60,
-                        fontWeight: 800,
-                        fill: ['orange'],
-                        letterSpacing: -5,
+                        align: 'left',
+                        fontFamily: 'Arial',
+                        fontSize: 20,
+                        fontWeight: 'bold',
+                        fill: [black],
                     })
                 }
             />
             <Text
-                x={width * 1.5}
-                y={height * 1.5}
-                text={`Role`}
+                x={x + tableWidth * 0.35}
+                y={headerY + rowHeight * 0.3}
+                text={'SWITCH'}
                 style={
                     new TextStyle({
                         align: 'center',
-                        fontFamily: 'Futura',
-                        fontSize: 60,
-                        fontWeight: 800,
-                        fill: ['orange'],
-                        letterSpacing: -5,
+                        fontFamily: 'Arial',
+                        fontSize: 20,
+                        fontWeight: 'bold',
+                        fill: [black],
                     })
                 }
+            />
+            <Text
+                x={x + tableWidth * 0.6}
+                y={headerY + rowHeight * 0.3}
+                text={'LEAVE'}
+                style={
+                    new TextStyle({
+                        align: 'center',
+                        fontFamily: 'Arial',
+                        fontSize: 20,
+                        fontWeight: 'bold',
+                        fill: [black],
+                    })
+                }
+            />
+            <Text
+                x={x + tableWidth * 0.8}
+                y={headerY + rowHeight * 0.3}
+                text={'DELETE'}
+                style={
+                    new TextStyle({
+                        align: 'right',
+                        fontFamily: 'Arial',
+                        fontSize: 20,
+                        fontWeight: 'bold',
+                        fill: [black],
+                    })
+                }
+            />
+            
+            {/* Header separator line */}
+            <Graphics
+                x={x}
+                y={y + rowHeight}
+                draw={(g) => {
+                    g.lineStyle(2, 0x000000, 1);
+                    g.moveTo(0, 0);
+                    g.lineTo(tableWidth, 0);
+                }}
             />
             {/* Display Organizations */}
             {displayedOrgs.map((org, index) => (
                 <OrganizationObject
                     key={org.id || index}
-                    width={width * .3}
-                    height={height}
+                    width={tableWidth}
+                    height={rowHeight}
                     x={x}
-                    y={y * 0.2 + (index + 1.2) * 25}
+                    y={firstRowY + (index * rowHeight)}
                     index={index}
                     organization={org}
                     isCurrent={org.id === currentOrgId}
@@ -96,29 +145,30 @@ const OrganizationList = (props) => {
                     onDelete={onOrganizationDelete}
                     onLeave={onOrganizationLeave}
                     currentUserId={currentUserId}
+                    firebaseApp={firebaseApp}
                 />
             ))}
-            {/* < Button */}
+            
+            {/* Pagination Buttons - positioned at bottom right of table */}
             <RectButton
-                height={height * .7}
-                width={width * .4}
-                x={width * 1.9}
-                y={height * 6}
+                height={30}
+                width={40}
+                x={x + tableWidth - 100}
+                y={y + tableHeight - 40}
                 color={green}
-                fontSize={width * .07}
+                fontSize={20}
                 fontColor={white}
                 text={"<"}
                 fontWeight={800}
                 callback={handlePrevPage}
             />
-            {/* > Button */}
             <RectButton
-                height={height * 0.7}
-                width={width * .4}
-                x={width * 2.1}
-                y={height * 6}
+                height={30}
+                width={40}
+                x={x + tableWidth - 50}
+                y={y + tableHeight - 40}
                 color={green}
-                fontSize={width * .07}
+                fontSize={20}
                 fontColor={white}
                 text={">"}
                 fontWeight={800}

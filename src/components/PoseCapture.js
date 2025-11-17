@@ -69,7 +69,7 @@ const Button = PixiComponent("Button", {
 });
 
 const PoseGrab = (props) => {
-  const { columnDimensions, poseData, rowDimensions } = props;
+  const { columnDimensions, poseData, rowDimensions, width, height } = props;
   const [poseToMatch, setPoseToMatch] = useState(null);
   const textRef = useRef();
   const poseRef = useRef();
@@ -77,7 +77,7 @@ const PoseGrab = (props) => {
   const app = useApp();
   const drawModalBackground = useCallback((g) => {
     g.beginFill(darkGray, 0.9);
-    g.drawRect(0, 0, window.innerWidth, window.innerHeight);
+    g.drawRect(0, 0, width, height);
     const col1 = columnDimensions(1);
     const col3 = columnDimensions(3);
     g.endFill();
@@ -85,7 +85,7 @@ const PoseGrab = (props) => {
     g.drawRect(col1.x, col1.y, col1.width, col1.height);
     g.drawRect(col3.x, col3.y, col3.width, col3.height);
     g.endFill();
-  }, []);
+  }, [width, height, columnDimensions]);
 
   const captureClick = useCallback((event) => {
     let counter = 3;
@@ -241,6 +241,8 @@ const PoseCapture = () => {
         columnDimensions={columnDimensions}
         poseData={poseData}
         rowDimensions={rowDimensions}
+        width={width}
+        height={height}
       />
     </Stage>
   );

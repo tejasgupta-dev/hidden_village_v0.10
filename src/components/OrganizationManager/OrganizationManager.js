@@ -184,6 +184,13 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
 
   const handleDeleteOrganization = async (organization) => {
     try {
+      // Check if this is Default Organization - cannot delete
+      const isDefault = await isDefaultOrganization(organization.id, firebaseApp);
+      if (isDefault) {
+        alert('Cannot delete Default Organization.');
+        return;
+      }
+      
       // Prevent deleting current organization
       if (organization.id === currentOrgId) {
         alert('Cannot delete your current organization. Please switch to another organization first.');
@@ -227,6 +234,13 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
 
   const handleLeaveOrganization = async (organization) => {
     try {
+      // Check if this is Default Organization - cannot leave
+      const isDefault = await isDefaultOrganization(organization.id, firebaseApp);
+      if (isDefault) {
+        alert('Cannot leave Default Organization.');
+        return;
+      }
+      
       // Check if user has other organizations
       if (organizations.length === 1) {
         alert('Cannot leave your only organization.');
@@ -310,7 +324,7 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
     console.log('OrganizationManager: Still loading or currentOrgName is missing, showing loading screen');
     return (
       <>
-        <Background height={height * 1.1} width={width} />
+        <Background height={height} width={width} />
         <Text
           text="Loading organizations..."
           x={width * 0.5}
@@ -329,7 +343,7 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
 
   return (
     <>
-      <Background height={height * 1.1} width={width} />
+      <Background height={height} width={width} />
       
       {/* Title */}
       <Text
@@ -346,42 +360,43 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
         })}
       />
       
-      {/* Organizations List */}
-      {organizations.length > 0 && (
-        <OrganizationList 
-          organizations={organizations} 
-          height={height * 0.12}
-          width={width * 0.26}
-          x={width * 0.4}
-          y={height * 1}
-          currentOrgId={currentOrgId}
-          onOrganizationSelect={handleOrganizationSelect}
-          onOrganizationDelete={handleDeleteOrganization}
-          onOrganizationLeave={handleLeaveOrganization}
-          currentUserId={currentUserId}
-        />
-      )}
-      
       {/* Current Organization */}
       <Text
-        text={`Current Organization: ${currentOrgName || 'Loading...'}`}
-        x={width * 0.1}
-        y={height * 0.2}
+        text={`CURRENT ORGANIZATION: ${currentOrgName || 'Loading...'}`}
+        x={width * 0.12}
+        y={height * 0.12}
         style={new TextStyle({
           align: "left",
           fontFamily: "Arial",
           fontSize: 24,
           fontWeight: "bold",
-          fill: [green],
+          fill: [black],
         })}
       />
       
-      {/* Join Organization Button */}
+      {/* Organizations List */}
+      {organizations.length > 0 && (
+        <OrganizationList 
+          organizations={organizations} 
+          height={height * 0.5}
+          width={width * 0.5}
+          x={width * 0.1}
+          y={height * 0.25}
+          currentOrgId={currentOrgId}
+          onOrganizationSelect={handleOrganizationSelect}
+          onOrganizationDelete={handleDeleteOrganization}
+          onOrganizationLeave={handleLeaveOrganization}
+          currentUserId={currentUserId}
+          firebaseApp={firebaseApp}
+        />
+      )}
+      
+      {/* Action Buttons (Right Side) */}
       <RectButton
-        height={height * 0.13}
-        width={width * 0.26}
-        x={width * 0.7}
-        y={height * 0.2}
+        height={height * 0.08}
+        width={width * 0.25}
+        x={width * 0.65}
+        y={height * 0.25}
         color={blue}
         fontSize={width * 0.012}
         fontColor={white}
@@ -395,11 +410,10 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
         }}
       />
       
-      {/* Create New Organization Button - Available for all users */}
       <RectButton
-        height={height * 0.13}
-        width={width * 0.26}
-        x={width * 0.7}
+        height={height * 0.08}
+        width={width * 0.25}
+        x={width * 0.65}
         y={height * 0.35}
         color={green}
         fontSize={width * 0.012}
@@ -446,28 +460,27 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
         />
       )}
       
-      {/* Refresh Button */}
+      {/* Bottom Navigation Buttons */}
       <RectButton
-        height={height * 0.13}
-        width={width * 0.4}
-        x={width * 0.4}
-        y={height * 0.85}
+        height={height * 0.08}
+        width={width * 0.2}
+        x={width * 0.6}
+        y={height * 0.88}
         color={navyBlue} 
-        fontSize={width * 0.015}
+        fontSize={width * 0.012}
         fontColor={white} 
-        text={loading ? "REFRESHING..." : "REFRESH ORGANIZATIONS"}
+        text={loading ? "REFRESHING..." : "REFRESH"}
         fontWeight={800}
         callback={loadOrganizations}
       />
       
-      {/* Back Button */}
       <RectButton
-        height={height * 0.13}
-        width={width * 0.26}
-        x={width * 0.15}
-        y={height * 0.85}
+        height={height * 0.08}
+        width={width * 0.2}
+        x={width * 0.8}
+        y={height * 0.88}
         color={red}
-        fontSize={width * 0.015}
+        fontSize={width * 0.012}
         fontColor={white}
         text="BACK"
         fontWeight={800}

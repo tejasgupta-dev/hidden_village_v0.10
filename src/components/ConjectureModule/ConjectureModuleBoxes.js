@@ -197,3 +197,46 @@ const [pinValue, setPinValue] = useState(
       </>
   )
 }
+
+export const PublicCheckbox = (props) => {
+  const { height, width } = props;
+  const [isPublic, setIsPublic] = useState(localStorage.getItem('isPublic') === 'true');
+  const [, setRefresh] = useState(0);
+
+  function togglePublic() {
+    if (!getEditLevel()) return;
+    
+    const newValue = !isPublic;
+    setIsPublic(newValue);
+    localStorage.setItem('isPublic', newValue ? 'true' : 'false');
+    setRefresh((n) => n + 1);
+  }
+
+  return (
+    <>
+      <Text
+        x={width * 0.6910}
+        y={height * 0.19}
+        text="PUBLIC:"
+        style={new TextStyle({
+          fontFamily: 'Arial',
+          fontSize: width * 0.012,
+          fontWeight: 600,
+          fill: [black],
+        })}
+      />
+      <InputBox
+        height={height * 0.06}
+        width={width * 0.15}
+        x={width * 0.75}
+        y={height * 0.185}
+        color={isPublic ? green : white}
+        fontSize={width * 0.012}
+        text={isPublic ? 'YES' : 'NO'}
+        fontColor={isPublic ? white : black}
+        fontWeight={600}
+        callback={togglePublic}
+      />
+    </>
+  );
+}

@@ -17,7 +17,17 @@ const UserList = (props) => {
 
         const [startIndex, setStartIndex] = useState(0);
 
-        const usersPerPage = Math.floor(height / 9);
+        // Calculate table dimensions
+        const tableWidth = width;
+        const tableHeight = height;
+        const rowHeight = 40;
+        const headerHeight = rowHeight;
+        const headerY = y;
+        const firstRowY = y + rowHeight;
+        
+        // Calculate how many users fit in the table (excluding header row)
+        const availableHeight = tableHeight - headerHeight;
+        const usersPerPage = Math.max(1, Math.floor(availableHeight / rowHeight));
     
         // Function to handle incrementing the start index
         const handleNextPage = () => {
@@ -35,54 +45,79 @@ const UserList = (props) => {
     
         // Slice the users based on the current start index and number of users per page
         const displayedUsers = users.slice(startIndex, startIndex + usersPerPage);
-
+    
     return (
         <>
+            {/* Table Frame */}
             <Graphics
-                x = {width* .3}
-                y = {height * 2.2}
+                x={x}
+                y={y}
                 draw={(g) => {
-                    // rectangle
-                    g.beginFill(0xe0c755);
-                    g.drawRect(width *0.01, height*0.01, width * 2, (  usersPerPage * 30));
+                    // Slightly darker yellow background (darker than yellow background)
+                    g.beginFill(0xfff8dc); // cornsilk - slightly darker than yellow
+                    g.drawRect(0, 0, tableWidth, tableHeight);
                     g.endFill();
-                    // border
-                    g.lineStyle(4, 0x000000, 1);
-                    g.drawRect(width*0.01, height*0.01, width * 2, ( usersPerPage * 30));
+                    // Black border
+                    g.lineStyle(3, 0x000000, 1);
+                    g.drawRect(0, 0, tableWidth, tableHeight);
                 }}
             />
+            
+            {/* Table Headers */}
             <Text
-                x={width * .3}
-                y={height * 1.5}
-                text={'User'}
+                x={x + tableWidth * 0.05}
+                y={headerY + rowHeight * 0.3}
+                text={'USER'}
                 style={
                     new TextStyle({
-                        align: 'center',
-                        fontFamily: 'Futura',
-                        fontSize: 60,
-                        fontWeight: 800,
-                        fill: ['orange'],
-                        letterSpacing: -5,
+                        align: 'left',
+                        fontFamily: 'Arial',
+                        fontSize: 20,
+                        fontWeight: 'bold',
+                        fill: [black],
                     })
                 }
             />
             <Text
-                x={width * 1.5}
-                y={height * 1.5}
-                text={`Role`}
+                x={x + tableWidth * 0.35}
+                y={headerY + rowHeight * 0.3}
+                text={'ROLE'}
                 style={
                     new TextStyle({
                         align: 'center',
-                        fontFamily: 'Futura',
-                        fontSize: 60,
-                        fontWeight: 800,
-                        fill: ['orange'],
-                        letterSpacing: -5,
+                        fontFamily: 'Arial',
+                        fontSize: 20,
+                        fontWeight: 'bold',
+                        fill: [black],
                     })
                 }
             />
-            {/* Display User Names */}
-            {/* <ScrollView style={{ flex: 1 }}> */}
+            <Text
+                x={x + tableWidth * 0.7}
+                y={headerY + rowHeight * 0.3}
+                text={'DELETE'}
+                style={
+                    new TextStyle({
+                        align: 'right',
+                        fontFamily: 'Arial',
+                        fontSize: 20,
+                        fontWeight: 'bold',
+                        fill: [black],
+                    })
+                }
+            />
+            
+            {/* Header separator line */}
+            <Graphics
+                x={x}
+                y={y + rowHeight}
+                draw={(g) => {
+                    g.lineStyle(2, 0x000000, 1);
+                    g.moveTo(0, 0);
+                    g.lineTo(tableWidth, 0);
+                }}
+            />
+            {/* Display Users */}
             {displayedUsers.map((user, index) => {
                 // Get user role from current organization context
                 const userRole = user.roleInOrg || user.userRole || 'Member'; // fallback to 'Member' if no role
@@ -90,10 +125,10 @@ const UserList = (props) => {
                 return (
                     <UserObject
                         key={index} 
-                        width={width * .3}
-                        height={height}
+                        width={tableWidth}
+                        height={rowHeight}
                         x={x}
-                        y={y * 0.2 + (index + 1.2) * 25}  // Adjust the y position based on index
+                        y={firstRowY + (index * rowHeight)}
                         index={index}
                         username={user.userName || user.userEmail || 'Unknown'}
                         role={userRole}
@@ -104,14 +139,14 @@ const UserList = (props) => {
                     />
                 );
             })}
-            {/* // < Button // */}
+            {/* Pagination Buttons - positioned at bottom right of table */}
             <RectButton
-                height={height * .7}
-                width={width * .4}
-                x={width * 1.9}
-                y={height*6}
+                height={30}
+                width={40}
+                x={x + tableWidth - 100}
+                y={y + tableHeight - 40}
                 color={green}
-                fontSize={width * .07}
+                fontSize={20}
                 fontColor={white}
                 text={"<"}
                 fontWeight={800}
@@ -119,14 +154,13 @@ const UserList = (props) => {
                     handlePrevPage();
                 }}
             />
-            {/* // > Button // */}
             <RectButton
-                height={height * 0.7}
-                width={width * .4}
-                x={width * 2.1}
-                y={height*6}
+                height={30}
+                width={40}
+                x={x + tableWidth - 50}
+                y={y + tableHeight - 40}
                 color={green}
-                fontSize={width * .07}
+                fontSize={20}
                 fontColor={white}
                 text={">"}
                 fontWeight={800}

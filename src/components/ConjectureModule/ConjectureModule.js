@@ -4,7 +4,7 @@ import { powderBlue, skyBlue, cornflowerBlue, green, neonGreen, black, blue, whi
 import Button from "../Button";
 import RectButton from "../RectButton";
 import InputBox from "../InputBox";
-import { ConjectureBox, KeywordsBox, NameBox, PINBox } from "./ConjectureModuleBoxes";
+import { ConjectureBox, KeywordsBox, NameBox, PINBox, PublicCheckbox } from "./ConjectureModuleBoxes";
 import { EndBox, IntermediateBox, StartBox } from "../PoseAuth/PoseAuthoringBoxes";
 import { writeToDatabaseConjectureWithCurrentOrg, writeToDatabaseConjectureDraftWithCurrentOrg, keysToPush, searchConjecturesByWordWithCurrentOrg, deleteFromDatabaseConjectureWithCurrentOrg} from "../../firebase/database";
 import { useMachine } from "@xstate/react";
@@ -239,9 +239,10 @@ const ConjectureModule = (props) => {
 
   return (
     <>
-      <Background height={height * 1.1} width={width} />
+      <Background height={height} width={width} />
       <NameBox height={height} width={width} boxState={state.value} username={userName}/>
       <PINBox height={height} width={width} />
+      <PublicCheckbox height={height} width={width} />
       <StartBox height={height * 0.5} width={width * 0.5} x={5} y={4.6} boxState={null} similarityScores={null} inCE={true} />
       <IntermediateBox height={height * 0.5} width={width * 0.5} x={9} y={1.906} boxState={null} similarityScores={null} inCE={true} />
       <EndBox height={height * 0.5} width={width * 0.5} x={13} y={1.2035} boxState={null} similarityScores={null} inCE={true} />

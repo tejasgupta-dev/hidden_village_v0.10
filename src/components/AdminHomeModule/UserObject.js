@@ -50,29 +50,46 @@ const UserObject = (props) => {
         [UserPermissions.Student]: green,
     };
 
-    // Define the order of roles
+    // Define the order of roles (hierarchy: higher index = lower role)
     const roleOrder = [UserPermissions.Admin, UserPermissions.Developer, UserPermissions.Teacher, UserPermissions.Student];
+    const roleHierarchy = {
+        [UserPermissions.Admin]: 0,
+        [UserPermissions.Developer]: 1,
+        [UserPermissions.Teacher]: 2,
+        [UserPermissions.Student]: 3
+    };
 
-    // Function to get the next role with Developer restrictions
+    // Check if current user can change target user's role
+    const canChangeRole = (targetRole) => {
+        if (!currentUserRole || !targetRole) return false;
+        
+        const currentUserLevel = roleHierarchy[currentUserRole] ?? 999;
+        const targetUserLevel = roleHierarchy[targetRole] ?? 999;
+        
+        // Can only change roles of users with equal or lower level (higher hierarchy number)
+        return targetUserLevel >= currentUserLevel;
+    };
+
+    // Function to get the next role with proper restrictions
     const getNextRole = (currentRole) => {
-        // If current user is Developer, they cannot make anyone Admin
-        if (currentUserRole === 'Developer') {
-            // If target user is Admin, don't allow role change
-            if (currentRole === 'Admin') {
-                return currentRole; // Keep current role (no change allowed)
-            }
-            
-            // For non-Admin users, cycle through: Developer -> Teacher -> Student -> Developer
-            const restrictedRoleOrder = [UserPermissions.Developer, UserPermissions.Teacher, UserPermissions.Student];
-            const currentIndex = restrictedRoleOrder.indexOf(currentRole);
-            const nextIndex = (currentIndex + 1) % restrictedRoleOrder.length;
-            return restrictedRoleOrder[nextIndex];
+        // Check if current user can change this role at all
+        if (!canChangeRole(currentRole)) {
+            return currentRole; // Keep current role (no change allowed)
         }
         
-        // For Admin users, allow full role cycling
-        const currentIndex = roleOrder.indexOf(currentRole);
-        const nextIndex = (currentIndex + 1) % roleOrder.length;
-        return roleOrder[nextIndex];
+        // Get allowed roles for current user (only roles below or equal to current user's role)
+        const currentUserLevel = roleHierarchy[currentUserRole] ?? 999;
+        const allowedRoles = roleOrder.filter((role, index) => index >= currentUserLevel);
+        
+        // Find current role in allowed roles
+        const currentIndex = allowedRoles.indexOf(currentRole);
+        if (currentIndex === -1) {
+            return currentRole; // Current role not in allowed list, don't change
+        }
+        
+        // Cycle to next role in allowed list
+        const nextIndex = (currentIndex + 1) % allowedRoles.length;
+        return allowedRoles[nextIndex];
     };
 
     // Function to handle role change
@@ -83,22 +100,28 @@ const UserObject = (props) => {
                 return;
             }
             
-            // Check if Developer is trying to change Admin role
-            if (currentUserRole === 'Developer' && role === 'Admin') {
-                alert('Developers cannot modify Admin roles');
+            // Check if current user can change this role
+            if (!canChangeRole(role)) {
+                alert(`You cannot change the role of ${role}. You can only change roles equal to or below your own role (${currentUserRole}).`);
                 return;
             }
             
             const nextRole = getNextRole(role);
             
-            // Check if role actually changed (for Developer restrictions)
+            // Check if role actually changed
             if (nextRole === role) {
                 alert('Role change not allowed');
                 return;
             }
             
+            // Double check: ensure next role is also allowed
+            if (!canChangeRole(nextRole)) {
+                alert(`Cannot assign role ${nextRole}. You can only assign roles equal to or below your own role (${currentUserRole}).`);
+                return;
+            }
+            
             const firebaseApp = firebase.app();
-            const result = await updateUserRoleInOrg(userId, orgId, nextRole, firebaseApp);
+            const result = await updateUserRoleInOrg(userId, orgId, nextRole, firebaseApp, currentUserRole);
 
             if (result) {
                 // Success
@@ -109,11 +132,12 @@ const UserObject = (props) => {
             } else {
                 // Failure
                 console.log("Failed to change user role.");
+                alert("Failed to change user role. Please try again.");
             }
         } catch (error) {
             // Handle any errors that occurred during the operation
             console.error("Error:", error);
-            alert("An error occurred while changing the user role.");
+            alert(error.message || "An error occurred while changing the user role.");
         }
     };
 
@@ -180,29 +204,46 @@ const UserObject = (props) => {
         }
     };
 
+    // Calculate positions for table columns
+    const userNameX = x + width * 0.05;
+    const roleCenterX = x + width * 0.34; // Center of ROLE column
+    const deleteCenterX = x + width * 0.7; // Center of DELETE column
+    const rowCenterY = y + height * 0.5; // Vertical center of the row
+    
+    // Button dimensions - increased size
+    const roleButtonHeight = 45;
+    const roleButtonWidth = 200;
+    const deleteButtonHeight = 45;
+    const deleteButtonWidth = 200;
+    
     return (
         <>
+            {/* Username - left column */}
             <Text
-                x={width * 1.1}
-                y={y * 1.1 + height *0.25}  // Move this line inside the style object
-                text={username} //username
+                x={userNameX}
+                y={rowCenterY}
+                text={username}
+                anchor={[0, 0]}
                 style={
                     new TextStyle({
-                        fontFamily: 'Futura',
-                        fontSize: height/5.5,
-                        fontWeight: height*4,
+                        align: 'left',
+                        fontFamily: 'Arial',
+                        fontSize: 16,
+                        fontWeight: 'normal',
+                        fill: [black],
                     })
                 }
             />
-            {/* Render the Role Button only if the user is not the current user and Developer restrictions allow it */}
-            {!(currentUserRole === 'Developer' && role === 'Admin') && (
+            
+            {/* Role Button - center column */}
+            {canChangeRole(role) && (
                 <RectButton
-                    height={55}
-                    width={200}
-                    x={width * 5}
-                    y={y * 1.1 + height *0.25}
+                    height={roleButtonHeight}
+                    width={roleButtonWidth}
+                    x={roleCenterX}
+                    y={rowCenterY}
                     color={roleColors[role]}
-                    fontSize={15}
+                    fontSize={14}
                     fontColor={white}
                     text={role}
                     fontWeight={800}
@@ -216,16 +257,18 @@ const UserObject = (props) => {
                 />
             )}
             
-            {/* Show "LOCKED" text for Admin when viewed by Developer */}
-            {currentUserRole === 'Developer' && role === 'Admin' && (
+            {/* Show "LOCKED" text if current user cannot change this role */}
+            {!canChangeRole(role) && (
                 <Text
-                    x={width * 5}
-                    y={y * 1.1 + height *0.25}
+                    x={roleCenterX}
+                    y={rowCenterY}
                     text="LOCKED"
+                    anchor={0.5}
                     style={
                         new TextStyle({
-                            fontFamily: 'Futura',
-                            fontSize: 15,
+                            align: 'center',
+                            fontFamily: 'Arial',
+                            fontSize: 14,
                             fontWeight: 800,
                             fill: [red],
                         })
@@ -233,36 +276,38 @@ const UserObject = (props) => {
                 />
             )}
                 
-                {/* Delete Button - hide for current user */}
-                {!isCurrentUser && (
-                    <RectButton
-                        height={55}
-                        width={200}
-                        x={width * 7}
-                        y={y * 1.1 + height *0.25}
-                        color={red}
-                        fontSize={15}
-                        fontColor={white}
-                        text={"DELETE"}
-                        fontWeight={800}
-                        callback={handleDeleteUser}
-                    />
-                )}
+            {/* Delete Button - right column, hide for current user */}
+            {!isCurrentUser && (
+                <RectButton
+                    height={deleteButtonHeight}
+                    width={deleteButtonWidth}
+                    x={deleteCenterX}
+                    y={rowCenterY}
+                    color={red}
+                    fontSize={14}
+                    fontColor={white}
+                    text={"DELETE"}
+                    fontWeight={800}
+                    callback={handleDeleteUser}
+                />
+            )}
                 
-                {/* Current User Indicator */}
-                {isCurrentUser && (
-                    <Text
-                        x={width * 7}
-                        y={y * 1.1 + height * 0.25 + 20}
-                        text="(YOU)"
-                        style={new TextStyle({
-                            fontFamily: 'Arial',
-                            fontSize: 14,
-                            fontWeight: 'bold',
-                            fill: [blue],
-                        })}
-                    />
-                )}
+            {/* Current User Indicator */}
+            {isCurrentUser && (
+                <Text
+                    x={deleteCenterX}
+                    y={rowCenterY}
+                    text="(YOU)"
+                    anchor={-0.25}
+                    style={new TextStyle({
+                        align: 'center',
+                        fontFamily: 'Arial',
+                        fontSize: 14,
+                        fontWeight: 'bold',
+                        fill: [blue],
+                    })}
+                />
+            )}
         
         </>
     );

@@ -48,7 +48,7 @@ const SignInScreen = ({ firebaseApp }) => {
       })
       .catch((error) => {
         setLoginError(true);
-        // console.error(error); // Убираем вывод ошибки в консоль
+        // console.error(error); // Remove error output to console
       });
   };
 
@@ -69,12 +69,12 @@ const SignInScreen = ({ firebaseApp }) => {
           savePassword(password);
           window.location.href = "/";
         } catch (error) {
-          // console.error('Auto-login failed:', error); // Убираем вывод ошибки
+          // console.error('Auto-login failed:', error); // Remove error output
         }
       }, 1000);
     } catch (error) {
       setRegisterError(true);
-      // console.error('Registration error:', error); // Убираем вывод ошибки
+      // console.error('Registration error:', error); // Remove error output
     }
   };
 

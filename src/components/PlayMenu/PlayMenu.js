@@ -11,7 +11,7 @@ import CurricularModule from "../CurricularModule/CurricularModule.js";
 import ConjectureSelectorModule, { getAddToCurricular, setAddtoCurricular } from "../ConjectureSelector/ConjectureSelectorModule.js";
 import CurricularSelectorModule, { getPlayGame, setPlayGame } from "../CurricularSelector/CurricularSelector.js";
 import StoryEditorModule from "../StoryEditorModule/StoryEditorModule.js"; 
-import { getCurrentUserContext } from "../../firebase/userDatabase";
+import { getCurrentUserContext, getUserOrgsFromDatabase, switchPrimaryOrganization, getOrganizationInfo } from "../../firebase/userDatabase";
 import firebase from "firebase/compat";
 import { Curriculum } from "../CurricularModule/CurricularModule.js";
 import Settings from "../Settings";
@@ -33,9 +33,63 @@ const PlayMenu = (props) => {
     const [state, send] = useMachine(PlayMenuMachine);
     const [userRole, setUserRole] = useState(role);
     const [isDataMenuVisable, setdataMenuVisable] = useState(false);
+    const [studentOrgs, setStudentOrgs] = useState([]);
+    const [currentOrgId, setCurrentOrgId] = useState(null);
     
     // Get Firebase app instance
     const firebaseApp = firebase.app();
+    
+    // Load student organizations for switching
+    useEffect(() => {
+        const loadStudentOrgs = async () => {
+            if (userRole === "Student" && firebaseApp) {
+                try {
+                    const auth = firebaseApp.auth();
+                    const user = auth.currentUser;
+                    if (user) {
+                        const userOrgs = await getUserOrgsFromDatabase(user.uid, firebaseApp);
+                        const orgIds = Object.keys(userOrgs);
+                        
+                        if (orgIds.length >= 2) {
+                            const orgList = [];
+                            for (const orgId of orgIds) {
+                                const orgInfo = await getOrganizationInfo(orgId, firebaseApp);
+                                if (orgInfo) {
+                                    orgList.push({
+                                        id: orgId,
+                                        name: orgInfo.name || 'Unknown Organization'
+                                    });
+                                }
+                            }
+                            setStudentOrgs(orgList);
+                            
+                            // Get current org
+                            const { orgId } = await getCurrentUserContext(firebaseApp);
+                            setCurrentOrgId(orgId);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error loading student organizations:', error);
+                }
+            }
+        };
+        loadStudentOrgs();
+    }, [userRole, firebaseApp]);
+    
+    const handleSwitchOrganization = async (targetOrgId) => {
+        try {
+            const auth = firebaseApp.auth();
+            const user = auth.currentUser;
+            if (user) {
+                await switchPrimaryOrganization(user.uid, targetOrgId, firebaseApp);
+                // Reload page to refresh context
+                window.location.reload();
+            }
+        } catch (error) {
+            console.error('Error switching organization:', error);
+            alert('Failed to switch organization: ' + error.message);
+        }
+    };
     
     // Update userRole when role prop changes
     useEffect(() => {
@@ -68,8 +122,6 @@ const PlayMenu = (props) => {
             console.log('PlayMenu: Building Admin/Developer button list');
             list.push(
                 {text: "ADMIN", callback: () => send("ADMIN"), color: babyBlue},
-                {text: "ORGANIZATIONS", callback: () => send("ORGANIZATIONS"), color: yellow},
-                {text: "CLASSES", callback: () => send("CLASSES"), color: green},
                 {text: "INVITES", callback: () => send("INVITES"), color: red},
                 {text: "NEW GAME", callback: () => send("NEWGAME"), color: purple},
                 {text: "EDIT GAME", callback: () => (setPlayGame(false), send("GAMESELECT")), color: powderBlue},
@@ -81,16 +133,17 @@ const PlayMenu = (props) => {
         } else if (role === "Student"){
             console.log('PlayMenu: Building Student button list');
             list.push(
-                {text: "ORGANIZATIONS", callback: () => send("ORGANIZATIONS"), color: yellow},
-                {text: "CLASSES", callback: () => send("CLASSES"), color: green},
+                {text: "NEW GAME", callback: () => send("NEWGAME"), color: purple},
+                {text: "EDIT GAME", callback: () => (setPlayGame(false), send("GAMESELECT")), color: powderBlue},
                 {text: "PLAY", callback: () => (setPlayGame(true), send("GAMESELECT")), color: royalBlue},
+                {text: "NEW LEVEL", callback: () => (setEditLevel(true), send("NEWLEVEL")), color: dodgerBlue},
+                {text: "EDIT LEVEL", callback: () => (setAddtoCurricular(false),send("LEVELSELECT")), color: steelBlue},
                 {text: "SETTINGS", callback: () => send("SETTINGS"), color: cornflowerBlue}
             );
         } else if (role === "Teacher"){
             console.log('PlayMenu: Building Teacher button list');
             list.push(
-                {text: "ORGANIZATIONS", callback: () => send("ORGANIZATIONS"), color: yellow},
-                {text: "CLASSES", callback: () => send("CLASSES"), color: green},
+                {text: "ADMIN", callback: () => send("ADMIN"), color: babyBlue},
                 {text: "NEW GAME", callback: () => send("NEWGAME"), color: purple},
                 {text: "EDIT GAME", callback: () => (setPlayGame(false), send("GAMESELECT")), color: powderBlue},
                 {text: "PLAY", callback: () => (setPlayGame(true), send("GAMESELECT")), color: royalBlue},
@@ -149,6 +202,30 @@ const PlayMenu = (props) => {
               })}
             />
           )}
+          
+          {/* Student Organization Switch Button */}
+          {userRole === "Student" && studentOrgs.length >= 2 && (
+            <>
+              {studentOrgs.map((org, idx) => {
+                if (org.id === currentOrgId) return null; // Don't show current org as button
+                return (
+                  <Button
+                    key={org.id}
+                    height={height * 0.03}
+                    width={width * 0.15}
+                    x={width * 0.1}
+                    y={height * 0.21 + (idx * height * 0.04)}
+                    color={yellow}
+                    fontSize={12}
+                    fontColor={black}
+                    text={`SWITCH TO: ${org.name}`}
+                    fontWeight={600}
+                    callback={() => handleSwitchOrganization(org.id)}
+                  />
+                );
+              })}
+            </>
+          )}
         </>
         )}
         {state.value === "main" && buttonList.map((button, idx) => { //if the state is main, show the buttons
@@ -175,7 +252,7 @@ const PlayMenu = (props) => {
                 />
             );
         })}
-        {state.value === "main" && ( // if the state is main, show the data button and the data menu
+        {state.value === "main" && (userRole === "Admin" || userRole === "Developer") && ( // if the state is main, show the data button and the data menu (only for Admin/Developer)
           <>
           <Button
             height={height * 0.01}
@@ -197,7 +274,7 @@ const PlayMenu = (props) => {
             y={height * 0.5 - (height * 0.5 * 0.5)}
             onClose={() => setdataMenuVisable(false)}
           />
-        </>
+          </>
         )}
         {state.value === "test" && ( //if the state is test, show the test module
           <PoseTest
@@ -258,6 +335,8 @@ const PlayMenu = (props) => {
             firebaseApp={firebaseApp}
             mainCallback={() => send("MAIN")} // goes to Home
             addNewUserCallback={() => send("ADDNEWUSER")} // goes to add new user section
+            onOrganizationsClick={() => send("ORGANIZATIONS")} // goes to Organizations
+            onClassesClick={() => send("CLASSES")} // goes to Classes
         />
         )}
         {state.value === "invites" && (

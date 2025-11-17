@@ -27,6 +27,8 @@ const ExperimentalTask = (props) => {
     rowDimensions,
     cursorTimer,
     gameID,
+    width,
+    height,
   } = props;
   const [showCursor, setShowCursor] = useState(false);
   
@@ -35,13 +37,13 @@ const ExperimentalTask = (props) => {
 
   const drawModalBackground = useCallback((g) => {
     g.beginFill(darkGray, 0.9);
-    g.drawRect(0, 0, window.innerWidth, window.innerHeight);
+    g.drawRect(0, 0, width, height);
     const col3 = columnDimensions(3);
     g.endFill();
     g.beginFill(yellow, 1);
     g.drawRect(col3.x, col3.y, col3.width, col3.height);
     g.endFill();
-  }, [columnDimensions]);
+  }, [columnDimensions, width, height]);
 
   // --- EFFICIENT DATABASE WRITING ---
   // This useEffect handles writing data to Firebase without causing a performance freeze.

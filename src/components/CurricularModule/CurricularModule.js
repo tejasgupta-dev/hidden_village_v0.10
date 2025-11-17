@@ -94,6 +94,9 @@ export const Curriculum = {
     if (pinValue != "undefined" && pinValue != null) {
       localStorage.setItem('CurricularPIN', pinValue);
     }
+    // Load isPublic flag (default to false)
+    const isPublicValue = curricular["isPublic"] || false;
+    localStorage.setItem('GameIsPublic', isPublicValue ? 'true' : 'false');
     console.log('Curriculum: localStorage values set:', {
       name: curricular["name"] || curricular["CurricularName"],
       author: curricular["author"] || curricular["CurricularAuthor"],
@@ -117,6 +120,7 @@ const CurricularModule = (props) => {
     localStorage.removeItem('CurricularAuthor');
     localStorage.removeItem('CurricularKeywords');
     localStorage.removeItem('CurricularPIN');
+    localStorage.removeItem('GameIsPublic');
     Curriculum.clearCurriculum();
   };
 
@@ -161,7 +165,7 @@ const CurricularModule = (props) => {
     <>
       {!showSettingsMenu && (
         <>
-          <Background height={height * 1.1} width={width} />
+          <Background height={height} width={width} />
           <CurricularContentEditor height={height} width={width} userName={userName} conjectureCallback={conjectureCallback}/>
 
           {/* Buttons */}

@@ -1,11 +1,33 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Text } from "@inlet/react-pixi";
 import { TextStyle } from "@pixi/text";
 import RectButton from '../RectButton';
 import { green, blue, white, red, orange, black } from "../../utils/colors";
+import { isDefaultOrganization } from "../../firebase/userDatabase";
 
 const OrganizationObject = (props) => {
-    const { width, height, x, y, organization, index, isCurrent, onSelect, onDelete, onLeave, currentUserId } = props;
+    const { width, height, x, y, organization, index, isCurrent, onSelect, onDelete, onLeave, currentUserId, firebaseApp } = props;
+    const [isDefault, setIsDefault] = useState(false);
+    
+    useEffect(() => {
+        let isMounted = true;
+        
+        const checkDefault = async () => {
+            if (organization?.id && firebaseApp) {
+                const result = await isDefaultOrganization(organization.id, firebaseApp);
+                // Only update state if component is still mounted
+                if (isMounted) {
+                    setIsDefault(result);
+                }
+            }
+        };
+        checkDefault();
+        
+        // Cleanup function to prevent state update on unmounted component
+        return () => {
+            isMounted = false;
+        };
+    }, [organization?.id, firebaseApp]);
 
 
     // Don't render if organization is not defined
@@ -28,79 +50,103 @@ const OrganizationObject = (props) => {
     };
 
     const isAdmin = organization.roleSnapshot === 'Admin';
-    const canDelete = isAdmin && !isCurrent; // Cannot delete current organization
+    const canDelete = isAdmin && !isCurrent && !isDefault; // Cannot delete current or default organization
+
+    // Calculate positions for table columns
+    const orgNameX = x + width * 0.05;
+    const switchCenterX = x + width * 0.35; // Center of SWITCH column
+    const leaveCenterX = x + width * 0.6; // Center of LEAVE column
+    const deleteCenterX = x + width * 0.8; // Center of DELETE column
+    const rowCenterY = y + height * 0.5; // Vertical center of the row
+    
+    // Button dimensions - increased size
+    const switchButtonHeight = 45;
+    const switchButtonWidth = 150;
+    const leaveButtonHeight = 45;
+    const leaveButtonWidth = 120;
+    const deleteButtonHeight = 45;
+    const deleteButtonWidth = 120;
 
     return (
         <>
+            {/* Organization Name - left column */}
             <Text
-                x={width * 1.1}
-                y={y * 1.1 + height * 0.25}
+                x={orgNameX}
+                y={rowCenterY + 8}
                 text={organization?.name || 'Unknown Organization'}
+                anchor={[0, 0]}
                 style={
                     new TextStyle({
-                        fontFamily: 'Futura',
-                        fontSize: height / 5.5,
-                        fontWeight: height * 4,
+                        align: 'left',
+                        fontFamily: 'Arial',
+                        fontSize: 16,
+                        fontWeight: 'normal',
                         fill: isCurrent ? [green] : [black],
                     })
                 }
             />
-            <RectButton
-                height={55}
-                width={200}
-                x={width * 5}
-                y={y * 1.1 + height * 0.25}
-                color={roleColors[organization.roleSnapshot] || green}
-                fontSize={15}
-                fontColor={white}
-                text={isCurrent ? 'CURRENT' : 'SWITCH TO'}
-                fontWeight={800}
-                callback={handleSelect}
-            />
-            {/* Delete button - only show for Admins and non-current organizations */}
-            {canDelete && onDelete && (
+            
+            {/* Switch Button or Current Text - center column */}
+            {isCurrent ? (
+                <Text
+                    x={switchCenterX}
+                    y={rowCenterY}
+                    text="current"
+                    anchor={0.5}
+                    style={
+                        new TextStyle({
+                            align: 'center',
+                            fontFamily: 'Arial',
+                            fontSize: 16,
+                            fontWeight: 'bold',
+                            fill: [green],
+                        })
+                    }
+                />
+            ) : (
                 <RectButton
-                    height={55}
-                    width={150}
-                    x={width * 7}
-                    y={y * 1.1 + height * 0.25}
-                    color={red}
-                    fontSize={15}
+                    height={switchButtonHeight}
+                    width={switchButtonWidth}
+                    x={switchCenterX - (switchButtonWidth * 0.4) / 2}
+                    y={rowCenterY - (switchButtonHeight * 0.4) / 2}
+                    color={roleColors[organization.roleSnapshot] || green}
+                    fontSize={14}
                     fontColor={white}
-                    text={"DELETE"}
+                    text="SWITCH TO"
                     fontWeight={800}
-                    callback={() => onDelete(organization)}
+                    callback={handleSelect}
                 />
             )}
-            {/* Leave button - always show except for current organization */}
-            {!isCurrent && onLeave && (
+            
+            {/* Leave Button - right column, hide for current or default organization */}
+            {!isCurrent && !isDefault && onLeave && (
                 <RectButton
-                    height={55}
-                    width={150}
-                    x={width * (canDelete ? 8.5 : 7)}
-                    y={y * 1.1 + height * 0.25}
+                    height={leaveButtonHeight}
+                    width={leaveButtonWidth}
+                    x={leaveCenterX - (leaveButtonWidth * 0.4) / 2}
+                    y={rowCenterY - (leaveButtonHeight * 0.4) / 2}
                     color={orange}
-                    fontSize={15}
+                    fontSize={14}
                     fontColor={white}
                     text={"LEAVE"}
                     fontWeight={800}
                     callback={() => onLeave(organization)}
                 />
             )}
-            {/* Current indicator */}
-            {isCurrent && (
-                <Text
-                    x={width * 7.5}
-                    y={y * 1.1 + height * 0.25}
-                    text="(CURRENT)"
-                    style={
-                        new TextStyle({
-                            fontFamily: 'Futura',
-                            fontSize: 12,
-                            fontWeight: 800,
-                            fill: [green],
-                        })
-                    }
+            
+            {/* Delete Button - right column, only show for Admins and non-current organizations */}
+            {canDelete && onDelete && (
+                <RectButton
+                    height={deleteButtonHeight}
+                    width={deleteButtonWidth}
+                    x={deleteCenterX - (deleteButtonWidth * 0.4) / 2}
+                    y={rowCenterY - (deleteButtonHeight * 0.4) / 2}
+                    color={red}
+                    fontSize={14}
+                    fontColor={white}
+                    text={"DELETE"}
+                    fontWeight={800}
+                    callback={() => onDelete(organization)}
                 />
             )}
         </>

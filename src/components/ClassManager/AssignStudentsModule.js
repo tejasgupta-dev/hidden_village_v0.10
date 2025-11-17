@@ -107,7 +107,7 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
         setLoading(false);
       }
     } catch (error) {
-      // console.error('Error loading data:', error); // Убираем вывод ошибки
+      // console.error('Error loading data:', error); // Remove error output
       if (isMountedRef.current) {
         setLoading(false);
       }
@@ -158,12 +158,12 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
       const assignedUserIds = Array.from(allAssignedUserIds);
       const assignedUsersList = users.filter(user => assignedUserIds.includes(user.userId));
       
-      // console.log(`Found ${assignedUsersList.length} unique users across ${classIds.length} classes`); // Убираем лишний лог
+      // console.log(`Found ${assignedUsersList.length} unique users across ${classIds.length} classes`); // Remove unnecessary log
       if (isMountedRef.current) {
         setAssignedUsers(assignedUsersList);
       }
     } catch (error) {
-      // console.error('Error loading assigned users:', error); // Убираем вывод ошибки
+      // console.error('Error loading assigned users:', error); // Remove error output
       if (isMountedRef.current) {
         setAssignedUsers([]);
       }
@@ -200,7 +200,7 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
       // Check if component is still mounted before showing error
       if (!isMountedRef.current) return;
       
-      // console.error('Error removing user from class:', error); // Убираем вывод ошибки в консоль
+      // console.error('Error removing user from class:', error); // Remove error output to console
       alert('Failed to remove user: ' + error.message);
     } finally {
       if (isMountedRef.current) {
@@ -288,7 +288,7 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
       // Check if component is still mounted before showing error
       if (!isMountedRef.current) return;
       
-      // console.error('Error assigning users:', error); // Убираем вывод ошибки
+      // console.error('Error assigning users:', error); // Remove error output
       alert('Failed to assign users: ' + error.message);
     } finally {
       if (isMountedRef.current) {

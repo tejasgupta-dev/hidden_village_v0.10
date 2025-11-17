@@ -2,11 +2,11 @@
 import Background from "../Background";
 import { Text } from "@inlet/react-pixi";
 import { TextStyle } from "@pixi/text";
-import { green, neonGreen, black, blue, white, pink, orange, red, transparent, turquoise, purple, navyBlue, royalBlue, dodgerBlue, powderBlue, midnightBlue, steelBlue, cornflowerBlue } from "../../utils/colors";
+import { green, neonGreen, black, blue, white, pink, orange, red, transparent, turquoise, purple, navyBlue, royalBlue, dodgerBlue, powderBlue, midnightBlue, steelBlue, cornflowerBlue, yellow } from "../../utils/colors";
 import Button from "../Button";
 import RectButton from "../RectButton";
 import { getConjectureDataByUUIDWithCurrentOrg } from "../../firebase/database";
-import {getUsersByOrganizationFromDatabase, getCurrentUserContext} from "../../firebase/userDatabase";
+import {getUsersByOrganizationFromDatabase, getCurrentUserContext, getCurrentUserOrgInfo} from "../../firebase/userDatabase";
 
 import UserList from './UserList';
 
@@ -17,11 +17,12 @@ import NewUserModule from "./NewUserModule";
 
 
 const UserManagementModule = (props) => {
-    const { height, width, firebaseApp, mainCallback, addNewUserCallback } = props;
+    const { height, width, firebaseApp, mainCallback, addNewUserCallback, onOrganizationsClick, onClassesClick } = props;
     const [usersList, setUsersList] = useState([]);
     const [loading, setLoading] = useState(false);
     const [currentOrgId, setCurrentOrgId] = useState(null);
     const [currentUserRole, setCurrentUserRole] = useState(null);
+    const [currentOrgName, setCurrentOrgName] = useState('Loading...');
 
     const refreshUserList = async () => {
         try {
@@ -38,7 +39,13 @@ const UserManagementModule = (props) => {
       setCurrentOrgId(orgId);
       setCurrentUserRole(role);
       
-      /* 2.  fetch users – returns [] on empty org */
+      /* 2.  fetch organization name */
+      const orgInfo = await getCurrentUserOrgInfo(firebaseApp);
+      if (orgInfo && orgInfo.orgName) {
+        setCurrentOrgName(orgInfo.orgName);
+      }
+      
+      /* 3.  fetch users – returns [] on empty org */
       const users = await getUsersByOrganizationFromDatabase(orgId, firebaseApp);
       console.log('User 0:', users.length ? users[0] : 'none');
       setUsersList(users);
@@ -65,7 +72,7 @@ const UserManagementModule = (props) => {
 
     return(
     <>
-        < Background height={height * 1.1} width={width} />
+        < Background height={height} width={width} />
         {/*Ttile*/}
         <Text
             text={`User Management`}
@@ -82,41 +89,71 @@ const UserManagementModule = (props) => {
             })
             }
         />
-        {/* Refresh Button */}
-        <RectButton
-            height={height * 0.13}
-            width={width * 0.4}
-            x={width * 0.4}
-            y={height * 0.93}
-            color={navyBlue} 
-            fontSize={width * 0.015}
-            fontColor={white} 
-            text={loading ? "REFRESHING..." : "REFRESH USERS"}
-            fontWeight={800}
-            callback={refreshUserList}
+        {/* Current Organization */}
+        <Text
+            text={`CURRENT ORGANIZATION: ${currentOrgName}`}
+            x={width * 0.12}
+            y={height * 0.12}
+            style={
+            new TextStyle({
+                align: "left",
+                fontFamily: "Arial",
+                fontSize: 24,
+                fontWeight: "bold",
+                fill: [black],
+            })
+            }
         />
         {/* Display Users only if usersList is not null */}
         {usersList.length !== 0 && (
             <UserList 
                 users={usersList} 
-                height={height * 0.12}
-                width={width * 0.26}
-                x={width * 0.4}
-                y={height * 0.93}
+                height={height * 0.5}
+                width={width * 0.5}
+                x={width * 0.1}
+                y={height * 0.25}
                 orgId={currentOrgId}
                 refreshUserListCallback = {refreshUserList}
                 currentUserRole={currentUserRole}
             />
         )}
 
-        {/* Back Button */}
+        {/* Bottom Navigation Buttons */}
         <RectButton
-            height={height * 0.13}
-            width={width * 0.26}
-            x={width * 0.15}
-            y={height * 0.93}
+            height={height * 0.08}
+            width={width * 0.2}
+            x={width * 0.1}
+            y={height * 0.88}
+            color={green}
+            fontSize={width * 0.012}
+            fontColor={white}
+            text={"ORG"}
+            fontWeight={800}
+            callback={onOrganizationsClick || (() => {})}
+        />
+        
+        {onClassesClick && (
+            <RectButton
+                height={height * 0.08}
+                width={width * 0.2}
+                x={width * 0.45}
+                y={height * 0.88}
+                color={green}
+                fontSize={width * 0.012}
+                fontColor={white}
+                text={"CLASSES"}
+                fontWeight={800}
+                callback={onClassesClick}
+            />
+        )}
+        
+        <RectButton
+            height={height * 0.08}
+            width={width * 0.2}
+            x={width * 0.8}
+            y={height * 0.88}
             color={red}
-            fontSize={width * 0.015}
+            fontSize={width * 0.012}
             fontColor={white}
             text={"BACK"}
             fontWeight={800}
