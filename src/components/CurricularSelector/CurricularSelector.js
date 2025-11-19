@@ -5,7 +5,7 @@ import Background from "../Background";
 import { blue, white, red, neonGreen, green, black } from "../../utils/colors";
 import RectButton from "../RectButton";
 import { getCurricularListWithCurrentOrg, writeToDatabaseGameSelect, writeToDatabaseNewSession } from "../../firebase/database";
-import { getUserNameFromDatabase, getCurrentUserContext, getCurrentClassContext, getClassInfo, getClassesInOrg } from "../../firebase/userDatabase";
+import { getUserNameFromDatabase, getCurrentUserContext, getCurrentClassContext, getClassInfo } from "../../firebase/userDatabase";
 import { CurricularSelectorBoxes } from "./CurricularSelectorModuleBoxes";
 import { useMachine } from "@xstate/react";
 import { Curriculum } from "../CurricularModule/CurricularModule";
@@ -101,9 +101,18 @@ async function handleGameClicked(curricular, curricularCallback, setLoading, fir
 
     setLoading(false); // stop loading before callback
     console.log("Levels fetched, redirecting!");
-    curricularCallback();
+    if (curricularCallback) {
+      curricularCallback();
+    } else {
+      console.error("Error in handleGameClicked: curricularCallback is undefined");
+    }
   } catch (error) {
     console.error("Error in handleGameClicked:", error);
+    console.error("Error details:", {
+      message: error.message,
+      stack: error.stack,
+      curricular: curricular
+    });
     setLoading(false); // make sure loading is turned off on error
   }
 }
@@ -118,8 +127,6 @@ const CurricularSelectModule = (props) => {
   const [selectedCurricular, setSelectedCurricular] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showPublic, setShowPublic] = useState(false);
-  const [selectedClassId, setSelectedClassId] = useState(null);
-  const [classes, setClasses] = useState([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -135,9 +142,31 @@ const CurricularSelectModule = (props) => {
           if (!isMounted) return;
           
           if (!classId || !orgId) {
-            console.warn('No class context found');
+            console.warn('No class context found - showing organization and public games');
+            // Get all games (organization games + public games from other orgs)
+            const allGames = await getCurricularListWithCurrentOrg(isPlayMode, true);
+            
+            if (!isMounted) return;
+            
+            // Filter: organization games (without _isFromOtherOrg) + public games (with isPublic === true or _isFromOtherOrg === true)
+            let availableGames = [];
+            if (allGames) {
+              availableGames = allGames.filter(game => {
+                // Games from current organization (not from other orgs)
+                if (!game._isFromOtherOrg) {
+                  return true;
+                }
+                // Public games from other organizations
+                if (game._isFromOtherOrg && game.isPublic === true) {
+                  return true;
+                }
+                return false;
+              });
+            }
+            
+            console.log('Available games (org + public):', availableGames.length, 'out of', allGames ? allGames.length : 0);
             if (isMounted) {
-              setCurricularList([]); // Empty list to show message
+              setCurricularList(availableGames);
               setLoading(false);
             }
             return;
@@ -150,7 +179,7 @@ const CurricularSelectModule = (props) => {
           console.log('Current class:', classId, 'Assigned games:', assignedGameIds);
           
           // Get all games
-          const allGames = await getCurricularListWithCurrentOrg(isPlayMode);
+          const allGames = await getCurricularListWithCurrentOrg(isPlayMode, true);
           
           if (!isMounted) return;
           
@@ -164,7 +193,7 @@ const CurricularSelectModule = (props) => {
         } else {
           // EDIT mode: show all games created by current user
           console.log('EDIT mode: showing all user games');
-          const result = await getCurricularListWithCurrentOrg(isPlayMode);
+          const result = await getCurricularListWithCurrentOrg(isPlayMode, true);
           if (isMounted) {
             setCurricularList(result || []);
           }
@@ -187,26 +216,6 @@ const CurricularSelectModule = (props) => {
     return () => {
       isMounted = false;
     };
-    
-    // Load classes for filter
-    const loadClasses = async () => {
-      try {
-        const userContext = await getCurrentUserContext(firebaseApp);
-        if (userContext?.orgId) {
-          const orgClasses = await getClassesInOrg(userContext.orgId, firebaseApp);
-          const classList = Object.keys(orgClasses).map(classId => ({
-            id: classId,
-            name: orgClasses[classId]?.name || 'Unknown Class'
-          }));
-          if (isMounted) {
-            setClasses(classList);
-          }
-        }
-      } catch (error) {
-        console.error('Error loading classes:', error);
-      }
-    };
-    loadClasses();
   }, []);
   
   // Apply filters
@@ -215,26 +224,11 @@ const CurricularSelectModule = (props) => {
     
     const applyFilters = async () => {
       let filtered = [...curricularList];
-      const userContext = await getCurrentUserContext(firebaseApp);
-      
-      // Filter by class if selected
-      if (selectedClassId && userContext?.orgId) {
-        try {
-          const classInfo = await getClassInfo(userContext.orgId, selectedClassId, firebaseApp);
-          const assignedGameIds = classInfo?.assignedGames ? Object.keys(classInfo.assignedGames) : [];
-          
-          // Filter to show only games assigned to selected class
-          filtered = filtered.filter(game => {
-            const gameId = game.UUID || game.id;
-            return assignedGameIds.includes(gameId);
-          });
-        } catch (error) {
-          console.error('Error filtering by class:', error);
-        }
-      }
       
       // Filter by public/private - if showPublic is false, hide public games from other orgs
-      // Note: This is simplified - full implementation would require orgId in game data
+      if (!showPublic) {
+        filtered = filtered.filter(curricular => !curricular._isFromOtherOrg);
+      }
       
       // Only update state if component is still mounted
       if (isMounted) {
@@ -249,7 +243,7 @@ const CurricularSelectModule = (props) => {
     return () => {
       isMounted = false;
     };
-  }, [curricularList, selectedClassId, showPublic, firebaseApp]);
+  }, [curricularList, showPublic, firebaseApp]);
 
   // Listen for user context changes (organization/class switches)
   useEffect(() => {
@@ -270,9 +264,31 @@ const CurricularSelectModule = (props) => {
             if (!isMounted) return;
             
             if (!classId || !orgId) {
-              console.warn('CurricularSelector: No class context found');
+              console.warn('CurricularSelector: No class context found - showing organization and public games');
+              // Get all games (organization games + public games from other orgs)
+              const allGames = await getCurricularListWithCurrentOrg(isPlayMode, true);
+              
+              if (!isMounted) return;
+              
+              // Filter: organization games (without _isFromOtherOrg) + public games (with isPublic === true or _isFromOtherOrg === true)
+              let availableGames = [];
+              if (allGames) {
+                availableGames = allGames.filter(game => {
+                  // Games from current organization (not from other orgs)
+                  if (!game._isFromOtherOrg) {
+                    return true;
+                  }
+                  // Public games from other organizations
+                  if (game._isFromOtherOrg && game.isPublic === true) {
+                    return true;
+                  }
+                  return false;
+                });
+              }
+              
+              console.log('CurricularSelector: Available games (org + public):', availableGames.length, 'out of', allGames ? allGames.length : 0);
               if (isMounted) {
-                setCurricularList([]); // Empty list to show message
+                setCurricularList(availableGames);
                 setLoading(false);
               }
               return;
@@ -285,7 +301,7 @@ const CurricularSelectModule = (props) => {
             console.log('CurricularSelector: Updated current class:', classId, 'Assigned games:', assignedGameIds);
             
             // Get all games
-            const allGames = await getCurricularListWithCurrentOrg(isPlayMode);
+            const allGames = await getCurricularListWithCurrentOrg(isPlayMode, true);
             
             if (!isMounted) return;
             
@@ -299,7 +315,7 @@ const CurricularSelectModule = (props) => {
           } else {
             // EDIT mode: show all games created by current user
             console.log('CurricularSelector: EDIT mode: showing all user games');
-            const result = await getCurricularListWithCurrentOrg(isPlayMode);
+            const result = await getCurricularListWithCurrentOrg(isPlayMode, true);
             console.log('CurricularSelector: Updated games for edit mode:', result?.length || 0);
             if (isMounted) {
               setCurricularList(result || []);
@@ -484,10 +500,10 @@ const CurricularSelectModule = (props) => {
 
       {/* Filters */}
       <RectButton
-        height={height * 0.08}
+        height={height * 0.2}
         width={width * 0.15}
         x={width * 0.1}
-        y={height * 0.05}
+        y={height * 0.07}
         color={showPublic ? green : white}
         fontSize={width * 0.012}
         fontColor={showPublic ? white : black}
@@ -495,31 +511,6 @@ const CurricularSelectModule = (props) => {
         fontWeight={600}
         callback={() => setShowPublic(!showPublic)}
       />
-      
-      {/* Class Filter */}
-      {classes.length > 0 && (
-        <RectButton
-          height={height * 0.08}
-          width={width * 0.15}
-          x={width * 0.27}
-          y={height * 0.05}
-          color={selectedClassId ? green : white}
-          fontSize={width * 0.012}
-          fontColor={selectedClassId ? white : black}
-          text={selectedClassId ? `CLASS: ${classes.find(c => c.id === selectedClassId)?.name || 'Selected'}` : "FILTER BY CLASS"}
-          fontWeight={600}
-          callback={() => {
-            // Cycle through classes or show prompt
-            const currentIndex = selectedClassId ? classes.findIndex(c => c.id === selectedClassId) : -1;
-            const nextIndex = (currentIndex + 1) % (classes.length + 1);
-            if (nextIndex === 0) {
-              setSelectedClassId(null); // Show all
-            } else {
-              setSelectedClassId(classes[nextIndex - 1].id);
-            }
-          }}
-        />
-      )}
 
       <RectButton
         height={height * 0.13}
@@ -561,7 +552,7 @@ const CurricularSelectModule = (props) => {
       {curricularList.length === 0 ? (
         <Text
           text={getPlayGame() 
-            ? "No games available. Contact your teacher to be assigned to a class or to have games assigned to your class."
+            ? "No games available. If you are in a class, contact your teacher to have games assigned to your class. Otherwise, check for public games or games from your organization."
             : "No games found. Create some games first."}
           x={width * 0.15}
           y={height * 0.4}

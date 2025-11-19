@@ -295,12 +295,12 @@ export const CurricularContentEditor = (props) => {
         const isPublic = localStorage.getItem('GameIsPublic') === 'true';
         return (
           <>
-            {createTextElement("Public:", 0.690, 0.24, 0.018, width, height)}
+            {createTextElement("Public:", 0.700, 0.31, 0.018, width, height)}
             <InputBox
-              height={height * 0.06}
+              height={height * 0.08}
               width={width * 0.15}
-              x={width * 0.73}
-              y={height * 0.235}
+              x={width * 0.77}
+              y={height * 0.32}
               color={isPublic ? green : white}
               fontSize={width * 0.012}
               text={isPublic ? 'YES' : 'NO'}

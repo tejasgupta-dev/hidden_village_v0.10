@@ -98,7 +98,7 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
       }
       
       // Load user's games (only games created by current user)
-      const allGames = await getCurricularListWithCurrentOrg(false);
+      const allGames = await getCurricularListWithCurrentOrg(false, true);
       const userGames = allGames ? allGames.filter(game => {
         return game.AuthorID === currentUser.uid;
       }) : [];

@@ -216,7 +216,7 @@ export const PublicCheckbox = (props) => {
     <>
       <Text
         x={width * 0.6910}
-        y={height * 0.19}
+        y={height * 0.33}
         text="PUBLIC:"
         style={new TextStyle({
           fontFamily: 'Arial',
@@ -226,10 +226,10 @@ export const PublicCheckbox = (props) => {
         })}
       />
       <InputBox
-        height={height * 0.06}
+        height={height * 0.08}
         width={width * 0.15}
         x={width * 0.75}
-        y={height * 0.185}
+        y={height * 0.33}
         color={isPublic ? green : white}
         fontSize={width * 0.012}
         text={isPublic ? 'YES' : 'NO'}

@@ -75,10 +75,19 @@ export const Curriculum = {
       console.log('Curriculum: Loading conjectures for UUIDs:', levelIds);
       for (let i = 0; i < levelIds.length; i++) {
         console.log(`Curriculum: Loading conjecture ${i + 1}/${levelIds.length}:`, levelIds[i]);
-        const conjectureList = await getConjectureDataByUUIDWithCurrentOrg(levelIds[i]);
-        const conjecture = conjectureList[levelIds[i]];
-        console.log(`Curriculum: Loaded conjecture ${i + 1}:`, conjecture);
-        this.CurrentConjectures.push(conjecture);
+        try {
+          const conjectureList = await getConjectureDataByUUIDWithCurrentOrg(levelIds[i]);
+          if (conjectureList && conjectureList[levelIds[i]]) {
+            const conjecture = conjectureList[levelIds[i]];
+            console.log(`Curriculum: Loaded conjecture ${i + 1}:`, conjecture);
+            this.CurrentConjectures.push(conjecture);
+          } else {
+            console.warn(`Curriculum: Conjecture ${levelIds[i]} not found or could not be loaded`);
+          }
+        } catch (error) {
+          console.error(`Curriculum: Error loading conjecture ${levelIds[i]}:`, error);
+          // Continue loading other conjectures even if one fails
+        }
       }
       console.log('Curriculum: Total conjectures loaded:', this.CurrentConjectures.length);
     } else {

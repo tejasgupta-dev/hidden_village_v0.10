@@ -485,7 +485,7 @@ export const EndBox = (props) => {
     g.clear();
     g.beginFill(black);
     if (props.inCE === true) {
-      g.drawRect(props.width * 0.7, props.height * 0.976, props.width * 0.2, props.height * 0.04);  // (x, y, width, height)
+      g.drawRect(props.width * 1.3, props.height * 0.976, props.width * 0.2, props.height * 0.04);  // (x, y, width, height)
     }
     else {
       g.drawRect(props.width * 0.099, props.height * 0.85, props.width * 0.202, props.height * 0.04);  // (x, y, width, height)
@@ -517,8 +517,8 @@ export const EndBox = (props) => {
         <Graphics draw={drawTextBox} />
         <Text
             text={"End Pose"}
-            x={props.width * 0.8}
-            y={props.height * 0.998}
+            x={props.width * 1.4}
+            y={props.height}
             style={
               new TextStyle({
                 align: "center",

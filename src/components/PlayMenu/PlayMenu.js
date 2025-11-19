@@ -3,7 +3,8 @@ import { Text } from "@inlet/react-pixi";
 import { TextStyle } from "@pixi/text";
 import Background from "../Background"
 import Button from "../Button";
-import { red, yellow, purple, babyBlue, powderBlue, cornflowerBlue, steelBlue, dodgerBlue, royalBlue, white, black, green } from "../../utils/colors";
+import RectButton from "../RectButton";
+import { red, yellow, purple, babyBlue, powderBlue, cornflowerBlue, steelBlue, dodgerBlue, royalBlue, white, black, green, blue } from "../../utils/colors";
 import { useMachine } from "@xstate/react";
 import {PlayMenuMachine} from "./PlayMenuMachine";
 import ConjectureModule , {getEditLevel, setEditLevel, getGoBackFromLevelEdit, setGoBackFromLevelEdit} from "../ConjectureModule/ConjectureModule";
@@ -11,7 +12,7 @@ import CurricularModule from "../CurricularModule/CurricularModule.js";
 import ConjectureSelectorModule, { getAddToCurricular, setAddtoCurricular } from "../ConjectureSelector/ConjectureSelectorModule.js";
 import CurricularSelectorModule, { getPlayGame, setPlayGame } from "../CurricularSelector/CurricularSelector.js";
 import StoryEditorModule from "../StoryEditorModule/StoryEditorModule.js"; 
-import { getCurrentUserContext, getUserOrgsFromDatabase, switchPrimaryOrganization, getOrganizationInfo } from "../../firebase/userDatabase";
+import { getCurrentUserContext, getUserOrgsFromDatabase, switchPrimaryOrganization, getOrganizationInfo, useInviteCode } from "../../firebase/userDatabase";
 import firebase from "firebase/compat";
 import { Curriculum } from "../CurricularModule/CurricularModule.js";
 import Settings from "../Settings";
@@ -91,6 +92,31 @@ const PlayMenu = (props) => {
         }
     };
     
+    const handleJoinWithInviteCode = async () => {
+        try {
+            const inviteCode = prompt('Enter invite code:');
+            if (!inviteCode || inviteCode.trim() === '') {
+                return; // User cancelled or entered empty code
+            }
+            
+            const auth = firebaseApp.auth();
+            const user = auth.currentUser;
+            if (!user) {
+                alert('User not authenticated');
+                return;
+            }
+            
+            const result = await useInviteCode(inviteCode.trim(), user.uid, firebaseApp);
+            alert(`Successfully joined organization: ${result.orgName}`);
+            
+            // Reload page to refresh context
+            window.location.reload();
+        } catch (error) {
+            console.error('Error joining organization with invite code:', error);
+            alert('Failed to join organization: ' + error.message);
+        }
+    };
+    
     // Update userRole when role prop changes
     useEffect(() => {
         console.log('PlayMenu: Role prop changed from', userRole, 'to', role);
@@ -136,8 +162,7 @@ const PlayMenu = (props) => {
                 {text: "EDIT GAME", callback: () => (setPlayGame(false), send("GAMESELECT")), color: powderBlue},
                 {text: "PLAY", callback: () => (setPlayGame(true), send("GAMESELECT")), color: royalBlue},
                 {text: "NEW LEVEL", callback: () => (setEditLevel(true), send("NEWLEVEL")), color: dodgerBlue},
-                {text: "EDIT LEVEL", callback: () => (setAddtoCurricular(false),send("LEVELSELECT")), color: steelBlue},
-                {text: "SETTINGS", callback: () => send("SETTINGS"), color: cornflowerBlue}
+                {text: "EDIT LEVEL", callback: () => (setAddtoCurricular(false),send("LEVELSELECT")), color: steelBlue}
             );
         } else if (role === "Teacher"){
             console.log('PlayMenu: Building Teacher button list');
@@ -208,15 +233,15 @@ const PlayMenu = (props) => {
               {studentOrgs.map((org, idx) => {
                 if (org.id === currentOrgId) return null; // Don't show current org as button
                 return (
-                  <Button
+                  <RectButton
                     key={org.id}
-                    height={height * 0.03}
-                    width={width * 0.15}
+                    height={height * 0.2}
+                    width={width * 0.19}
                     x={width * 0.1}
                     y={height * 0.21 + (idx * height * 0.04)}
-                    color={yellow}
-                    fontSize={12}
-                    fontColor={black}
+                    color={blue}
+                    fontSize={width * 0.012}
+                    fontColor={white}
                     text={`SWITCH TO: ${org.name}`}
                     fontWeight={600}
                     callback={() => handleSwitchOrganization(org.id)}
@@ -224,6 +249,22 @@ const PlayMenu = (props) => {
                 );
               })}
             </>
+          )}
+          
+          {/* Student Invite Code Button */}
+          {userRole === "Student" && (
+            <RectButton
+              height={height * 0.2}
+              width={width * 0.19}
+              x={width * 0.1 + width * 0.2}
+              y={height * 0.21}
+              color={blue}
+              fontSize={width * 0.012}
+              fontColor={white}
+              text="ENTER INVITE CODE"
+              fontWeight={600}
+              callback={handleJoinWithInviteCode}
+            />
           )}
         </>
         )}

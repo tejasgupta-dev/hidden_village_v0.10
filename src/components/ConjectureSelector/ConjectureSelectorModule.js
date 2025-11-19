@@ -10,7 +10,7 @@ import { currentConjecture, setEditLevel, setGoBackFromLevelEdit } from "../Conj
 import PixiLoader from '../utilities/PixiLoader';
 import { getAuth } from "firebase/auth";
 import firebase from "firebase/compat/app";
-import { canEditWithoutPIN, getCurrentUserContext, getClassesInOrg, getCurrentClassContext, getClassInfo } from "../../firebase/userDatabase";
+import { canEditWithoutPIN, getCurrentUserContext } from "../../firebase/userDatabase";
 
 import InputBox from '../InputBox';
 
@@ -108,32 +108,17 @@ const ConjectureSelectModule = (props) => {
   const [selectedConjecture, setSelectedConjecture] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showPublic, setShowPublic] = useState(false);
-  const [selectedClassId, setSelectedClassId] = useState(null);
-  const [classes, setClasses] = useState([]);
 
   useEffect(() => {
     let isMounted = true;
     
     const fetchData = async () => {
       try {
-        const result = await getConjectureListWithCurrentOrg(addToCurricular);
+        const result = await getConjectureListWithCurrentOrg(addToCurricular, true);
         
         if (!isMounted) return;
         
         setConjectureList(result);
-        
-        // Load classes for filter
-        const userContext = await getCurrentUserContext(app);
-        if (userContext?.orgId) {
-          const orgClasses = await getClassesInOrg(userContext.orgId, app);
-          const classList = Object.keys(orgClasses).map(classId => ({
-            id: classId,
-            name: orgClasses[classId]?.name || 'Unknown Class'
-          }));
-          if (isMounted) {
-            setClasses(classList);
-          }
-        }
         
         if (isMounted) {
           setLoading(false);
@@ -160,27 +145,11 @@ const ConjectureSelectModule = (props) => {
     
     const applyFilters = async () => {
       let filtered = [...conjectureList];
-      const userContext = await getCurrentUserContext(app);
-      
-      // Filter by class if selected
-      if (selectedClassId && userContext?.orgId) {
-        try {
-          const classInfo = await getClassInfo(userContext.orgId, selectedClassId, app);
-          const assignedLevelIds = classInfo?.assignedLevels ? Object.keys(classInfo.assignedLevels) : [];
-          
-          // Filter to show only levels assigned to selected class
-          filtered = filtered.filter(level => {
-            const levelId = level.UUID || level.id;
-            return assignedLevelIds.includes(levelId);
-          });
-        } catch (error) {
-          console.error('Error filtering by class:', error);
-        }
-      }
       
       // Filter by public/private - if showPublic is false, hide public levels from other orgs
-      // Note: This is simplified - full implementation would require orgId in level data
-      // For now, we show all levels when showPublic is true
+      if (!showPublic) {
+        filtered = filtered.filter(conjecture => !conjecture._isFromOtherOrg);
+      }
       
       // Only update state if component is still mounted
       if (isMounted) {
@@ -195,7 +164,7 @@ const ConjectureSelectModule = (props) => {
     return () => {
       isMounted = false;
     };
-  }, [conjectureList, selectedClassId, showPublic, app]);
+  }, [conjectureList, showPublic, app]);
 
   //use to get a fixed number of conjectures per page and to navigate between the pages
   const conjecturesPerPage = 7;
@@ -415,7 +384,7 @@ const ConjectureSelectModule = (props) => {
       
       {/* Filters */}
       <RectButton
-        height={height * 0.08}
+        height={height * 0.2}
         width={width * 0.15}
         x={width * 0.1}
         y={height * 0.05}
@@ -426,31 +395,6 @@ const ConjectureSelectModule = (props) => {
         fontWeight={600}
         callback={() => setShowPublic(!showPublic)}
       />
-      
-      {/* Class Filter */}
-      {classes.length > 0 && (
-        <RectButton
-          height={height * 0.08}
-          width={width * 0.15}
-          x={width * 0.27}
-          y={height * 0.05}
-          color={selectedClassId ? green : white}
-          fontSize={width * 0.012}
-          fontColor={selectedClassId ? white : black}
-          text={selectedClassId ? `CLASS: ${classes.find(c => c.id === selectedClassId)?.name || 'Selected'}` : "FILTER BY CLASS"}
-          fontWeight={600}
-          callback={() => {
-            // Cycle through classes or show prompt
-            const currentIndex = selectedClassId ? classes.findIndex(c => c.id === selectedClassId) : -1;
-            const nextIndex = (currentIndex + 1) % (classes.length + 1);
-            if (nextIndex === 0) {
-              setSelectedClassId(null); // Show all
-            } else {
-              setSelectedClassId(classes[nextIndex - 1].id);
-            }
-          }}
-        />
-      )}
 
       <RectButton
         height={height * 0.13}

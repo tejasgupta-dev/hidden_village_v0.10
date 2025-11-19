@@ -398,7 +398,8 @@ export const getConjectureListWithCurrentOrg = async (final, includePublicFromOt
             for (const [levelId, levelData] of Object.entries(otherLevels)) {
               // Only include public levels
               if (levelData.isPublic === true) {
-                result.push(levelData);
+                // Mark as from other organization for filtering
+                result.push({ ...levelData, _isFromOtherOrg: true });
               }
             }
           }
@@ -445,7 +446,8 @@ export const getCurricularListWithCurrentOrg = async (final, includePublicFromOt
             for (const [gameId, gameData] of Object.entries(otherGames)) {
               // Only include public games
               if (gameData.isPublic === true) {
-                result.push(gameData);
+                // Mark as from other organization for filtering
+                result.push({ ...gameData, _isFromOtherOrg: true });
               }
             }
           }
@@ -470,7 +472,56 @@ export const searchConjecturesByWordWithCurrentOrg = async (searchWord) => {
   const searchResults = await searchConjecturesByWord(searchWord, orgId);
   
   // Handle null/undefined case
-  return searchResults || [];
+  let result = searchResults || [];
+  
+  // Also search public levels from other organizations
+  try {
+    const db = getDatabase();
+    const orgsRef = ref(db, 'orgs');
+    const orgsSnapshot = await get(orgsRef);
+    
+    if (orgsSnapshot.exists()) {
+      const orgs = orgsSnapshot.val();
+      const normalizedSearchWord = searchWord?.toLowerCase?.() || "";
+      const isCleared = normalizedSearchWord.trim() === "";
+      
+      for (const [otherOrgId, orgData] of Object.entries(orgs)) {
+        if (otherOrgId === orgId) continue; // Skip current org
+        
+        const levelsRef = ref(db, `orgs/${otherOrgId}/levels`);
+        const levelsSnapshot = await get(levelsRef);
+        
+        if (levelsSnapshot.exists()) {
+          const otherLevels = levelsSnapshot.val();
+          for (const [levelId, levelData] of Object.entries(otherLevels)) {
+            // Only include public levels
+            if (levelData.isPublic === true) {
+              // Apply the same search logic
+              if (isCleared) {
+                // If cleared or empty, include all public levels
+                result.push({ ...levelData, _isFromOtherOrg: true });
+              } else {
+                // Check if search word matches
+                const searchWords = levelData?.['Search Words'];
+                if (searchWords) {
+                  for (const word of Object.keys(searchWords)) {
+                    if (word.toLowerCase() === normalizedSearchWord) {
+                      result.push({ ...levelData, _isFromOtherOrg: true });
+                      break; // stop checking more keys
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching public levels from other orgs in search:', error);
+  }
+  
+  return result;
 };
 
 export const saveGameWithCurrentOrg = async (UUID = null, isFinal = false) => {
@@ -509,9 +560,47 @@ export const getConjectureDataByUUIDWithCurrentOrg = async (conjectureID) => {
     console.warn("getConjectureDataByUUIDWithCurrentOrg: User is not in any organization.");
     return null;
   }
+  
+  // First, try to find in current organization
   console.log('getConjectureDataByUUIDWithCurrentOrg: Calling getConjectureDataByUUID with:', { conjectureID, orgId });
-  const result = await getConjectureDataByUUID(conjectureID, orgId);
-  console.log('getConjectureDataByUUIDWithCurrentOrg: Result:', result);
+  let result = await getConjectureDataByUUID(conjectureID, orgId);
+  console.log('getConjectureDataByUUIDWithCurrentOrg: Result from current org:', result);
+  
+  // If not found in current org, search in all other organizations
+  if (!result) {
+    console.log('getConjectureDataByUUIDWithCurrentOrg: Level not found in current org, searching in other organizations...');
+    try {
+      const db = getDatabase();
+      const orgsRef = ref(db, 'orgs');
+      const orgsSnapshot = await get(orgsRef);
+      
+      if (orgsSnapshot.exists()) {
+        const orgs = orgsSnapshot.val();
+        for (const [otherOrgId, orgData] of Object.entries(orgs)) {
+          if (otherOrgId === orgId) continue; // Skip current org (already searched)
+          
+          const levelsRef = ref(db, `orgs/${otherOrgId}/levels`);
+          const levelsSnapshot = await get(levelsRef);
+          
+          if (levelsSnapshot.exists()) {
+            const otherLevels = levelsSnapshot.val();
+            for (const [levelId, levelData] of Object.entries(otherLevels)) {
+              if (levelData.UUID === conjectureID) {
+                console.log(`getConjectureDataByUUIDWithCurrentOrg: Found level in organization ${otherOrgId}`);
+                // Return the level data in the same format as getConjectureDataByUUID
+                return { [levelId]: levelData };
+              }
+            }
+          }
+        }
+        console.log('getConjectureDataByUUIDWithCurrentOrg: Level not found in any organization');
+      }
+    } catch (error) {
+      console.error('getConjectureDataByUUIDWithCurrentOrg: Error searching in other organizations:', error);
+      // Return null if search fails
+    }
+  }
+  
   return result;
 };
 

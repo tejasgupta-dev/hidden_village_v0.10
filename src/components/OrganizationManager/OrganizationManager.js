@@ -5,7 +5,7 @@ import { blue, white, red, green, black, navyBlue } from "../../utils/colors";
 import RectButton from "../RectButton";
 import Background from "../Background";
 import OrganizationList from "./OrganizationList";
-import { getCurrentUserContext, getUserOrgsFromDatabase, getOrganizationInfo, findOrganizationByName, createOrganization, useInviteCode, deleteOrganization, leaveOrganization, refreshUserContext } from "../../firebase/userDatabase";
+import { getCurrentUserContext, getUserOrgsFromDatabase, getOrganizationInfo, findOrganizationByName, createOrganization, useInviteCode, deleteOrganization, leaveOrganization, refreshUserContext, isDefaultOrganization } from "../../firebase/userDatabase";
 import { getAuth } from "firebase/auth";
 import { getDatabase, ref, get, set } from "firebase/database";
 
