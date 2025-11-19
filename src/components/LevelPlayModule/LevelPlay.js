@@ -1,5 +1,5 @@
 import { useMachine } from '@xstate/react';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 import VideoRecorder from '../VideoRecorder';
 import Chapter from '../Chapter';
@@ -13,6 +13,7 @@ import {
   writeToDatabaseIntuitionStart,
   writeToDatabaseIntuitionEnd,
 } from '../../firebase/database';
+import NewStage from '../NewStage';
 
 export default function LevelPlay(props) {
   const {
@@ -47,8 +48,14 @@ export default function LevelPlay(props) {
   const [poses, setPoses] = useState([]);
   const [tolerances, setTolerances] = useState([]);
   const [expText, setExpText] = useState('');
+  const [settings, setSettings] = useState(null);
   const tweenDuration = 2000;
   const tweenLoopCount = 2;
+
+  // Memoize onComplete callback to prevent timer resets in child components
+  const handleNext = useCallback(() => {
+    send('NEXT');
+  }, [send]);
 
   /* ---------- load conjecture data ---------- */
   useEffect(() => {
@@ -120,6 +127,36 @@ export default function LevelPlay(props) {
         };
       }, [state.value]);
 
+  // Load settings when component mounts
+  useEffect(() => {
+    const loadSettings = async () => {
+      const userSettings = await getUserSettings();
+      setSettings(userSettings);
+    };
+    loadSettings();
+  }, []);
+
+  // If story is disabled, skip intro/outro so the game continues
+  useEffect(() => {
+    if (!settings) return;
+    if (settings.story === false) {
+      // If we're stuck at the intro, mark it shown and advance
+      if (state.value === 'introDialogue') {
+        try {
+          markIntroShown(currentConjectureIdx);
+        } catch (e) {
+          // no-op if markIntroShown isn't available
+        }
+        send('NEXT');
+      }
+      // If we're at the outro, finish the level immediately
+      if (state.value === 'outroDialogue') {
+        onLevelComplete?.();
+      }
+    }
+  }, [settings, state.value, currentConjectureIdx, markIntroShown, send, onLevelComplete]);
+  
+  // Only show story/dialogue content if settings.story is true
   return (
     <>
       {/* NOTE: TO OPTIMIZE DATABASE STORAGE AND NOT INCUR ADDITIONAL COSTS, 
@@ -133,7 +170,8 @@ export default function LevelPlay(props) {
       {/* Intro dialogue */}
       {state.value === 'introDialogue' &&
         !hasShownIntro(currentConjectureIdx) &&
-        conjectureData && (
+        conjectureData && 
+        settings?.story && (
           <Chapter
             key={`intro-${UUID}`}
             poseData={poseData}
@@ -149,7 +187,15 @@ export default function LevelPlay(props) {
             }}
             isOutro={false}
           />
-        )}
+      )}
+      {/* NOTE: TO OPTIMIZE DATABASE STORAGE AND NOT INCUR ADDITIONAL COSTS, 
+          VIDEO RECORDING IS ONLY RETAINED FOR THE STATES MENTIONED BELOW.
+          SIMPLY ADD THE STATE NAME TO ENABLE RECORDING FOR THAT PHASE */}
+      {(['tween','poseMatching', 'intuition', 'insight'].includes(state.value)) && (
+        <VideoRecorder phase={state.value} curricularID={UUID} gameID={gameID} />
+      )}
+
+      
 
       {/* Tween animation */}
       {state.value === 'tween' && poses.length > 0 && (
@@ -160,7 +206,7 @@ export default function LevelPlay(props) {
           height={height}
           loop={tweenLoopCount}
           ease={true}    
-          onComplete={() => send('NEXT')}
+          onComplete={handleNext}
         />
       )}
 
@@ -176,7 +222,7 @@ export default function LevelPlay(props) {
           UUID={UUID}
           poses={poses}
           tolerances={tolerances}
-          onCompleteCallback={() => send('NEXT')}
+          onCompleteCallback={handleNext}
           gameID={gameID}
         />
       )}
@@ -191,9 +237,10 @@ export default function LevelPlay(props) {
           rowDimensions={rowDimensions}
           poseData={poseData}
           UUID={UUID}
-          onComplete={() => send('NEXT')}
+          onComplete={handleNext}
           cursorTimer={debugMode ? 1000 : 10000}
           gameID={gameID}
+          stageType="intuition"
         />
       )}
       {state.value === 'insight' && (
@@ -205,7 +252,8 @@ export default function LevelPlay(props) {
           rowDimensions={rowDimensions}
           poseData={poseData}
           UUID={UUID}
-          onComplete={() => send('NEXT')}
+          onComplete={handleNext}
+          stageType="insight"
           cursorTimer={debugMode ? 1000 : 15000}
           gameID={gameID}
         />
@@ -226,6 +274,17 @@ export default function LevelPlay(props) {
           gameID={gameID}
         />
       )} */}
+      {state.value === 'mcq' && (
+        <NewStage
+          width={width}
+          height={height}
+          onComplete={handleNext}
+          gameID={gameID}
+          poseData={poseData}
+          columnDimensions={columnDimensions}
+          question="How many sides does a triangle have?"
+        />
+      )}
 
       {/* Outro dialogue */}
       {state.value === 'outroDialogue' && conjectureData && (

@@ -187,7 +187,7 @@ const PlayMenu = (props) => {
             <Background height={height} width= {width}/>
             <Button
             height={height * 0.01}
-            width={width * 0.05}
+            width={width * 0.065}
             x={width * 0.05}
             y={height * 0.1}
             color={red}

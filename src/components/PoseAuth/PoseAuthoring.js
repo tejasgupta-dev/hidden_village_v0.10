@@ -11,6 +11,8 @@ import { calculateFaceDepth } from "../Pose/landmark_utilities";
 import { Text, Graphics, Container } from '@inlet/react-pixi';
 import usePoseData from "../utilities/PoseData";
 import { useRef } from "react";
+import { getUserSettings, setUserSettings } from "../../firebase/userSettings";
+
 
 // Defining a NotificationBox component using Pixi components, used for all notification pop-ups
 const NotificationBox = ({ message, textSize }) => {
@@ -48,9 +50,27 @@ const PoseAuthoring = (props) => {
     const [timeoutId, setTimeoutId] = useState(null);
 
     // timer variables
-    const [showTimer, setShowTimer] = useState(false);
-    const [timer, setTimer] = useState(10);
+    const [showTimer, setShowTimer] = useState(true);
+    const [timer, setTimer] = useState(10); // initialize from prop
+    const [configTimer, setConfigTimer] = useState(null); // stores the timer from GameSettings
     const [isTooClose, setIsTooClose] = useState(false);
+    // allow quick local adjustment of the timer from PoseAuthoring
+    const changeTimerLocal = (delta) => {
+      const current = (configTimer !== null && typeof configTimer === "number") ? configTimer : timer;
+      const next = Math.max(0, current + delta);
+      setConfigTimer(next);
+      setTimer(next);
+      // persist merged settings to DB (merge to avoid overwriting other keys)
+      (async () => {
+        try {
+          const existing = await getUserSettings();
+          const merged = { ...(existing || {}), timer: next };
+          await setUserSettings(merged);
+        } catch (e) {
+          console.error("Failed to save timer setting:", e);
+        }
+      })();
+    };
 
     // State to indicate whether we should capture the pose
     const [shouldCapture, setShouldCapture] = useState(false);
@@ -86,9 +106,31 @@ const PoseAuthoring = (props) => {
     // Handler functions
     // *********************************
 
+    // Load saved game settings (timer) on mount
+    useEffect(() => {
+      let mounted = true;
+      (async () => {
+        try {
+          const saved = await getUserSettings();
+          if (!mounted) return;
+          if (saved && typeof saved.timer === "number") {
+            setConfigTimer(saved.timer);
+            setTimer(saved.timer); // set visible timer value to saved value
+          }
+        } catch (e) {
+          console.error("Failed to load user settings:", e);
+        }
+      })();
+      return () => {
+        mounted = false;
+      };
+    }, []);
+
     // function to start the on screen timer once the capture button is pressed
     const startTimer = () => {
-      setTimer(2);
+      // Use the configured timer from GameSettings if available, otherwise keep current timer
+      const startValue = configTimer ?? timer;
+      setTimer(startValue);
       setShowTimer(true);
       const timerInterval = setInterval(() => {
         setTimer((prevTimer) => {
@@ -108,11 +150,11 @@ const PoseAuthoring = (props) => {
           // if the timer has reached 0 set the flag to true which will trigger the handleCapture function
           else {
             clearInterval(timerInterval);
-            setShowTimer(false);
+            setShowTimer(true);
             if (!isTooClose) {
               setShouldCapture(true); // Set the flag to true when the timer finishes if not too close
             }
-            return prevTimer;
+            return startValue; // reset timer to initial value
             }
         });
       }, 1000);
@@ -373,7 +415,7 @@ const handleReset = () => {
             draw={graphics => {
               graphics.lineStyle(2, 0x000000);
               graphics.beginFill(0, 0);
-              graphics.drawRect(mainBoxX + mainBoxWidth - 50, mainBoxY + 15, 40, 40, 5);
+              graphics.drawRect(mainBoxX + mainBoxWidth - 70, mainBoxY + 15, 40, 40, 5);
               graphics.endFill();
             }}
           >
@@ -384,15 +426,36 @@ const handleReset = () => {
                 fontSize: 25,
                 fontFamily: "Arial",
               }}
-              x={mainBoxX + mainBoxWidth - 45}
+              x={mainBoxX + mainBoxWidth - 60}
               y={mainBoxY + 20}
             />
           </Graphics>
         )}
+        {/* Timer adjustment buttons (PoseAuthoring) */}
+        <RectButton
+          width={28}
+          height={28}
+          x={mainBoxX + mainBoxWidth - 105}
+          y={mainBoxY + 27}
+          text="-"
+          color="#9ca3af"
+          fontColor="white"
+          callback={() => changeTimerLocal(-1)}
+        />
+        <RectButton
+          width={28}
+          height={28}
+          x={mainBoxX + mainBoxWidth - 15}
+          y={mainBoxY + 27}
+          text="+"
+          color="#2563eb"
+          fontColor="white"
+          callback={() => changeTimerLocal(1)}
+        />
         {/* Capture Button build */}
         <RectButton
           height={height * 0.12}
-          width={width * 0.25}
+          width={width * 0.3}
           x={width * 0.41}
           y={height * 0.83}
           color={white}
@@ -405,7 +468,7 @@ const handleReset = () => {
         {/* Save Button build */}
         <RectButton
           height={height * 0.12}
-          width={width * 0.20}
+          width={width * 0.25}
           x={width * 0.54}
           y={height * 0.83}
           color={white}
@@ -418,8 +481,8 @@ const handleReset = () => {
         {/* Cancel Button build */}
         <RectButton
           height={height * 0.12}
-          width={width * 0.20}
-          x={width * 0.66}
+          width={width * 0.30}
+          x={width * 0.65}
           y={height * 0.83}
           color={white}
           fontSize={width * 0.021}
@@ -439,7 +502,7 @@ const handleReset = () => {
         {/* Reset Button build */}
         <RectButton
           height={height * 0.12}
-          width={width * 0.20}
+          width={width * 0.25}
           x={width * 0.78}
           y={height * 0.83}
           color={white}

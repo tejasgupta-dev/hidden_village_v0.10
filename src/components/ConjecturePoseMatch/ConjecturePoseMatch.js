@@ -9,7 +9,7 @@ import { useCallback } from "react";
 import React, { useState, useEffect } from 'react';
 import { Container } from "postcss";
 import { set } from "firebase/database";
-import  PoseMatching  from "../PoseMatching";
+import PoseMatchingSimplified from "../PoseMatching";
 
 const ConjecturePoseMatch = (props) => {
   const { poses, tolerances, width, columnDimensions, onCompleteCallback, poseData, UUID, gameID} = props;
@@ -19,18 +19,15 @@ return(
   <>
       {poses != null && (
         <>
-        <PoseMatching
+        <PoseMatchingSimplified
           poseData={poseData}
           tolerances={tolerances}
           UUID = {UUID}
-          posesToMatch={[
-            poses,
-            poses,
-            poses
-          ].flat()}
+          posesToMatch={poses}
           columnDimensions={columnDimensions}
           onComplete={onCompleteCallback}
           gameID={gameID}
+          singleMatchPerPose={false}
         />
         </>
       )}

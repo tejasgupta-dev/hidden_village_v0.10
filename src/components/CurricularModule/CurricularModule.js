@@ -10,6 +10,8 @@ import { getConjectureDataByUUIDWithCurrentOrg, deleteFromDatabaseCurricularWith
 import { CurricularContentEditor } from "../CurricularModule/CurricularModuleBoxes";
 import { setAddtoCurricular } from '../ConjectureSelector/ConjectureSelectorModule';
 import Settings from '../Settings';
+import GameSettings from "../GameSettings";
+import PoseAuthoring from "../PoseAuth/PoseAuthoring";
 
 //Import uuid library
 const { v4: uuidv4 } = require("uuid");
@@ -123,6 +125,7 @@ export const Curriculum = {
 const CurricularModule = (props) => {
   const { height, width, userName, mainCallback, conjectureCallback, conjectureSelectCallback, storyEditorCallback } = props;
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [timer, setTimer] = useState(5); // default timer value
 
   const resetCurricularValues = () => {
     localStorage.removeItem('CurricularName');
@@ -311,7 +314,7 @@ const CurricularModule = (props) => {
       )}
 
       {showSettingsMenu && (
-        <Settings
+        <GameSettings
           width={width * 0.6}
           height={height * 0.6}
           x={width * 0.18}
