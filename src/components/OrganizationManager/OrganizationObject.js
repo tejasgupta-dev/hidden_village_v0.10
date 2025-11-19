@@ -61,11 +61,11 @@ const OrganizationObject = (props) => {
     
     // Button dimensions - increased size
     const switchButtonHeight = 45;
-    const switchButtonWidth = 150;
+    const switchButtonWidth = 200;
     const leaveButtonHeight = 45;
-    const leaveButtonWidth = 120;
+    const leaveButtonWidth = 200;
     const deleteButtonHeight = 45;
-    const deleteButtonWidth = 120;
+    const deleteButtonWidth = 200;
 
     return (
         <>
@@ -91,8 +91,8 @@ const OrganizationObject = (props) => {
                 <Text
                     x={switchCenterX}
                     y={rowCenterY}
-                    text="current"
-                    anchor={0.5}
+                    text="  current"
+                    anchor={0.0}
                     style={
                         new TextStyle({
                             align: 'center',
@@ -107,12 +107,12 @@ const OrganizationObject = (props) => {
                 <RectButton
                     height={switchButtonHeight}
                     width={switchButtonWidth}
-                    x={switchCenterX - (switchButtonWidth * 0.4) / 2}
-                    y={rowCenterY - (switchButtonHeight * 0.4) / 2}
+                    x={switchCenterX}
+                    y={rowCenterY}
                     color={roleColors[organization.roleSnapshot] || green}
                     fontSize={14}
                     fontColor={white}
-                    text="SWITCH TO"
+                    text="SWITCH"
                     fontWeight={800}
                     callback={handleSelect}
                 />
@@ -123,8 +123,8 @@ const OrganizationObject = (props) => {
                 <RectButton
                     height={leaveButtonHeight}
                     width={leaveButtonWidth}
-                    x={leaveCenterX - (leaveButtonWidth * 0.4) / 2}
-                    y={rowCenterY - (leaveButtonHeight * 0.4) / 2}
+                    x={leaveCenterX}
+                    y={rowCenterY}
                     color={orange}
                     fontSize={14}
                     fontColor={white}
@@ -139,8 +139,8 @@ const OrganizationObject = (props) => {
                 <RectButton
                     height={deleteButtonHeight}
                     width={deleteButtonWidth}
-                    x={deleteCenterX - (deleteButtonWidth * 0.4) / 2}
-                    y={rowCenterY - (deleteButtonHeight * 0.4) / 2}
+                    x={deleteCenterX}
+                    y={rowCenterY}
                     color={red}
                     fontSize={14}
                     fontColor={white}

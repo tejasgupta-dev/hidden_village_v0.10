@@ -151,8 +151,8 @@ const OrganizationList = (props) => {
             
             {/* Pagination Buttons - positioned at bottom right of table */}
             <RectButton
-                height={30}
-                width={40}
+                height={height * 0.12}
+                width={width * 0.1}
                 x={x + tableWidth - 100}
                 y={y + tableHeight - 40}
                 color={green}
@@ -163,8 +163,8 @@ const OrganizationList = (props) => {
                 callback={handlePrevPage}
             />
             <RectButton
-                height={30}
-                width={40}
+                height={height * 0.12}
+                width={width * 0.1}
                 x={x + tableWidth - 50}
                 y={y + tableHeight - 40}
                 color={green}

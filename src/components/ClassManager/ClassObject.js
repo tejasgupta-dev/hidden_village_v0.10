@@ -19,64 +19,101 @@ const ClassObject = (props) => {
     const canDelete = !isDefault && (currentUserRole === 'Admin' || currentUserRole === 'Developer' || 
         (currentUserRole === 'Teacher' && classData.teachers && classData.teachers[currentUserRole]));
 
+    // Calculate positions for table columns
+    const classNameX = x + width * 0.05;
+    const createdByX = x + width * 0.25;
+    const studentsCenterX = x + width * 0.43;
+    const gamesCenterX = x + width * 0.53;
+    const switchCenterX = x + width * 0.65;
+    const deleteCenterX = x + width * 0.8;
+    const rowCenterY = y + height * 0.5; // Vertical center of the row
+    
+    // Button dimensions - increased size
+    const switchButtonHeight = 45;
+    const switchButtonWidth = 200;
+    const deleteButtonHeight = 45;
+    const deleteButtonWidth = 200;
+
     return (
         <>
-            {/* Class Name */}
+            {/* Class Name - left column */}
             <Text
-                x={x}
-                y={y}
-                text={`${className}${isCurrent ? ' (CURRENT)' : ''}`}
+                x={classNameX}
+                y={rowCenterY + 8}
+                text={className}
+                anchor={[0, 0]}
                 style={new TextStyle({
+                    align: 'left',
                     fontFamily: 'Arial',
-                    fontSize: 18,
-                    fontWeight: isCurrent ? 'bold' : 'normal',
-                    fill: isCurrent ? [blue] : [black],
+                    fontSize: 16,
+                    fontWeight: 'normal',
+                    fill: isCurrent ? [green] : [black],
                 })}
             />
 
-            {/* Created By */}
+            {/* Created By - second column */}
             <Text
-                x={x + width * 2.5}
-                y={y}
+                x={createdByX}
+                y={rowCenterY + 8}
                 text={createdBy}
+                anchor={[0, 0]}
                 style={new TextStyle({
+                    align: 'left',
                     fontFamily: 'Arial',
                     fontSize: 16,
                     fill: [black],
                 })}
             />
 
-            {/* Student Count */}
+            {/* Student Count - third column */}
             <Text
-                x={x + width * 4.5}
-                y={y}
-                text={`Students: ${studentCount || 0}`}
+                x={studentsCenterX}
+                y={rowCenterY}
+                text={`${studentCount || 0}`}
+                anchor={-0.25}
                 style={new TextStyle({
+                    align: 'center',
                     fontFamily: 'Arial',
-                    fontSize: 14,
-                    fill: [blue],
+                    fontSize: 16,
+                    fill: [black],
                 })}
             />
 
-            {/* Game Count */}
+            {/* Game Count - fourth column */}
             <Text
-                x={x + width * 6.5}
-                y={y}
-                text={`Games: ${gameCount || 0}`}
+                x={gamesCenterX}
+                y={rowCenterY}
+                text={`${gameCount || 0}`}
+                anchor={-0.25}
                 style={new TextStyle({
+                    align: 'center',
                     fontFamily: 'Arial',
-                    fontSize: 14,
-                    fill: [green],
+                    fontSize: 16,
+                    fill: [black],
                 })}
             />
 
-            {/* Switch Button */}
-            {!isCurrent && (
+            {/* Switch Button or Current Text - fifth column */}
+            {isCurrent ? (
+                <Text
+                    x={switchCenterX}
+                    y={rowCenterY}
+                    text="  current"
+                    anchor={0.0}
+                    style={new TextStyle({
+                        align: 'center',
+                        fontFamily: 'Arial',
+                        fontSize: 16,
+                        fontWeight: 'bold',
+                        fill: [green],
+                    })}
+                />
+            ) : (
                 <RectButton
-                    height={45}
-                    width={120}
-                    x={x + width * 4}
-                    y={y - 5}
+                    height={switchButtonHeight}
+                    width={switchButtonWidth}
+                    x={switchCenterX}
+                    y={rowCenterY}
                     color={green}
                     fontSize={14}
                     fontColor={white}
@@ -86,32 +123,17 @@ const ClassObject = (props) => {
                 />
             )}
 
-            {/* Current Indicator */}
-            {isCurrent && (
-                <Text
-                    x={x + width * 4}
-                    y={y}
-                    text="CURRENT"
-                    style={new TextStyle({
-                        fontFamily: 'Arial',
-                        fontSize: 16,
-                        fontWeight: 'bold',
-                        fill: [blue],
-                    })}
-                />
-            )}
-
-            {/* Delete Button (if allowed) */}
+            {/* Delete Button - sixth column (if allowed) */}
             {canDelete && !isCurrent && (
                 <RectButton
-                    height={45}
-                    width={120}
-                    x={x + width * 5.5}
-                    y={y - 5}
+                    height={deleteButtonHeight}
+                    width={deleteButtonWidth}
+                    x={deleteCenterX}
+                    y={rowCenterY}
                     color={red}
                     fontSize={14}
                     fontColor={white}
-                    text="DELETE"
+                    text={"DELETE"}
                     fontWeight={800}
                     callback={onDelete}
                 />

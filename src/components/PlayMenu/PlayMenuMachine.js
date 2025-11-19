@@ -107,18 +107,22 @@ export const PlayMenuMachine = createMachine({
     organizations: {
       on: {
         MAIN: "main", // move to home
+        ADMIN: "admin", // move to admin
+        INVITES: "invites", // move to invites
       }
     },
 
     invites: {
       on: {
         MAIN: "main", // move to home
+        ORGANIZATIONS: "organizations", // move to organizations
       }
     },
 
     classes: {
       on: {
         MAIN: "main", // move to home
+        ADMIN: "admin", // move to admin
       }
     }
   }

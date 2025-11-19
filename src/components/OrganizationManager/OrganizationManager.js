@@ -9,7 +9,7 @@ import { getCurrentUserContext, getUserOrgsFromDatabase, getOrganizationInfo, fi
 import { getAuth } from "firebase/auth";
 import { getDatabase, ref, get, set } from "firebase/database";
 
-const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
+const OrganizationManager = ({ width, height, firebaseApp, mainCallback, onInvitesClick }) => {
   const [organizations, setOrganizations] = useState([]);
   const [currentOrgId, setCurrentOrgId] = useState(null);
   const [currentOrgName, setCurrentOrgName] = useState('Loading...');
@@ -393,8 +393,8 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
       
       {/* Action Buttons (Right Side) */}
       <RectButton
-        height={height * 0.08}
-        width={width * 0.25}
+        height={height * 0.12}
+        width={width * 0.3}
         x={width * 0.65}
         y={height * 0.25}
         color={blue}
@@ -411,8 +411,8 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
       />
       
       <RectButton
-        height={height * 0.08}
-        width={width * 0.25}
+        height={height * 0.12}
+        width={width * 0.3}
         x={width * 0.65}
         y={height * 0.35}
         color={green}
@@ -427,6 +427,21 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback }) => {
           }
         }}
       />
+      
+      {onInvitesClick && (
+        <RectButton
+          height={height * 0.12}
+          width={width * 0.3}
+          x={width * 0.65}
+          y={height * 0.45}
+          color={red}
+          fontSize={width * 0.012}
+          fontColor={white}
+          text="INVITES"
+          fontWeight={800}
+          callback={onInvitesClick}
+        />
+      )}
       
       {/* Join Error Message */}
       {joinError && (

@@ -122,7 +122,6 @@ const PlayMenu = (props) => {
             console.log('PlayMenu: Building Admin/Developer button list');
             list.push(
                 {text: "ADMIN", callback: () => send("ADMIN"), color: babyBlue},
-                {text: "INVITES", callback: () => send("INVITES"), color: red},
                 {text: "NEW GAME", callback: () => send("NEWGAME"), color: purple},
                 {text: "EDIT GAME", callback: () => (setPlayGame(false), send("GAMESELECT")), color: powderBlue},
                 {text: "PLAY", callback: () => (setPlayGame(true), send("GAMESELECT")), color: royalBlue},
@@ -344,7 +343,7 @@ const PlayMenu = (props) => {
             width={width}
             height={height}
             firebaseApp={firebaseApp}
-            onBack={() => send("MAIN")} // goes to Home
+            onBack={() => send("ORGANIZATIONS")} // goes to Organization Manager
         />
         )}
         {state.value === "classes" && (
@@ -352,7 +351,7 @@ const PlayMenu = (props) => {
                 width={width}
                 height={height}
                 firebaseApp={firebaseApp}
-                mainCallback={() => send("MAIN")}
+                mainCallback={() => send("ADMIN")}
             />
         )}
         {state.value === "addNewUser" && (
@@ -431,7 +430,8 @@ const PlayMenu = (props) => {
             width={width}
             height={height}
             firebaseApp={firebaseApp}
-            mainCallback={() => send("MAIN")}
+            mainCallback={() => send("ADMIN")}
+            onInvitesClick={() => send("INVITES")}
           />
         )}
         

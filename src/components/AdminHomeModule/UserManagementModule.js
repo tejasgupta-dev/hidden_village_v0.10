@@ -11,7 +11,7 @@ import {getUsersByOrganizationFromDatabase, getCurrentUserContext, getCurrentUse
 import UserList from './UserList';
 
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import NewUserModule from "./NewUserModule";
 
 
@@ -23,41 +23,71 @@ const UserManagementModule = (props) => {
     const [currentOrgId, setCurrentOrgId] = useState(null);
     const [currentUserRole, setCurrentUserRole] = useState(null);
     const [currentOrgName, setCurrentOrgName] = useState('Loading...');
+    
+    // Track if component is mounted to prevent state updates on unmounted component
+    const isMountedRef = useRef(true);
 
     const refreshUserList = async () => {
         try {
+            if (isMountedRef.current) {
+                setLoading(true);
+            }
 
-                  setLoading(true);
-
-      /* 1.  fetch org (may be null for brand-new users) */
-      const { orgId, role } = await getCurrentUserContext(firebaseApp);
-      if (!orgId) {
-        console.warn('No organization found for current user');
-        setUsersList([]);
-        return;      }
-      
-      setCurrentOrgId(orgId);
-      setCurrentUserRole(role);
-      
-      /* 2.  fetch organization name */
-      const orgInfo = await getCurrentUserOrgInfo(firebaseApp);
-      if (orgInfo && orgInfo.orgName) {
-        setCurrentOrgName(orgInfo.orgName);
-      }
-      
-      /* 3.  fetch users – returns [] on empty org */
-      const users = await getUsersByOrganizationFromDatabase(orgId, firebaseApp);
-      console.log('User 0:', users.length ? users[0] : 'none');
-      setUsersList(users);
+            /* 1.  fetch org (may be null for brand-new users) */
+            const { orgId, role } = await getCurrentUserContext(firebaseApp);
+            
+            // Check if component is still mounted before continuing
+            if (!isMountedRef.current) return;
+            
+            if (!orgId) {
+                console.warn('No organization found for current user');
+                if (isMountedRef.current) {
+                    setUsersList([]);
+                }
+                return;
+            }
+            
+            if (isMountedRef.current) {
+                setCurrentOrgId(orgId);
+                setCurrentUserRole(role);
+            }
+            
+            /* 2.  fetch organization name */
+            const orgInfo = await getCurrentUserOrgInfo(firebaseApp);
+            
+            // Check if component is still mounted before continuing
+            if (!isMountedRef.current) return;
+            
+            if (orgInfo && orgInfo.orgName && isMountedRef.current) {
+                setCurrentOrgName(orgInfo.orgName);
+            }
+            
+            /* 3.  fetch users – returns [] on empty org */
+            const users = await getUsersByOrganizationFromDatabase(orgId, firebaseApp);
+            
+            // Check if component is still mounted before updating state
+            if (!isMountedRef.current) return;
+            
+            console.log('User 0:', users.length ? users[0] : 'none');
+            if (isMountedRef.current) {
+                setUsersList(users);
+            }
         } catch (error) {
             console.error('Error fetching users:', error);
         } finally {
-            setLoading(false);
+            if (isMountedRef.current) {
+                setLoading(false);
+            }
         }
     }
 
     useEffect(() => {
+        isMountedRef.current = true;
         refreshUserList();
+        
+        return () => {
+            isMountedRef.current = false;
+        };
     }, []);
 
     const handleEdit = (user) => {

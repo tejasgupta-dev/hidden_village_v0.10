@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Text } from "@inlet/react-pixi";
+import { Text, Graphics } from "@inlet/react-pixi";
 import { TextStyle } from "@pixi/text";
 import { blue, white, red, green, black } from "../../utils/colors";
 import RectButton from "../RectButton";
@@ -8,6 +8,7 @@ import firebase from "firebase/compat/app";
 import { getAuth } from "firebase/auth";
 import {
   getCurrentUserContext,
+  getCurrentClassContext,
   getClassesInOrg,
   getUserClassesInOrg,
   getClassInfo,
@@ -27,6 +28,7 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
   const [currentOrgId, setCurrentOrgId] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [currentUserRole, setCurrentUserRole] = useState(null);
+  const [currentClassName, setCurrentClassName] = useState('Loading...');
   
   // Track if component is mounted to prevent state updates on unmounted component
   const isMountedRef = useRef(true);
@@ -34,9 +36,9 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
   // Search and pagination states
   const [userSearchTerm, setUserSearchTerm] = useState('');
   const [userCurrentPage, setUserCurrentPage] = useState(0);
+  const [classCurrentPage, setClassCurrentPage] = useState(0);
   const [assignedUserSearchTerm, setAssignedUserSearchTerm] = useState('');
   const [assignedUserCurrentPage, setAssignedUserCurrentPage] = useState(0);
-  const itemsPerPage = 8; // Show 8 items per page
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -65,6 +67,20 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
         setCurrentUserId(currentUser.uid);
         setCurrentOrgId(orgId);
         setCurrentUserRole(role);
+      }
+      
+      // Load current class name
+      try {
+        const classContext = await getCurrentClassContext(firebaseApp);
+        if (isMountedRef.current && classContext && classContext.className) {
+          setCurrentClassName(classContext.className);
+        } else if (isMountedRef.current) {
+          setCurrentClassName('No class selected');
+        }
+      } catch (error) {
+        if (isMountedRef.current) {
+          setCurrentClassName('No class selected');
+        }
       }
       
       // Load classes based on role
@@ -227,13 +243,31 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
   };
 
   const getPaginatedUsers = () => {
-    const filtered = getFilteredUsers();
-    const startIndex = userCurrentPage * itemsPerPage;
-    return filtered.slice(startIndex, startIndex + itemsPerPage);
+    return getFilteredUsers();
   };
 
   const getTotalUserPages = () => {
-    return Math.ceil(getFilteredUsers().length / itemsPerPage);
+    const containerHeight = height * 0.5;
+    const headerHeight = 40;
+    const searchHeight = 30;
+    const itemHeight = 35;
+    const availableHeight = containerHeight - headerHeight - searchHeight;
+    const itemsPerContainer = Math.max(1, Math.floor(availableHeight / itemHeight));
+    return Math.ceil(getFilteredUsers().length / itemsPerContainer);
+  };
+  
+  // Paginate classes
+  const getPaginatedClasses = () => {
+    return classes;
+  };
+  
+  const getTotalClassPages = () => {
+    const containerHeight = height * 0.5;
+    const headerHeight = 40;
+    const itemHeight = 35;
+    const availableHeight = containerHeight - headerHeight;
+    const itemsPerContainer = Math.max(1, Math.floor(availableHeight / itemHeight));
+    return Math.max(1, Math.ceil(classes.length / itemsPerContainer));
   };
 
   // Filter and paginate assigned users
@@ -245,13 +279,17 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
   };
 
   const getPaginatedAssignedUsers = () => {
-    const filtered = getFilteredAssignedUsers();
-    const startIndex = assignedUserCurrentPage * itemsPerPage;
-    return filtered.slice(startIndex, startIndex + itemsPerPage);
+    return getFilteredAssignedUsers();
   };
 
   const getTotalAssignedUserPages = () => {
-    return Math.ceil(getFilteredAssignedUsers().length / itemsPerPage);
+    const containerHeight = height * 0.5;
+    const headerHeight = 40;
+    const searchHeight = 30;
+    const itemHeight = 35;
+    const availableHeight = containerHeight - headerHeight - searchHeight;
+    const itemsPerContainer = Math.max(1, Math.floor(availableHeight / itemHeight));
+    return Math.ceil(getFilteredAssignedUsers().length / itemsPerContainer);
   };
 
   const handleAssign = async () => {
@@ -315,42 +353,42 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
     );
   }
 
+  // Container dimensions
+  const containerWidth = width * 0.25;
+  const containerHeight = height * 0.5;
+  const containerY = height * 0.25;
+  const usersContainerX = width * 0.1;
+  const classesContainerX = width * 0.4;
+  const assignedUsersContainerX = width * 0.7;
+  const headerHeight = 40;
+  const searchHeight = 30;
+  const itemHeight = 35;
+  const availableHeight = containerHeight - headerHeight - searchHeight;
+  const itemsPerContainer = Math.max(1, Math.floor(availableHeight / itemHeight));
+
   return (
     <>
       <Background height={height} width={width} />
       
       {/* Title */}
       <Text
-        text="ASSIGN USERS TO CLASSES"
-        x={width * 0.1}
-        y={height * 0.05}
+        text="ASSIGN USERS"
+        x={width * 0.12}
+        y={height * 0.01}
         style={new TextStyle({
           fontFamily: "Futura",
-          fontSize: 50,
+          fontSize: 80,
           fontWeight: 800,
           fill: [blue],
+          letterSpacing: -5,
         })}
       />
       
-      {/* Role-based message */}
-      {currentUserRole === 'Teacher' && (
-        <Text
-          text="You can only assign users to classes where you are a teacher"
-          x={width * 0.1}
-          y={height * 0.12}
-          style={new TextStyle({
-            fontFamily: "Arial",
-            fontSize: 16,
-            fill: [black],
-          })}
-        />
-      )}
-
-      {/* Users Section */}
+      {/* Current Class */}
       <Text
-        text="Select Users (Students & Teachers only):"
-        x={width * 0.1}
-        y={height * 0.15}
+        text={`CURRENT CLASS: ${currentClassName}`}
+        x={width * 0.12}
+        y={height * 0.12}
         style={new TextStyle({
           fontFamily: "Arial",
           fontSize: 24,
@@ -359,22 +397,38 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
         })}
       />
 
-      {/* User Search */}
+      {/* Left Container - USERS */}
+      <Graphics
+        x={usersContainerX}
+        y={containerY}
+        draw={(g) => {
+          g.beginFill(0xfff8dc); // cornsilk
+          g.drawRect(0, 0, containerWidth, containerHeight);
+          g.endFill();
+          g.lineStyle(3, 0x000000, 1);
+          g.drawRect(0, 0, containerWidth, containerHeight);
+        }}
+      />
+      
+      {/* USERS Header */}
       <Text
-        text="Search:"
-        x={width * 0.1}
-        y={height * 0.2}
+        x={usersContainerX + containerWidth * 0.05}
+        y={containerY + headerHeight * 0.3}
+        text="USERS"
         style={new TextStyle({
-          fontFamily: "Arial",
-          fontSize: 16,
+          fontFamily: 'Arial',
+          fontSize: 20,
+          fontWeight: 'bold',
           fill: [black],
         })}
       />
+      
+      {/* User Search */}
       <RectButton
         height={25}
-        width={width * 0.25}
-        x={width * 0.15}
-        y={height * 0.2}
+        width={containerWidth * 0.85}
+        x={usersContainerX + containerWidth * 0.05}
+        y={containerY + headerHeight + 5}
         color={white}
         fontSize={12}
         fontColor={black}
@@ -388,258 +442,224 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
           }
         }}
       />
-
+      
       {/* Users List */}
-      {getPaginatedUsers().map((user, index) => (
-        <React.Fragment key={user.userId}>
-          <RectButton
-            height={30}
-            width={width * 0.35}
-            x={width * 0.1}
-            y={height * 0.25 + (index * 35)}
-            color={selectedUsers.includes(user.userId) ? green : blue}
-            fontSize={12}
-            fontColor={white}
-            text={`${selectedUsers.includes(user.userId) ? '✓ ' : ''}${user.userName || user.userEmail || 'Unknown'} (${user.roleInOrg || 'Member'})`}
-            fontWeight={400}
-            callback={() => handleUserToggle(user.userId)}
-          />
-        </React.Fragment>
-      ))}
-      
-      {/* User Pagination */}
-      {getTotalUserPages() > 1 && (
-        <>
-          <Text
-            text={`Page ${userCurrentPage + 1} of ${getTotalUserPages()}`}
-            x={width * 0.1}
-            y={height * 0.25 + (getPaginatedUsers().length * 35) + 10}
-            style={new TextStyle({
-              fontFamily: "Arial",
-              fontSize: 14,
-              fill: [black],
-            })}
-          />
-          <RectButton
-            height={25}
-            width={60}
-            x={width * 0.1}
-            y={height * 0.25 + (getPaginatedUsers().length * 35) + 35}
-            color={userCurrentPage > 0 ? blue : red}
-            fontSize={12}
-            fontColor={white}
-            text="Prev"
-            fontWeight={400}
-            callback={() => userCurrentPage > 0 && setUserCurrentPage(userCurrentPage - 1)}
-          />
-          <RectButton
-            height={25}
-            width={60}
-            x={width * 0.2}
-            y={height * 0.25 + (getPaginatedUsers().length * 35) + 35}
-            color={userCurrentPage < getTotalUserPages() - 1 ? blue : red}
-            fontSize={12}
-            fontColor={white}
-            text="Next"
-            fontWeight={400}
-            callback={() => userCurrentPage < getTotalUserPages() - 1 && setUserCurrentPage(userCurrentPage + 1)}
-          />
-        </>
-      )}
-      
-      {getFilteredUsers().length === 0 && (
-        <Text
-          text={userSearchTerm ? "No users found matching search." : "No users found."}
-          x={width * 0.1}
-          y={height * 0.3}
-          style={new TextStyle({
-            fontFamily: "Arial",
-            fontSize: 16,
-            fill: [black],
-          })}
+      {getPaginatedUsers().slice(userCurrentPage * itemsPerContainer, (userCurrentPage + 1) * itemsPerContainer).map((user, index) => (
+        <RectButton
+          key={user.userId}
+          height={itemHeight - 5}
+          width={containerWidth * 0.9}
+          x={usersContainerX + containerWidth * 0.05}
+          y={containerY + headerHeight + 35 + (index * itemHeight)}
+          color={selectedUsers.includes(user.userId) ? green : blue}
+          fontSize={14}
+          fontColor={white}
+          text={`${selectedUsers.includes(user.userId) ? '✓ ' : ''}${user.userName || user.userEmail || 'Unknown'} (${user.roleInOrg || 'Member'})`}
+          fontWeight={400}
+          callback={() => handleUserToggle(user.userId)}
         />
-      )}
-
-      {/* Classes Section */}
-      <Text
-        text="Select Classes:"
-        x={width * 0.55}
-        y={height * 0.15}
-        style={new TextStyle({
-          fontFamily: "Arial",
-          fontSize: 24,
-          fontWeight: "bold",
-          fill: [black],
-        })}
-      />
-
-      {/* Classes Section */}
-      <Text
-        text="Select Classes:"
-        x={width * 0.55}
-        y={height * 0.15}
-        style={new TextStyle({
-          fontFamily: "Arial",
-          fontSize: 24,
-          fontWeight: "bold",
-          fill: [black],
-        })}
-      />
-
-      {/* Classes List */}
-      {classes.map((classItem, index) => (
-        <React.Fragment key={classItem.id}>
-          <RectButton
-            height={30}
-            width={width * 0.35}
-            x={width * 0.55}
-            y={height * 0.2 + (index * 35)}
-            color={selectedClasses.includes(classItem.id) ? green : blue}
-            fontSize={14}
-            fontColor={white}
-            text={`${selectedClasses.includes(classItem.id) ? '✓ ' : ''}${classItem.name}`}
-            fontWeight={400}
-            callback={() => handleClassToggle(classItem.id)}
-          />
-        </React.Fragment>
       ))}
+      
+      {/* Users Pagination */}
+      <>
+        <RectButton
+          height={containerHeight * 0.12}
+          width={containerWidth * 0.08}
+          x={usersContainerX + containerWidth - containerWidth * 0.1}
+          y={containerY + containerHeight - containerHeight * 0.08}
+          color={userCurrentPage > 0 ? green : 0xcccccc}
+          fontSize={containerWidth * 0.04}
+          fontColor={white}
+          text={"<"}
+          fontWeight={800}
+          callback={() => userCurrentPage > 0 && setUserCurrentPage(userCurrentPage - 1)}
+        />
+        <RectButton
+          height={containerHeight * 0.12}
+          width={containerWidth * 0.08}
+          x={usersContainerX + containerWidth - containerWidth * 0.05}
+          y={containerY + containerHeight - containerHeight * 0.08}
+          color={userCurrentPage < getTotalUserPages() - 1 ? green : 0xcccccc}
+          fontSize={containerWidth * 0.04}
+          fontColor={white}
+          text={">"}
+          fontWeight={800}
+          callback={() => userCurrentPage < getTotalUserPages() - 1 && setUserCurrentPage(userCurrentPage + 1)}
+        />
+      </>
 
-      {/* Assigned Users Section */}
+      {/* Center Container - CLASS */}
+      <Graphics
+        x={classesContainerX}
+        y={containerY}
+        draw={(g) => {
+          g.beginFill(0xfff8dc); // cornsilk
+          g.drawRect(0, 0, containerWidth, containerHeight);
+          g.endFill();
+          g.lineStyle(3, 0x000000, 1);
+          g.drawRect(0, 0, containerWidth, containerHeight);
+        }}
+      />
+      
+      {/* CLASS Header */}
       <Text
-        text="Assigned Users (Click to Remove):"
-        x={width * 0.75}
-        y={height * 0.15}
+        x={classesContainerX + containerWidth * 0.05}
+        y={containerY + headerHeight * 0.3}
+        text="CLASS"
         style={new TextStyle({
-          fontFamily: "Arial",
-          fontSize: 24,
-          fontWeight: "bold",
+          fontFamily: 'Arial',
+          fontSize: 20,
+          fontWeight: 'bold',
           fill: [black],
         })}
       />
+      
+      {/* Classes List */}
+      {getPaginatedClasses().slice(classCurrentPage * itemsPerContainer, (classCurrentPage + 1) * itemsPerContainer).map((classItem, index) => (
+        <RectButton
+          key={classItem.id}
+          height={itemHeight - 5}
+          width={containerWidth * 0.9}
+          x={classesContainerX + containerWidth * 0.05}
+          y={containerY + headerHeight + (index * itemHeight)}
+          color={selectedClasses.includes(classItem.id) ? green : blue}
+          fontSize={14}
+          fontColor={white}
+          text={`${selectedClasses.includes(classItem.id) ? '✓ ' : ''}${classItem.name}`}
+          fontWeight={400}
+          callback={() => handleClassToggle(classItem.id)}
+        />
+      ))}
+      
+      {/* Classes Pagination */}
+      <>
+        <RectButton
+          height={containerHeight * 0.12}
+          width={containerWidth * 0.08}
+          x={classesContainerX + containerWidth - containerWidth * 0.1}
+          y={containerY + containerHeight - containerHeight * 0.08}
+          color={classCurrentPage > 0 ? green : 0xcccccc}
+          fontSize={containerWidth * 0.04}
+          fontColor={white}
+          text={"<"}
+          fontWeight={800}
+          callback={() => classCurrentPage > 0 && setClassCurrentPage(classCurrentPage - 1)}
+        />
+        <RectButton
+          height={containerHeight * 0.12}
+          width={containerWidth * 0.08}
+          x={classesContainerX + containerWidth - containerWidth * 0.05}
+          y={containerY + containerHeight - containerHeight * 0.08}
+          color={classCurrentPage < getTotalClassPages() - 1 ? green : 0xcccccc}
+          fontSize={containerWidth * 0.04}
+          fontColor={white}
+          text={">"}
+          fontWeight={800}
+          callback={() => classCurrentPage < getTotalClassPages() - 1 && setClassCurrentPage(classCurrentPage + 1)}
+        />
+      </>
 
+      {/* Right Container - USERS (in class) */}
+      <Graphics
+        x={assignedUsersContainerX}
+        y={containerY}
+        draw={(g) => {
+          g.beginFill(0xfff8dc); // cornsilk
+          g.drawRect(0, 0, containerWidth, containerHeight);
+          g.endFill();
+          g.lineStyle(3, 0x000000, 1);
+          g.drawRect(0, 0, containerWidth, containerHeight);
+        }}
+      />
+      
+      {/* USERS (in class) Header */}
+      <Text
+        x={assignedUsersContainerX + containerWidth * 0.05}
+        y={containerY + headerHeight * 0.3}
+        text="USERS (in class)"
+        style={new TextStyle({
+          fontFamily: 'Arial',
+          fontSize: 20,
+          fontWeight: 'bold',
+          fill: [black],
+        })}
+      />
+      
       {/* Assigned User Search */}
       {selectedClasses.length > 0 && (
-        <>
-          <Text
-            text="Search:"
-            x={width * 0.75}
-            y={height * 0.2}
-            style={new TextStyle({
-              fontFamily: "Arial",
-              fontSize: 16,
-              fill: [black],
-            })}
-          />
-          <RectButton
-            height={25}
-            width={width * 0.15}
-            x={width * 0.8}
-            y={height * 0.2}
-            color={white}
-            fontSize={12}
-            fontColor={black}
-            text={assignedUserSearchTerm || "Type to search..."}
-            fontWeight={400}
-            callback={() => {
-              const searchTerm = prompt("Enter search term:", assignedUserSearchTerm);
-              if (searchTerm !== null) {
-                setAssignedUserSearchTerm(searchTerm);
-                setAssignedUserCurrentPage(0); // Reset to first page
-              }
-            }}
-          />
-        </>
+        <RectButton
+          height={25}
+          width={containerWidth * 0.85}
+          x={assignedUsersContainerX + containerWidth * 0.05}
+          y={containerY + headerHeight + 5}
+          color={white}
+          fontSize={12}
+          fontColor={black}
+          text={assignedUserSearchTerm || "Type to search..."}
+          fontWeight={400}
+          callback={() => {
+            const searchTerm = prompt("Enter search term:", assignedUserSearchTerm);
+            if (searchTerm !== null) {
+              setAssignedUserSearchTerm(searchTerm);
+              setAssignedUserCurrentPage(0); // Reset to first page
+            }
+          }}
+        />
       )}
-
+      
       {/* Assigned Users List */}
-      {selectedClasses.length > 0 && getPaginatedAssignedUsers().map((user, index) => (
-        <React.Fragment key={user.userId}>
-          <RectButton
-            height={30}
-            width={width * 0.2}
-            x={width * 0.75}
-            y={height * 0.25 + (index * 35)}
-            color={red}
-            fontSize={12}
-            fontColor={white}
-            text={`✗ ${user.userName || user.userEmail || 'Unknown'} (${user.roleInOrg || 'Member'})`}
-            fontWeight={400}
-            callback={() => handleRemoveUserFromClass(user.userId)}
-          />
-        </React.Fragment>
+      {selectedClasses.length > 0 && getPaginatedAssignedUsers().slice(assignedUserCurrentPage * itemsPerContainer, (assignedUserCurrentPage + 1) * itemsPerContainer).map((user, index) => (
+        <RectButton
+          key={user.userId}
+          height={itemHeight - 5}
+          width={containerWidth * 0.9}
+          x={assignedUsersContainerX + containerWidth * 0.05}
+          y={containerY + headerHeight + 35 + (index * itemHeight)}
+          color={red}
+          fontSize={14}
+          fontColor={white}
+          text={`✗ ${user.userName || user.userEmail || 'Unknown'} (${user.roleInOrg || 'Member'})`}
+          fontWeight={400}
+          callback={() => handleRemoveUserFromClass(user.userId)}
+        />
       ))}
       
-      {/* Assigned User Pagination */}
-      {selectedClasses.length > 0 && getTotalAssignedUserPages() > 1 && (
+      {/* Assigned Users Pagination */}
+      {selectedClasses.length > 0 && (
         <>
-          <Text
-            text={`Page ${assignedUserCurrentPage + 1} of ${getTotalAssignedUserPages()}`}
-            x={width * 0.75}
-            y={height * 0.25 + (getPaginatedAssignedUsers().length * 35) + 10}
-            style={new TextStyle({
-              fontFamily: "Arial",
-              fontSize: 14,
-              fill: [black],
-            })}
-          />
           <RectButton
-            height={25}
-            width={60}
-            x={width * 0.75}
-            y={height * 0.25 + (getPaginatedAssignedUsers().length * 35) + 35}
-            color={assignedUserCurrentPage > 0 ? blue : red}
-            fontSize={12}
+            height={containerHeight * 0.12}
+            width={containerWidth * 0.08}
+            x={assignedUsersContainerX + containerWidth - containerWidth * 0.1}
+            y={containerY + containerHeight - containerHeight * 0.08}
+            color={assignedUserCurrentPage > 0 ? green : 0xcccccc}
+            fontSize={containerWidth * 0.04}
             fontColor={white}
-            text="Prev"
-            fontWeight={400}
+            text={"<"}
+            fontWeight={800}
             callback={() => assignedUserCurrentPage > 0 && setAssignedUserCurrentPage(assignedUserCurrentPage - 1)}
           />
           <RectButton
-            height={25}
-            width={60}
-            x={width * 0.85}
-            y={height * 0.25 + (getPaginatedAssignedUsers().length * 35) + 35}
-            color={assignedUserCurrentPage < getTotalAssignedUserPages() - 1 ? blue : red}
-            fontSize={12}
+            height={containerHeight * 0.12}
+            width={containerWidth * 0.08}
+            x={assignedUsersContainerX + containerWidth - containerWidth * 0.05}
+            y={containerY + containerHeight - containerHeight * 0.08}
+            color={assignedUserCurrentPage < getTotalAssignedUserPages() - 1 ? green : 0xcccccc}
+            fontSize={containerWidth * 0.04}
             fontColor={white}
-            text="Next"
-            fontWeight={400}
+            text={">"}
+            fontWeight={800}
             callback={() => assignedUserCurrentPage < getTotalAssignedUserPages() - 1 && setAssignedUserCurrentPage(assignedUserCurrentPage + 1)}
           />
         </>
       )}
-      
-      {selectedClasses.length > 0 && getFilteredAssignedUsers().length === 0 && (
-        <Text
-          text={assignedUserSearchTerm ? "No assigned users found matching search." : "No users assigned to this class"}
-          x={width * 0.75}
-          y={height * 0.3}
-          style={new TextStyle({
-            fontFamily: "Arial",
-            fontSize: 14,
-            fill: [black],
-          })}
-        />
-      )}
-
-      {/* Selection Summary */}
-      <Text
-        text={`Selected: ${selectedUsers.length} user(s), ${selectedClasses.length} class(es)`}
-        x={width * 0.1}
-        y={height * 0.7}
-        style={new TextStyle({
-          fontFamily: "Arial",
-          fontSize: 18,
-          fill: [black],
-        })}
-      />
 
       {/* Assign Button */}
       <RectButton
-        height={height * 0.08}
+        height={height * 0.12}
         width={width * 0.2}
         x={width * 0.1}
-        y={height * 0.8}
+        y={height * 0.88}
         color={green}
         fontSize={width * 0.012}
         fontColor={white}
@@ -652,8 +672,8 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
       <RectButton
         height={height * 0.08}
         width={width * 0.2}
-        x={width * 0.4}
-        y={height * 0.8}
+        x={width * 0.8}
+        y={height * 0.88}
         color={red}
         fontSize={width * 0.012}
         fontColor={white}

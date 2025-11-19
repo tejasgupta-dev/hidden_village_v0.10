@@ -4,6 +4,7 @@ import { TextStyle } from "@pixi/text";
 import { green, blue, red, white, black, yellow } from "../../utils/colors";
 import RectButton from "../RectButton";
 import Background from "../Background";
+import InviteList from "./InviteList";
 import { getInvitesForOrganization, deleteInviteCode, generateInviteCode, getCurrentUserContext } from "../../firebase/userDatabase";
 import firebase from "firebase/compat/app";
 
@@ -150,52 +151,53 @@ const InviteManagementModule = ({ width, height, firebaseApp, onBack }) => {
       
       {/* Title */}
       <Text
-        text="INVITE CODES MANAGEMENT"
-        x={width * 0.5}
-        y={height * 0.08}
+        text="INVITE CODE MANAGEMENT"
+        x={width * 0.12}
+        y={height * 0.01}
         style={new TextStyle({
-          align: "center",
-          fontFamily: "Arial",
-          fontSize: 32,
-          fontWeight: "bold",
-          fill: [white],
+          align: "left",
+          fontFamily: "Futura",
+          fontSize: 80,
+          fontWeight: 800,
+          fill: [blue],
+          letterSpacing: -5,
         })}
       />
 
-      {/* Organization Info */}
+      {/* Current Organization */}
       <Text
-        text={`Organization: ${currentOrgName}`}
-        x={width * 0.1}
-        y={height * 0.15}
+        text={`CURRENT ORGANIZATION: ${currentOrgName}`}
+        x={width * 0.12}
+        y={height * 0.12}
         style={new TextStyle({
           align: "left",
           fontFamily: "Arial",
-          fontSize: 20,
+          fontSize: 24,
           fontWeight: "bold",
-          fill: [green],
+          fill: [black],
         })}
       />
 
-      {/* Back Button */}
-      <RectButton
-        height={height * 0.08}
-        width={width * 0.15}
-        x={width * 0.05}
-        y={height * 0.05}
-        color={red}
-        fontSize={width * 0.012}
-        fontColor={white}
-        text="BACK"
-        fontWeight={800}
-        callback={onBack}
-      />
+      {/* Invites List */}
+      {invites.length > 0 && (
+        <InviteList 
+          invites={invites} 
+          height={height * 0.5}
+          width={width * 0.5}
+          x={width * 0.1}
+          y={height * 0.25}
+          onDelete={handleDeleteInvite}
+          onCopy={handleCopyCode}
+          deleting={deleting}
+        />
+      )}
 
       {/* Generate Invite Button */}
       <RectButton
-        height={height * 0.08}
-        width={width * 0.2}
-        x={width * 0.75}
-        y={height * 0.05}
+        height={height * 0.12}
+        width={width * 0.3}
+        x={width * 0.65}
+        y={height * 0.25}
         color={green}
         fontSize={width * 0.012}
         fontColor={white}
@@ -204,139 +206,18 @@ const InviteManagementModule = ({ width, height, firebaseApp, onBack }) => {
         callback={handleGenerateInvite}
       />
 
-      {/* Refresh Button */}
+      {/* Back Button */}
       <RectButton
         height={height * 0.08}
-        width={width * 0.15}
+        width={width * 0.2}
         x={width * 0.8}
-        y={height * 0.15}
-        color={blue}
+        y={height * 0.88}
+        color={red}
         fontSize={width * 0.012}
         fontColor={white}
-        text="REFRESH"
+        text="BACK"
         fontWeight={800}
-        callback={loadData}
-      />
-
-      {/* Error Message */}
-      {error && (
-        <Text
-          text={error}
-          x={width * 0.1}
-          y={height * 0.25}
-          style={new TextStyle({
-            align: "left",
-            fontFamily: "Arial",
-            fontSize: 18,
-            fontWeight: "bold",
-            fill: [red],
-          })}
-        />
-      )}
-
-      {/* Invites List */}
-      {invites.length === 0 ? (
-        <Text
-          text="No active invite codes"
-          x={width * 0.5}
-          y={height * 0.5}
-          style={new TextStyle({
-            align: "center",
-            fontFamily: "Arial",
-            fontSize: 24,
-            fontWeight: "bold",
-            fill: [white],
-          })}
-        />
-      ) : (
-        invites.map((invite, index) => (
-          <InviteItem
-            key={invite.code}
-            invite={invite}
-            index={index}
-            width={width}
-            height={height}
-            onDelete={handleDeleteInvite}
-            onCopy={handleCopyCode}
-            deleting={deleting === invite.code}
-          />
-        ))
-      )}
-    </>
-  );
-};
-
-const InviteItem = ({ invite, index, width, height, onDelete, onCopy, deleting }) => {
-  const yPosition = height * 0.3 + (index * height * 0.12);
-  
-  return (
-    <>
-      {/* Invite Code */}
-      <Text
-        text={`Code: ${invite.code}`}
-        x={width * 0.1}
-        y={yPosition}
-        style={new TextStyle({
-          align: "left",
-          fontFamily: "Arial",
-          fontSize: 16,
-          fontWeight: "bold",
-          fill: [white],
-        })}
-      />
-
-      {/* Role */}
-      <Text
-        text={`Role: ${invite.role}`}
-        x={width * 0.1}
-        y={yPosition + 25}
-        style={new TextStyle({
-          align: "left",
-          fontFamily: "Arial",
-          fontSize: 14,
-          fill: [green],
-        })}
-      />
-
-      {/* Created Date */}
-      <Text
-        text={`Created: ${new Date(invite.createdAt).toLocaleDateString()}`}
-        x={width * 0.1}
-        y={yPosition + 45}
-        style={new TextStyle({
-          align: "left",
-          fontFamily: "Arial",
-          fontSize: 12,
-          fill: [white],
-        })}
-      />
-
-      {/* Copy Button */}
-      <RectButton
-        height={height * 0.06}
-        width={width * 0.12}
-        x={width * 0.6}
-        y={yPosition}
-        color={blue}
-        fontSize={width * 0.01}
-        fontColor={white}
-        text="COPY"
-        fontWeight={800}
-        callback={() => onCopy(invite.code)}
-      />
-
-      {/* Delete Button */}
-      <RectButton
-        height={height * 0.06}
-        width={width * 0.12}
-        x={width * 0.75}
-        y={yPosition}
-        color={deleting ? red : red}
-        fontSize={width * 0.01}
-        fontColor={white}
-        text={deleting ? "DELETING..." : "DELETE"}
-        fontWeight={800}
-        callback={() => onDelete(invite.code)}
+        callback={onBack}
       />
     </>
   );

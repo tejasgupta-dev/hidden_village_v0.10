@@ -140,7 +140,7 @@ const SignInScreen = ({ firebaseApp }) => {
                   style={{
                     background: 'none',
                     border: 'none',
-                    color: '#4A90E2',
+                    color: '#000000ff',
                     cursor: 'pointer',
                     fontSize: '14px',
                     textDecoration: 'underline'

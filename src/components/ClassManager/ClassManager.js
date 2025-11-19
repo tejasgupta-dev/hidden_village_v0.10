@@ -253,21 +253,22 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
       {/* Title */}
       <Text
         text="CLASS MANAGEMENT"
-        x={width * 0.1}
-        y={height * 0.05}
+        x={width * 0.12}
+        y={height * 0.01}
         style={new TextStyle({
           fontFamily: "Futura",
-          fontSize: 60,
+          fontSize: 80,
           fontWeight: 800,
           fill: [blue],
+          letterSpacing: -5,
         })}
       />
       
       {/* Current Class */}
       <Text
-        text={`Current Class: ${currentClassName}`}
-        x={width * 0.1}
-        y={height * 0.15}
+        text={`CURRENT CLASS: ${currentClassName}`}
+        x={width * 0.12}
+        y={height * 0.12}
         style={new TextStyle({
           fontFamily: "Arial",
           fontSize: 24,
@@ -294,59 +295,6 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
         />
       )}
       
-      {(currentUserRole === 'Teacher' || currentUserRole === 'Admin' || currentUserRole === 'Developer') && (
-        <>
-          <RectButton
-            height={height * 0.08}
-            width={width * 0.12}
-            x={width * 0.5}
-            y={height * 0.25}
-            color={green}
-            fontSize={width * 0.01}
-            fontColor={white}
-            text="CREATE CLASS"
-            fontWeight={800}
-            callback={handleCreateClass}
-          />
-          <RectButton
-            height={height * 0.08}
-            width={width * 0.12}
-            x={width * 0.63}
-            y={height * 0.25}
-            color={blue}
-            fontSize={width * 0.01}
-            fontColor={white}
-            text="ASSIGN GAMES"
-            fontWeight={800}
-            callback={handleAssignContent}
-          />
-          <RectButton
-            height={height * 0.08}
-            width={width * 0.12}
-            x={width * 0.76}
-            y={height * 0.25}
-            color={blue}
-            fontSize={width * 0.01}
-            fontColor={white}
-            text="ASSIGN USERS"
-            fontWeight={800}
-            callback={handleAssignStudents}
-          />
-          <RectButton
-            height={height * 0.08}
-            width={width * 0.12}
-            x={width * 0.89}
-            y={height * 0.25}
-            color={red}
-            fontSize={width * 0.01}
-            fontColor={white}
-            text="DELETE CLASS"
-            fontWeight={800}
-            callback={handleDeleteClassPrompt}
-          />
-        </>
-      )}
-      
       {/* Class List */}
       {classes && classes.length > 0 ? (
         <ClassList
@@ -354,9 +302,9 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
           currentClassId={currentClassId}
           currentUserRole={currentUserRole}
           height={height * 0.5}
-          width={width * 0.8}
+          width={width * 0.5}
           x={width * 0.1}
-          y={height * 0.35}
+          y={height * 0.25}
           firebaseApp={firebaseApp}
           onSwitch={handleSwitchClass}
           onDelete={handleDeleteClass}
@@ -374,12 +322,54 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
         />
       )}
       
+      {/* Action Buttons (Right Side) */}
+      {(currentUserRole === 'Teacher' || currentUserRole === 'Admin' || currentUserRole === 'Developer') && (
+        <>
+          <RectButton
+            height={height * 0.12}
+            width={width * 0.3}
+            x={width * 0.65}
+            y={height * 0.25}
+            color={green}
+            fontSize={width * 0.012}
+            fontColor={white}
+            text="CREATE CLASS"
+            fontWeight={800}
+            callback={handleCreateClass}
+          />
+          <RectButton
+            height={height * 0.12}
+            width={width * 0.3}
+            x={width * 0.65}
+            y={height * 0.35}
+            color={blue}
+            fontSize={width * 0.012}
+            fontColor={white}
+            text="ASSIGN GAMES"
+            fontWeight={800}
+            callback={handleAssignContent}
+          />
+          <RectButton
+            height={height * 0.12}
+            width={width * 0.3}
+            x={width * 0.65}
+            y={height * 0.45}
+            color={blue}
+            fontSize={width * 0.012}
+            fontColor={white}
+            text="ASSIGN USERS"
+            fontWeight={800}
+            callback={handleAssignStudents}
+          />
+        </>
+      )}
+      
       {/* Back Button */}
       <RectButton
         height={height * 0.08}
-        width={width * 0.15}
+        width={width * 0.2}
         x={width * 0.8}
-        y={height * 0.9}
+        y={height * 0.88}
         color={red}
         fontSize={width * 0.012}
         fontColor={white}
