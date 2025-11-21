@@ -12,7 +12,6 @@ import {
   writeToDatabaseMCAnswer 
 } from "../firebase/database.js";
 import { Rectangle } from "@pixi/math";
-import { bufferPoseDataWithAutoFlush } from "../firebase/database.js";
 
 /** Safe Firebase write error handler */
 const handleWriteError = (error) => {

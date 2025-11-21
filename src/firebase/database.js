@@ -8,7 +8,7 @@ import { parse } from "querystring-es3";
 import { convertJsonToCsv, } from "../firebase/jsonTOcsv.js";
 
 // Import the uuid library
-const { v4: uuidv4 } = require('uuid');
+import { v4 as uuidv4 } from 'uuid';
 
 const db = getDatabase();
 

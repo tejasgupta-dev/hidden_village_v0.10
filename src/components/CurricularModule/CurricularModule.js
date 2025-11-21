@@ -14,7 +14,7 @@ import GameSettings from "../GameSettings";
 import PoseAuthoring from "../PoseAuth/PoseAuthoring";
 
 //Import uuid library
-const { v4: uuidv4 } = require("uuid");
+import { v4 as uuidv4 } from "uuid";
 
 // stores a list of conjectures
 export const Curriculum = {
