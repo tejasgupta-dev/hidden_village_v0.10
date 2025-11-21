@@ -107,15 +107,22 @@ let sessionInitialized = false;
 let flushPromises = []; // Track batch write promises for promise checking
 let lastEventType = null; // Track last known event type for change detection
 
+// Timing trackers for analytics
+let gameStartTime = null;
+let lastEventTime = null;
+
 // Initialize session with static data (call once per session)
-export const initializeSession = async (gameId, frameRate, UUID) => {
+export const initializeSession = async (gameId, frameRate, UUID, orgId) => {
   if (sessionInitialized) return; // Prevent duplicate initialization
   
   const dateObj = new Date();
   const timestampGMT = dateObj.toUTCString();
+  const unixTimestamp = Date.now();
+  gameStartTime = unixTimestamp;
+  lastEventTime = unixTimestamp;
   
   if (eventType !== null) {
-    const sessionRef = ref(db, `_PoseData/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${UUID}`);
+    const sessionRef = ref(db, `_PoseData/${orgId}/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${UUID}`);
     
     // All static data
     const sessionData = {
@@ -126,6 +133,7 @@ export const initializeSession = async (gameId, frameRate, UUID) => {
       frameRate,
       loginTime,
       sessionStartTime: timestampGMT,
+      sessionStartUnix: unixTimestamp,
     };
     
     // Store session metadata once
@@ -137,25 +145,30 @@ export const initializeSession = async (gameId, frameRate, UUID) => {
 };
 
 // Buffer frame data (called every frame)
-export const bufferPoseData = async (poseData, gameId, UUID, frameRate = 12) => {
+export const bufferPoseData = async (poseData, gameId, UUID, frameRate = 12, orgId) => {
   if (eventType === null) return;
   
   // Check for event type change and flush if needed
   if (eventType !== lastEventType && frameBuffer.length > 0) {
     console.log(`Event type changed from ${lastEventType} to ${eventType}, flushing buffer`);
-    await flushFrameBuffer(gameId, UUID, frameRate);
+    await flushFrameBuffer(gameId, UUID, frameRate, orgId);
   }
   
+  const now = Date.now();
   const frameData = {
     pose: JSON.stringify(poseData),
     timestamp: new Date().toUTCString(),
+    unixTimestamp: now,
+    timeSinceGameStart: gameStartTime ? now - gameStartTime : 0,
+    timeSinceLastEvent: lastEventTime ? now - lastEventTime : 0,
   };
   
+  lastEventTime = now;
   frameBuffer.push(frameData);
 };
 
 // Batch write all buffered frames (call periodically)
-export const flushFrameBuffer = async (gameId, UUID, frameRate = 12) => {
+export const flushFrameBuffer = async (gameId, UUID, frameRate = 12, orgId) => {
   if (frameBuffer.length === 0 || eventType === null) return;
   
   // Ensure session is initialized before writing frames
@@ -165,7 +178,7 @@ export const flushFrameBuffer = async (gameId, UUID, frameRate = 12) => {
   }
   
   try {
-    const framesRef = ref(db, `_PoseData/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${UUID}/frames/${eventType}`);
+    const framesRef = ref(db, `_PoseData/${orgId}/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${UUID}/frames/${eventType}`);
     
     // Create batch update object
     const updates = {};
@@ -203,10 +216,10 @@ export const flushFrameBuffer = async (gameId, UUID, frameRate = 12) => {
 };
 
 // Check for event type change and flush if needed
-const checkEventTypeChange = async (gameId, UUID, frameRate = 12) => {
+const checkEventTypeChange = async (gameId, UUID, frameRate = 12, orgId) => {
   if (eventType !== lastEventType && frameBuffer.length > 0) {
     console.log(`Event type changed from ${lastEventType} to ${eventType}, flushing buffer`);
-    await flushFrameBuffer(gameId, UUID, frameRate);
+    await flushFrameBuffer(gameId, UUID, frameRate, orgId);
     return true;
   }
   return false;
@@ -216,9 +229,9 @@ const checkEventTypeChange = async (gameId, UUID, frameRate = 12) => {
 export const getBufferSize = () => frameBuffer.length;
 
 // Force flush and reset session (call on session end)
-export const endSession = async (gameId, UUID, frameRate = 12) => {
+export const endSession = async (gameId, UUID, frameRate = 12, orgId) => {
   // Flush any remaining frames
-  await flushFrameBuffer(gameId, UUID, frameRate);
+  await flushFrameBuffer(gameId, UUID, frameRate, orgId);
   
   // Wait for all pending flush promises to settle (like original implementation)
   await Promise.allSettled(flushPromises);
@@ -235,11 +248,11 @@ export const endSession = async (gameId, UUID, frameRate = 12) => {
 // Hybrid flush strategy
 let MAX_BUFFER_SIZE = 50; // Make it mutable so it can be updated by options
 
-export const bufferPoseDataWithAutoFlush = async (poseData, gameId, UUID, frameRate = 12) => {
+export const bufferPoseDataWithAutoFlush = async (poseData, gameId, UUID, frameRate = 12, orgId) => {
   if (eventType === null) return;
   
   // Check for event type change first and flush if needed
-  await checkEventTypeChange(gameId, UUID, frameRate);
+  await checkEventTypeChange(gameId, UUID, frameRate, orgId);
   
   // Add to buffer
   bufferPoseData(poseData);
@@ -247,16 +260,16 @@ export const bufferPoseDataWithAutoFlush = async (poseData, gameId, UUID, frameR
   // Immediate flush if buffer is getting too big (uses MAX_BUFFER_SIZE)
   if (frameBuffer.length >= MAX_BUFFER_SIZE) {
     console.log('Buffer size limit reached, flushing immediately');
-    await flushFrameBuffer(gameId, UUID, frameRate);
+    await flushFrameBuffer(gameId, UUID, frameRate, orgId);
   }
 };
 
 // Enhanced buffer function that checks for event changes
-export const bufferPoseDataWithEventCheck = async (poseData, gameId, UUID, frameRate = 12) => {
+export const bufferPoseDataWithEventCheck = async (poseData, gameId, UUID, frameRate = 12, orgId) => {
   if (eventType === null) return;
   
   // Check for event type change and flush if needed
-  const flushedDueToEventChange = await checkEventTypeChange(gameId, UUID, frameRate);
+  const flushedDueToEventChange = await checkEventTypeChange(gameId, UUID, frameRate, orgId);
   
   // Add to buffer after potential flush
   bufferPoseData(poseData);
@@ -265,7 +278,7 @@ export const bufferPoseDataWithEventCheck = async (poseData, gameId, UUID, frame
 };
 
 // Start hybrid auto-flush (time-based + size-based + event-change-based)
-export const startSmartAutoFlush = (gameId, UUID, options = {}) => {
+export const startSmartAutoFlush = (gameId, UUID, orgId, options = {}) => {
   const { 
     maxBufferSize = 100,     // This sets MAX_BUFFER_SIZE for immediate flushes
     flushIntervalMs = 8000,
@@ -278,12 +291,12 @@ export const startSmartAutoFlush = (gameId, UUID, options = {}) => {
   
   return setInterval(async () => {
     // Check for event type change first
-    const flushedDueToEventChange = await checkEventTypeChange(gameId, UUID, frameRate);
+    const flushedDueToEventChange = await checkEventTypeChange(gameId, UUID, frameRate, orgId);
     
     // Only do time-based flush if we didn't just flush due to event change
     if (!flushedDueToEventChange && frameBuffer.length >= minBufferSize) {
       console.log(`Auto-flushing ${frameBuffer.length} frames`);
-      await flushFrameBuffer(gameId, UUID, frameRate);
+      await flushFrameBuffer(gameId, UUID, frameRate, orgId);
     }
   }, flushIntervalMs);
 };
@@ -295,18 +308,336 @@ export const stopAutoFlush = (intervalId) => {
 };
 
 // Utility function to manually trigger event change check
-export const forceEventTypeCheck = async (gameId, UUID, frameRate = 12) => {
-  return await checkEventTypeChange(gameId, UUID, frameRate);
+export const forceEventTypeCheck = async (gameId, UUID, frameRate = 12, orgId) => {
+  return await checkEventTypeChange(gameId, UUID, frameRate, orgId);
 };
 
-export const loadGameDialoguesFromFirebase = async (gameId) => {
+export const loadGameDialoguesFromFirebase = async (gameId, orgId) => {
   if (!gameId) {
     alert("No gameId provided!");
     return [];
   }
-  const dbRef = ref(db, `Game/${gameId}/Dialogues`);
+  const dbRef = ref(db, `orgs/${orgId}/games/${gameId}/Dialogues`);
   const snapshot = await get(dbRef);
   return snapshot.exists() ? snapshot.val() : [];
+};
+
+// Helper function to get current user's organization context
+export const getCurrentOrgContext = async () => {
+  try {
+    console.log('getCurrentOrgContext: Getting current user context...');
+    // Import here to avoid circular dependency
+    const { getCurrentUserContext } = await import('./userDatabase.js');
+    const result = await getCurrentUserContext();
+    console.log('getCurrentOrgContext: Result:', result);
+    return result;
+  } catch (error) {
+    console.error('getCurrentOrgContext: Error getting current org context:', error);
+    return { orgId: null, role: null };
+  }
+};
+
+// Wrapper functions for backward compatibility - automatically use current user's org
+export const writeToDatabaseConjectureWithCurrentOrg = async (existingUUID) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    alert("User is not in any organization. Please contact administrator.");
+    return false;
+  }
+  return writeToDatabaseConjecture(existingUUID, orgId);
+};
+
+export const writeToDatabaseConjectureDraftWithCurrentOrg = async (existingUUID) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    alert("User is not in any organization. Please contact administrator.");
+    return false;
+  }
+  return writeToDatabaseConjectureDraft(existingUUID, orgId);
+};
+
+export const deleteFromDatabaseConjectureWithCurrentOrg = async (existingUUID) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    alert("User is not in any organization. Please contact administrator.");
+    return false;
+  }
+  return deleteFromDatabaseConjecture(existingUUID, orgId);
+};
+
+export const getConjectureListWithCurrentOrg = async (final, includePublicFromOtherOrgs = false) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    console.warn("User is not in any organization.");
+    return [];
+  }
+  
+  // Get all levels in organization
+  const allLevels = await getConjectureList(final, orgId);
+  
+  // Handle null/undefined case
+  let result = allLevels || [];
+  
+  // If requested, also get public levels from other organizations
+  if (includePublicFromOtherOrgs) {
+    try {
+      const db = getDatabase();
+      const orgsRef = ref(db, 'orgs');
+      const orgsSnapshot = await get(orgsRef);
+      
+      if (orgsSnapshot.exists()) {
+        const orgs = orgsSnapshot.val();
+        for (const [otherOrgId, orgData] of Object.entries(orgs)) {
+          if (otherOrgId === orgId) continue; // Skip current org
+          
+          const levelsRef = ref(db, `orgs/${otherOrgId}/levels`);
+          const levelsSnapshot = await get(levelsRef);
+          
+          if (levelsSnapshot.exists()) {
+            const otherLevels = levelsSnapshot.val();
+            for (const [levelId, levelData] of Object.entries(otherLevels)) {
+              // Only include public levels
+              if (levelData.isPublic === true) {
+                // Mark as from other organization for filtering
+                result.push({ ...levelData, _isFromOtherOrg: true });
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching public levels from other orgs:', error);
+    }
+  }
+  
+  return result;
+};
+
+export const getCurricularListWithCurrentOrg = async (final, includePublicFromOtherOrgs = false) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    console.warn("User is not in any organization.");
+    return [];
+  }
+  
+  // Get all games in organization
+  const allGames = await getCurricularList(final, orgId);
+  
+  // Handle null/undefined case
+  let result = allGames || [];
+  
+  // If requested, also get public games from other organizations
+  if (includePublicFromOtherOrgs) {
+    try {
+      const db = getDatabase();
+      const orgsRef = ref(db, 'orgs');
+      const orgsSnapshot = await get(orgsRef);
+      
+      if (orgsSnapshot.exists()) {
+        const orgs = orgsSnapshot.val();
+        for (const [otherOrgId, orgData] of Object.entries(orgs)) {
+          if (otherOrgId === orgId) continue; // Skip current org
+          
+          const gamesRef = ref(db, `orgs/${otherOrgId}/games`);
+          const gamesSnapshot = await get(gamesRef);
+          
+          if (gamesSnapshot.exists()) {
+            const otherGames = gamesSnapshot.val();
+            for (const [gameId, gameData] of Object.entries(otherGames)) {
+              // Only include public games
+              if (gameData.isPublic === true) {
+                // Mark as from other organization for filtering
+                result.push({ ...gameData, _isFromOtherOrg: true });
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching public games from other orgs:', error);
+    }
+  }
+  
+  return result;
+};
+
+export const searchConjecturesByWordWithCurrentOrg = async (searchWord) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    console.warn("User is not in any organization.");
+    return [];
+  }
+  
+  // Get search results from current organization
+  const searchResults = await searchConjecturesByWord(searchWord, orgId);
+  
+  // Handle null/undefined case
+  let result = searchResults || [];
+  
+  // Also search public levels from other organizations
+  try {
+    const db = getDatabase();
+    const orgsRef = ref(db, 'orgs');
+    const orgsSnapshot = await get(orgsRef);
+    
+    if (orgsSnapshot.exists()) {
+      const orgs = orgsSnapshot.val();
+      const normalizedSearchWord = searchWord?.toLowerCase?.() || "";
+      const isCleared = normalizedSearchWord.trim() === "";
+      
+      for (const [otherOrgId, orgData] of Object.entries(orgs)) {
+        if (otherOrgId === orgId) continue; // Skip current org
+        
+        const levelsRef = ref(db, `orgs/${otherOrgId}/levels`);
+        const levelsSnapshot = await get(levelsRef);
+        
+        if (levelsSnapshot.exists()) {
+          const otherLevels = levelsSnapshot.val();
+          for (const [levelId, levelData] of Object.entries(otherLevels)) {
+            // Only include public levels
+            if (levelData.isPublic === true) {
+              // Apply the same search logic
+              if (isCleared) {
+                // If cleared or empty, include all public levels
+                result.push({ ...levelData, _isFromOtherOrg: true });
+              } else {
+                // Check if search word matches
+                const searchWords = levelData?.['Search Words'];
+                if (searchWords) {
+                  for (const word of Object.keys(searchWords)) {
+                    if (word.toLowerCase() === normalizedSearchWord) {
+                      result.push({ ...levelData, _isFromOtherOrg: true });
+                      break; // stop checking more keys
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching public levels from other orgs in search:', error);
+  }
+  
+  return result;
+};
+
+export const saveGameWithCurrentOrg = async (UUID = null, isFinal = false) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    alert("User is not in any organization. Please contact administrator.");
+    return false;
+  }
+  return saveGame(UUID, isFinal, orgId);
+};
+
+export const deleteFromDatabaseCurricularWithCurrentOrg = async (UUID) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    alert("User is not in any organization. Please contact administrator.");
+    return false;
+  }
+  return deleteFromDatabaseCurricular(UUID, orgId);
+};
+
+export const saveNarrativeDraftToFirebaseWithCurrentOrg = async (UUID, dialogues) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    alert("User is not in any organization. Please contact administrator.");
+    return;
+  }
+  return saveNarrativeDraftToFirebase(UUID, dialogues, orgId);
+};
+
+// Wrapper functions for data retrieval with current org
+export const getConjectureDataByUUIDWithCurrentOrg = async (conjectureID) => {
+  console.log('getConjectureDataByUUIDWithCurrentOrg: Called with conjectureID:', conjectureID);
+  const { orgId } = await getCurrentOrgContext();
+  console.log('getConjectureDataByUUIDWithCurrentOrg: Current orgId:', orgId);
+  if (!orgId) {
+    console.warn("getConjectureDataByUUIDWithCurrentOrg: User is not in any organization.");
+    return null;
+  }
+  
+  // First, try to find in current organization
+  console.log('getConjectureDataByUUIDWithCurrentOrg: Calling getConjectureDataByUUID with:', { conjectureID, orgId });
+  let result = await getConjectureDataByUUID(conjectureID, orgId);
+  console.log('getConjectureDataByUUIDWithCurrentOrg: Result from current org:', result);
+  
+  // If not found in current org, search in all other organizations
+  if (!result) {
+    console.log('getConjectureDataByUUIDWithCurrentOrg: Level not found in current org, searching in other organizations...');
+    try {
+      const db = getDatabase();
+      const orgsRef = ref(db, 'orgs');
+      const orgsSnapshot = await get(orgsRef);
+      
+      if (orgsSnapshot.exists()) {
+        const orgs = orgsSnapshot.val();
+        for (const [otherOrgId, orgData] of Object.entries(orgs)) {
+          if (otherOrgId === orgId) continue; // Skip current org (already searched)
+          
+          const levelsRef = ref(db, `orgs/${otherOrgId}/levels`);
+          const levelsSnapshot = await get(levelsRef);
+          
+          if (levelsSnapshot.exists()) {
+            const otherLevels = levelsSnapshot.val();
+            for (const [levelId, levelData] of Object.entries(otherLevels)) {
+              if (levelData.UUID === conjectureID) {
+                console.log(`getConjectureDataByUUIDWithCurrentOrg: Found level in organization ${otherOrgId}`);
+                // Return the level data in the same format as getConjectureDataByUUID
+                return { [levelId]: levelData };
+              }
+            }
+          }
+        }
+        console.log('getConjectureDataByUUIDWithCurrentOrg: Level not found in any organization');
+      }
+    } catch (error) {
+      console.error('getConjectureDataByUUIDWithCurrentOrg: Error searching in other organizations:', error);
+      // Return null if search fails
+    }
+  }
+  
+  return result;
+};
+
+export const getCurricularDataByUUIDWithCurrentOrg = async (curricularID) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    console.warn("User is not in any organization.");
+    return null;
+  }
+  return getCurricularDataByUUID(curricularID, orgId);
+};
+
+export const getLevelNameByUUIDWithCurrentOrg = async (levelUUID) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    console.warn("User is not in any organization.");
+    return 'UnknownLevel';
+  }
+  return getLevelNameByUUID(levelUUID, orgId);
+};
+
+export const getGameNameByUUIDWithCurrentOrg = async (gameID) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    console.warn("User is not in any organization.");
+    return 'UnknownGame';
+  }
+  return getGameNameByUUID(gameID, orgId);
+};
+
+export const loadGameDialoguesFromFirebaseWithCurrentOrg = async (gameId) => {
+  const { orgId } = await getCurrentOrgContext();
+  if (!orgId) {
+    console.warn("User is not in any organization.");
+    return [];
+  }
+  return loadGameDialoguesFromFirebase(gameId, orgId);
 };
 
 
@@ -335,7 +666,7 @@ export const writeToDatabasePoseAuth = async (poseData, state, tolerance) => {
   return promise;
 };
 
-export const writeToDatabaseConjecture = async (existingUUID) => {
+export const writeToDatabaseConjecture = async (existingUUID, orgId) => {
   try {
     const dateObj = new Date();
     const timestamp = dateObj.toISOString();
@@ -392,8 +723,11 @@ export const writeToDatabaseConjecture = async (existingUUID) => {
       if (cleanWord) searchWordsToPushToDatabase[cleanWord] = cleanWord;
     });
 
-    // Firebase path
-    const conjecturePath = `Level/${conjectureID}`;
+    // Firebase path - now under organization
+    const conjecturePath = `orgs/${orgId}/levels/${conjectureID}`;
+
+    // Get isPublic flag from localStorage (default to false)
+    const isPublic = localStorage.getItem('isPublic') === 'true';
 
     // Push to Firebase
     const promises = [
@@ -410,10 +744,38 @@ export const writeToDatabaseConjecture = async (existingUUID) => {
       set(ref(db, `${conjecturePath}/Start Tolerance`), localStorage.getItem('Start Tolerance')),
       set(ref(db, `${conjecturePath}/Intermediate Tolerance`), localStorage.getItem('Intermediate Tolerance')),
       set(ref(db, `${conjecturePath}/End Tolerance`), localStorage.getItem('End Tolerance')),
-      set(ref(db, `${conjecturePath}/isFinal`), true)
+      set(ref(db, `${conjecturePath}/isFinal`), true),
+      set(ref(db, `${conjecturePath}/isPublic`), isPublic),
+      set(ref(db, `${conjecturePath}/createdBy`), userId),
+      set(ref(db, `${conjecturePath}/createdAt`), timestamp),
+      set(ref(db, `${conjecturePath}/updatedAt`), timestamp)
     ];
 
     await Promise.all(promises);
+    
+    // If user is a student, automatically assign level to their class
+    try {
+      const { getCurrentUserContext } = await import('./userDatabase.js');
+      const userContext = await getCurrentUserContext();
+      if (userContext?.role === 'Student' && userContext?.orgId === orgId) {
+        // Get current class ID from user profile
+        const userClassRef = ref(db, `users/${userId}/orgs/${orgId}/currentClassId`);
+        const classSnapshot = await get(userClassRef);
+        const classId = classSnapshot.exists() ? classSnapshot.val() : null;
+        
+        if (classId) {
+          // Store the level assignment in the class
+          await set(ref(db, `orgs/${orgId}/classes/${classId}/assignedLevels/${conjectureID}`), {
+            addedAt: timestamp,
+            addedBy: userId
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error assigning level to class:', error);
+      // Don't fail the save if class assignment fails
+    }
+    
     alert("Conjecture successfully published to database.");
     return true;
 
@@ -426,7 +788,7 @@ export const writeToDatabaseConjecture = async (existingUUID) => {
 
 
 // save a draft of the current conjecture so it can be published later
-export const writeToDatabaseConjectureDraft = async (existingUUID) => {
+export const writeToDatabaseConjectureDraft = async (existingUUID, orgId) => {
   try {
     const dateObj = new Date();
     const timestamp = dateObj.toISOString();
@@ -480,8 +842,8 @@ export const writeToDatabaseConjectureDraft = async (existingUUID) => {
     const intermediatePoseData = await createPoseObjects(intermediateJson, 'IntermediatePose', localStorage.getItem('Intermediate Tolerance'));
     const endPoseData = await createPoseObjects(endJson, 'EndPose', localStorage.getItem('End Tolerance'));
 
-    // Firebase path
-    const conjecturePath = `Level/${conjectureID}`;
+    // Firebase path - now under organization
+    const conjecturePath = `orgs/${orgId}/levels/${conjectureID}`;
 
     const promises = [
       set(ref(db, `${conjecturePath}/Time`), timestamp),
@@ -494,7 +856,11 @@ export const writeToDatabaseConjectureDraft = async (existingUUID) => {
       set(ref(db, `${conjecturePath}/Start Tolerance`), localStorage.getItem('Start Tolerance')),
       set(ref(db, `${conjecturePath}/Intermediate Tolerance`), localStorage.getItem('Intermediate Tolerance')),
       set(ref(db, `${conjecturePath}/End Tolerance`), localStorage.getItem('End Tolerance')),
-      set(ref(db, `${conjecturePath}/isFinal`), false)
+      set(ref(db, `${conjecturePath}/isFinal`), false),
+      set(ref(db, `${conjecturePath}/isPublic`), localStorage.getItem('isPublic') === 'true'),
+      set(ref(db, `${conjecturePath}/createdBy`), userId),
+      set(ref(db, `${conjecturePath}/createdAt`), timestamp),
+      set(ref(db, `${conjecturePath}/updatedAt`), timestamp)
     ];
 
     await Promise.all(promises);
@@ -510,17 +876,17 @@ export const writeToDatabaseConjectureDraft = async (existingUUID) => {
 
 
 
-export const deleteFromDatabaseConjecture = async (existingUUID) => {
+export const deleteFromDatabaseConjecture = async (existingUUID, orgId) => {
   if (!existingUUID) {
     return alert("No level ID provided for deletion.");
   }
   
   try {
-    // First, remove the level from any curricular games that reference it
-    await removeLevelFromCurricularGames(existingUUID);
+    // First, remove the level from any curricular games that reference it within the organization
+    await removeLevelFromCurricularGames(existingUUID, orgId);
     
     // Then, remove the level itself from the database
-    const conjecturePath = `Level/${existingUUID}`;
+    const conjecturePath = `orgs/${orgId}/levels/${existingUUID}`;
     const dbRef = ref(db, conjecturePath);
     
     // Remove the entire level from database
@@ -533,15 +899,15 @@ export const deleteFromDatabaseConjecture = async (existingUUID) => {
   }
 };
 
-// Helper function to remove a level from all curricular games that reference it
-const removeLevelFromCurricularGames = async (levelUUID) => {
+// Helper function to remove a level from all curricular games that reference it within an organization
+const removeLevelFromCurricularGames = async (levelUUID, orgId) => {
   try {
-    // Get all games from the database
-    const gamesRef = ref(db, 'Game');
+    // Get all games from the organization
+    const gamesRef = ref(db, `orgs/${orgId}/games`);
     const gamesSnapshot = await get(gamesRef);
     
     if (!gamesSnapshot.exists()) {
-      console.log("No games found in database");
+      console.log("No games found in organization");
       return;
     }
     
@@ -552,19 +918,19 @@ const removeLevelFromCurricularGames = async (levelUUID) => {
     for (const gameKey in games) {
       const game = games[gameKey];
       
-      // Check if this game has ConjectureUUIDs and if it contains the level we're deleting
-      if (game.ConjectureUUIDs && Array.isArray(game.ConjectureUUIDs)) {
-        const levelIndex = game.ConjectureUUIDs.indexOf(levelUUID);
+      // Check if this game has levelIds and if it contains the level we're deleting
+      if (game.levelIds && Array.isArray(game.levelIds)) {
+        const levelIndex = game.levelIds.indexOf(levelUUID);
         
         if (levelIndex !== -1) {
           // Remove the level UUID from the array
-          const updatedConjectureUUIDs = game.ConjectureUUIDs.filter(uuid => uuid !== levelUUID);
+          const updatedLevelIds = game.levelIds.filter(uuid => uuid !== levelUUID);
           
           // Update the game in the database
-          const gameRef = ref(db, `Game/${gameKey}/ConjectureUUIDs`);
-          updatePromises.push(set(gameRef, updatedConjectureUUIDs));
+          const gameRef = ref(db, `orgs/${orgId}/games/${gameKey}/levelIds`);
+          updatePromises.push(set(gameRef, updatedLevelIds));
           
-          console.log(`Removed level ${levelUUID} from game ${game.CurricularName || gameKey}`);
+          console.log(`Removed level ${levelUUID} from game ${game.name || gameKey}`);
         }
       }
     }
@@ -679,14 +1045,15 @@ const countRejectedPromises = async (promises) => {
   /**
    * @function handleSave
    * @description Saves the current game as a draft or publishes it.
-   * It performs a check to ensure the game name is unique before saving.
+   * It performs a check to ensure the game name is unique within the organization before saving.
    * @param {string|null} UUID - The unique identifier for the game. If null, a new UUID will be generated.
    * @param {boolean} isFinal - True to publish, false to save as a draft.
+   * @param {string} orgId - The organization ID where the game will be saved.
    * @returns {Promise<boolean>} - Returns true if the save was successful, false otherwise.
    * Files using this function: CurricularModule.js
    * TODO: Add a last edited by field
    */
-  export const saveGame = async (UUID = null, isFinal = false) => {
+  export const saveGame = async (UUID = null, isFinal = false, orgId) => {
     const db = getDatabase();
     const auth = getAuth();
     const user = auth.currentUser;
@@ -706,13 +1073,19 @@ const countRejectedPromises = async (promises) => {
 
     const gameNameKey = gameName.trim();
 
-    // --- START: UNIQUE NAME VALIDATION ---
-    const gameNamesRef = ref(db, `gameNames/${gameNameKey}`);
-    const snapshot = await get(gameNamesRef);
-
-    if (snapshot.exists() && snapshot.val() !== currentUUID) {
-      alert("This game name is already taken. Please choose a different name.");
-      return false;
+    // --- START: UNIQUE NAME VALIDATION WITHIN ORGANIZATION ---
+    const gamesRef = ref(db, `orgs/${orgId}/games`);
+    const gamesSnapshot = await get(gamesRef);
+    
+    if (gamesSnapshot.exists()) {
+      const games = gamesSnapshot.val();
+      for (const gameKey in games) {
+        const game = games[gameKey];
+        if (game.name === gameNameKey && gameKey !== currentUUID) {
+          alert("This game name is already taken in this organization. Please choose a different name.");
+          return false;
+        }
+      }
     }
     // --- END: UNIQUE NAME VALIDATION ---
 
@@ -738,30 +1111,57 @@ const countRejectedPromises = async (promises) => {
 
     // Proceed with saving the game
     try {
-      const conjectureUUIDs = Curriculum.getCurrentConjectures().map(c => c.UUID);
-      const existingDialogues = await loadGameDialoguesFromFirebase(currentUUID) || [];
+      const levelIds = Curriculum.getCurrentConjectures().map(c => c.UUID);
+      const existingDialogues = await loadGameDialoguesFromFirebase(currentUUID, orgId) || [];
       const userId = user.uid;
       const userName = user.email.split('@')[0];
 
+      // Get isPublic flag from localStorage (default to false)
+      const isPublic = localStorage.getItem('GameIsPublic') === 'true';
+
       const gameData = {
-        CurricularName: gameName,
-        CurricularAuthor: localStorage.getItem('CurricularAuthor') || "Unknown",
-        CurricularKeywords: localStorage.getItem('CurricularKeywords') || "",
-        CurricularPIN: localStorage.getItem('CurricularPIN') || "",
-        ConjectureUUIDs: conjectureUUIDs,
+        name: gameName,
+        author: localStorage.getItem('CurricularAuthor') || "Unknown",
+        keywords: localStorage.getItem('CurricularKeywords') || "",
+        pin: localStorage.getItem('CurricularPIN') || "",
+        levelIds: levelIds,
         isFinal: isFinal,
+        isPublic: isPublic,
         UUID: currentUUID,
         Time: new Date().toISOString(),
         Author: userName,
         AuthorID: userId,
-        Dialogues: existingDialogues
+        Dialogues: existingDialogues,
+        createdBy: userId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       };
 
-      const updates = {};
-      updates[`/Game/${currentUUID}`] = gameData;
-      updates[`/gameNames/${gameNameKey}`] = currentUUID;
+      const gamePath = `orgs/${orgId}/games/${currentUUID}`;
+      await set(ref(db, gamePath), gameData);
 
-      await update(ref(db), updates);
+      // If user is a student, automatically assign game to their class
+      try {
+        const { getCurrentUserContext } = await import('./userDatabase.js');
+        const userContext = await getCurrentUserContext();
+        if (userContext?.role === 'Student' && userContext?.orgId === orgId) {
+          // Get current class ID from user profile
+          const userClassRef = ref(db, `users/${userId}/orgs/${orgId}/currentClassId`);
+          const classSnapshot = await get(userClassRef);
+          const classId = classSnapshot.exists() ? classSnapshot.val() : null;
+          
+          if (classId) {
+            // Store the game assignment in the class
+            await set(ref(db, `orgs/${orgId}/classes/${classId}/assignedGames/${currentUUID}`), {
+              addedAt: new Date().toISOString(),
+              addedBy: userId
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error assigning game to class:', error);
+        // Don't fail the save if class assignment fails
+      }
 
       alert(`Game ${isFinal ? "published" : "saved as draft"} successfully!`);
       Curriculum.setCurrentUUID(currentUUID);
@@ -774,13 +1174,13 @@ const countRejectedPromises = async (promises) => {
     }
 };
 
-export const deleteFromDatabaseCurricular = async (UUID) => {
+export const deleteFromDatabaseCurricular = async (UUID, orgId) => {
   if (!UUID) {
     return alert("No game ID provided for deletion.");
   }
 
   try {
-    const CurricularPath = `Game/${UUID}`;
+    const CurricularPath = `orgs/${orgId}/games/${UUID}`;
     const dbRef = ref(db, CurricularPath);
     
     // Remove the entire game from database
@@ -794,54 +1194,76 @@ export const deleteFromDatabaseCurricular = async (UUID) => {
 };
 
 
-// save dialogues to firebase
-export const saveNarrativeDraftToFirebase = async (UUID, dialogues) => {
+// save dialogues to firebase within an organization
+export const saveNarrativeDraftToFirebase = async (UUID, dialogues, orgId) => {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  
+  if (!user) {
+    throw new Error("User is not authenticated");
+  }
+  
   const timestamp = new Date().toISOString();
   const gameId = UUID ?? uuidv4(); // Use provided UUID or create new one
-  const dbRef = ref(db, `Game/${gameId}/Dialogues`);
+  const userId = user.uid;
+  const userName = user.email ? user.email.split('@')[0] : 'Unknown';
 
   const promises = [
-    set(ref(db, `Game/${gameId}/Dialogues`), dialogues),
-    set(ref(db, `Game/${gameId}/LastSaved`), timestamp),
-    set(ref(db, `Game/${gameId}/UUID`), gameId),
-    //set(ref(db, `Game/${gameId}/isFinal`), false),   DONT MODIFY THE ORIGINAL VALUE
+    set(ref(db, `orgs/${orgId}/games/${gameId}/Dialogues`), dialogues),
+    set(ref(db, `orgs/${orgId}/games/${gameId}/LastSaved`), timestamp),
+    set(ref(db, `orgs/${orgId}/games/${gameId}/UUID`), gameId),
+    //set(ref(db, `orgs/${orgId}/games/${gameId}/isFinal`), false),   DONT MODIFY THE ORIGINAL VALUE
     // Optional: auto-set author again for traceability
-    set(ref(db, `Game/${gameId}/AuthorID`), userId),
-    set(ref(db, `Game/${gameId}/Author`), userName),
+    set(ref(db, `orgs/${orgId}/games/${gameId}/AuthorID`), userId),
+    set(ref(db, `orgs/${orgId}/games/${gameId}/Author`), userName),
   ];
 
   await Promise.all(promises);
 };
 
 
-// Define a function to retrieve a conjecture based on UUID
-export const getConjectureDataByUUID = async (conjectureID) => {
+// Define a function to retrieve a conjecture based on UUID within an organization
+export const getConjectureDataByUUID = async (conjectureID, orgId) => {
   try {
-    // ref the realtime db
-    const dbRef = ref(db, 'Level');
-    // query to find data with the UUID
-    const q = query(dbRef, orderByChild('UUID'), equalTo(conjectureID));
+    console.log('getConjectureDataByUUID: Called with:', { conjectureID, orgId });
+    // ref the realtime db - now under organization
+    const dbRef = ref(db, `orgs/${orgId}/levels`);
+    console.log('getConjectureDataByUUID: Database ref:', `orgs/${orgId}/levels`);
     
-    // Execute the query
-    const querySnapshot = await get(q);
-
-    // check the snapshot
-    if (querySnapshot.exists()) {
-      const data = querySnapshot.val();
-      return data; // return the data if its good
+    // Load all levels and find by UUID (avoiding index requirement)
+    console.log('getConjectureDataByUUID: Loading all levels to find by UUID...');
+    const snapshot = await get(dbRef);
+    console.log('getConjectureDataByUUID: Snapshot exists:', snapshot.exists());
+    
+    if (snapshot.exists()) {
+      const allLevels = snapshot.val();
+      console.log('getConjectureDataByUUID: Total levels loaded:', Object.keys(allLevels).length);
+      
+      // Find the level with matching UUID
+      for (const [levelId, levelData] of Object.entries(allLevels)) {
+        if (levelData.UUID === conjectureID) {
+          console.log('getConjectureDataByUUID: Found matching level:', levelId);
+          return { [levelId]: levelData };
+        }
+      }
+      
+      console.log('getConjectureDataByUUID: No level found with UUID:', conjectureID);
+      return null;
     } else {
-      return null; // This will happen if data not found
+      console.log('getConjectureDataByUUID: No levels found in organization');
+      return null;
     }
   } catch (error) {
+    console.error('getConjectureDataByUUID: Error occurred:', error);
     throw error; // this is an actual bad thing
   }
 };
 
-// Define a function to retrieve a conjecture based on UUID
-export const getCurricularDataByUUID = async (curricularID) => {
+// Define a function to retrieve a game based on UUID within an organization
+export const getCurricularDataByUUID = async (curricularID, orgId) => {
   try {
-    // ref the realtime db
-    const dbRef = ref(db, 'Game');
+    // ref the realtime db - now under organization
+    const dbRef = ref(db, `orgs/${orgId}/games`);
     // query to find data with the UUID
     const q = query(dbRef, orderByChild('UUID'), equalTo(curricularID));
     
@@ -914,20 +1336,15 @@ export const getConjectureDataByPIN = async (PIN) => {
   }
 };
 
-// get a list of all the levels
-export const getConjectureList = async (final) => {
+// get a list of all the levels within an organization
+export const getConjectureList = async (final, orgId) => {
   try {
-    // ref the realtime db
-    const dbRef = ref(db, 'Level');
+    // ref the realtime db - now under organization
+    const dbRef = ref(db, `orgs/${orgId}/levels`);
 
-    // query to find data
+    // query to find data - temporarily always use direct ref to avoid index issues
     let q;
-    if (final){ //return only the final (complete) conjectures
-      q = query(dbRef, orderByChild('isFinal'), equalTo(final));
-    }
-    else{ // return both final conjectures (complete) and drafts of conjectures (incomplete)
-      q = query(dbRef, orderByChild('isFinal'));
-    }
+    q = dbRef; // Always get all data without filtering for now
     
     // Execute the query
     const querySnapshot = await get(q);
@@ -949,27 +1366,22 @@ export const getConjectureList = async (final) => {
 };
 
 
-// get a list of all the games
-export const getCurricularList = async (final) => {
+// get a list of all the games within an organization
+export const getCurricularList = async (final, orgId) => {
   try {
-    // ref the realtime db
-    const dbRef = ref(db, 'Game');
+    // ref the realtime db - now under organization
+    const dbRef = ref(db, `orgs/${orgId}/games`);
 
-    // query to find data
+    // query to find data - temporarily always use direct ref to avoid index issues
     let q;
-    if (final){ //return only the final (complete) conjectures
-      q = query(dbRef, orderByChild('isFinal'), equalTo(final));
-    }
-    else{ // return both final conjectures (complete) and drafts of conjectures (incomplete)
-      q = query(dbRef, orderByChild('isFinal'));
-    }
+    q = dbRef; // Always get all data without filtering for now
     
     // Execute the query
     const querySnapshot = await get(q);
 
     // check the snapshot
     if (querySnapshot.exists()) {
-      // get all the conjectures in an array
+      // get all the games in an array
       const curricular = [];
       querySnapshot.forEach((curricularSnapshot) => {
         curricular.push(curricularSnapshot.val());
@@ -983,10 +1395,10 @@ export const getCurricularList = async (final) => {
   }
 };
 
-export const searchConjecturesByWord = async (searchWord) => {
+export const searchConjecturesByWord = async (searchWord, orgId) => {
   try {
-    // Reference the realtime db
-    const dbRef = ref(db, 'Level');
+    // Reference the realtime db - now under organization
+    const dbRef = ref(db, `orgs/${orgId}/levels`);
 
     // Query to find data
     const q = query(dbRef, orderByChild('Search Words'));
@@ -1035,10 +1447,15 @@ export const writeToDatabaseNewSession = async (CurrId, CurrName, role) => {
   const dateObj = new Date();
   const timestamp = dateObj.toISOString();
   const timestampGMT = dateObj.toUTCString();
+  const unixTimestamp = Date.now();
  
   // Change game ID appropriately
   gameId = CurrName;
   userRole = role;
+  
+  // Get game mode
+  const isPlayMode = getPlayGame();
+  const gameMode = isPlayMode ? 'Teaching' : 'Research';
 
   // UPDATED: include device layer
   const sessionRoot = `_GameData/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}`;
@@ -1051,8 +1468,11 @@ export const writeToDatabaseNewSession = async (CurrId, CurrName, role) => {
     set(ref(db, `${sessionRoot}/UserRole`), userRole),
     set(ref(db, `${sessionRoot}/DeviceID`), deviceId),               // NEW
     set(ref(db, `${sessionRoot}/DeviceNickname`), deviceNickname),   // NEW
-    set(ref(db, `${sessionRoot}/GameStart`), timestamp),
+    // TODO: Uncomment line below to also store ISO format timestamp
+    // set(ref(db, `${sessionRoot}/GameStart`), timestamp),
     set(ref(db, `${sessionRoot}/GameStartGMT`), timestampGMT),
+    set(ref(db, `${sessionRoot}/GameStartUnix`), unixTimestamp),
+    set(ref(db, `${sessionRoot}/GameMode`), gameMode),
     set(ref(db, `${sessionRoot}/DaRep`), 'null'),
     set(ref(db, `${sessionRoot}/Hints/HintEnabled`), "null"),
     set(ref(db, `${sessionRoot}/Hints/HintCount`), "null"),
@@ -1080,7 +1500,8 @@ export const writeToDatabasePoseStart = async (poseNumber, ConjectureId, gameId)
 
   // Create an object to send to the database
   const promises = [
-    set(ref(db, `${userSession}/${poseNumber} Begin`), timestamp),
+    // TODO: Uncomment line below to also store ISO format timestamp
+    // set(ref(db, `${userSession}/${poseNumber} Begin`), timestamp),
     set(ref(db, `${userSession}/${poseNumber} Begin GMT`), timestampGMT),
   ];
 
@@ -1100,7 +1521,8 @@ export const writeToDatabasePoseMatch = async (poseNumber, gameId) => {
 
   // Create an object to send to the database
   const promises = [
-    set(ref(db, `${userSession}/${poseNumber} Match`), timestamp),
+    // TODO: Uncomment line below to also store ISO format timestamp
+    // set(ref(db, `${userSession}/${poseNumber} Match`), timestamp),
     set(ref(db, `${userSession}/${poseNumber} Match GMT`), timestampGMT),
   ];
 
@@ -1123,7 +1545,8 @@ export const writeToDatabaseIntuitionStart = async (gameId) => {
 
   // Create an object to send to the database
   const promises = [
-    set(ref(db, `${userSession}/Intuition Start`), timestamp),
+    // TODO: Uncomment line below to also store ISO format timestamp
+    // set(ref(db, `${userSession}/Intuition Start`), timestamp),
     set(ref(db, `${userSession}/Intuition Start GMT`), timestampGMT),
   ];
 
@@ -1146,11 +1569,52 @@ export const writeToDatabaseIntuitionEnd = async (gameId) => {
 
   // Create an object to send to the database
   const promises = [
-    set(ref(db, `${userSession}/Intuition End/`), timestamp),
+    // TODO: Uncomment line below to also store ISO format timestamp
+    // set(ref(db, `${userSession}/Intuition End/`), timestamp),
     set(ref(db, `${userSession}/Intuition End GMT/`), timestampGMT),
   ];
 
   // Return the promise that push() returns
+  await Promise.all(promises);
+};
+
+// Write True/False answer to database
+export const writeToDatabaseTFAnswer = async (answer, correctAnswer, gameId) => {
+  const dateObj = new Date();
+  const timestampGMT = dateObj.toUTCString();
+  const unixTimestamp = Date.now();
+  
+  const isCorrect = answer === correctAnswer;
+  
+  const userSession = `_GameData/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${conjectureId}`;
+  
+  const promises = [
+    set(ref(db, `${userSession}/TF Given Answer`), answer),
+    set(ref(db, `${userSession}/TF Correct`), isCorrect),
+    set(ref(db, `${userSession}/TF Answer Time GMT`), timestampGMT),
+    set(ref(db, `${userSession}/TF Answer Time Unix`), unixTimestamp),
+  ];
+  
+  await Promise.all(promises);
+};
+
+// Write Multiple Choice answer to database
+export const writeToDatabaseMCAnswer = async (answer, correctAnswer, gameId) => {
+  const dateObj = new Date();
+  const timestampGMT = dateObj.toUTCString();
+  const unixTimestamp = Date.now();
+  
+  const isCorrect = answer === correctAnswer;
+  
+  const userSession = `_GameData/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${conjectureId}`;
+  
+  const promises = [
+    set(ref(db, `${userSession}/MC Given Answer`), answer),
+    set(ref(db, `${userSession}/MC Correct`), isCorrect),
+    set(ref(db, `${userSession}/MC Answer Time GMT`), timestampGMT),
+    set(ref(db, `${userSession}/MC Answer Time Unix`), unixTimestamp),
+  ];
+  
   await Promise.all(promises);
 };
 
@@ -1166,7 +1630,8 @@ export const writeToDatabaseInsightStart = async (gameId = undefined) => {
 
   // Create an object to send to the database
   const promises = [
-    set(ref(db, `${userSession}/Insight Start/`), timestamp),
+    // TODO: Uncomment line below to also store ISO format timestamp
+    // set(ref(db, `${userSession}/Insight Start/`), timestamp),
     set(ref(db, `${userSession}/Insight Start GMT/`), timestampGMT),
   ];
 
@@ -1186,7 +1651,8 @@ export const writeToDatabaseInsightEnd = async (gameId = undefined) => {
 
   // Create an object to send to the database
   const promises = [
-    set(ref(db, `${userSession}/Insight End`), timestamp),
+    // TODO: Uncomment line below to also store ISO format timestamp
+    // set(ref(db, `${userSession}/Insight End`), timestamp),
     set(ref(db, `${userSession}/Insight End GMT`), timestampGMT),
   ];
 
@@ -1329,10 +1795,10 @@ export const removeFromDatabaseByGame = async (selectedGame, selectedStart, sele
   }
 };
 
-export const checkGameAuthorization = async (gameName) => {
+export const checkGameAuthorization = async (gameName, orgId) => {
   try {
-    const dbRef = ref(db, 'Game');
-    const q = query(dbRef, orderByChild('CurricularName'), equalTo(gameName));
+    const dbRef = ref(db, `orgs/${orgId}/games`);
+    const q = query(dbRef, orderByChild('name'), equalTo(gameName));
     const qSnapshot = await get(q);
 
     if (qSnapshot.exists()) {
@@ -1354,20 +1820,20 @@ export const checkGameAuthorization = async (gameName) => {
   }
 };
 
-export const getAuthorizedGameList = async () => {
+export const getAuthorizedGameList = async (orgId) => {
   try {
-    const dbRef = ref(db, 'Game');
+    const dbRef = ref(db, `orgs/${orgId}/games`);
     const q = query(dbRef, orderByChild('AuthorID'), equalTo(userId));
     const querySnapshot = await get(q);
     console.log("Query snapshot:", querySnapshot.val());
 
     if (querySnapshot.exists()) {
-      // get all the conjectures in an array
+      // get all the games in an array
       const authorizedCurricular = [];
 
       querySnapshot.forEach((authorizedCurricularSnapshot) => {
         // push name string into list of authorized games
-        authorizedCurricular.push(authorizedCurricularSnapshot.val().CurricularName);
+        authorizedCurricular.push(authorizedCurricularSnapshot.val().name);
       })
       return authorizedCurricular;
 
@@ -1382,17 +1848,17 @@ export const getAuthorizedGameList = async () => {
   }
 };
 
-// Get game name using game UUID
-export const getGameNameByUUID = async (gameID) => {
+// Get game name using game UUID within an organization
+export const getGameNameByUUID = async (gameID, orgId) => {
   try {
     // if (!gameID) return 'UnknownGame';
     
-    const gameData = await getCurricularDataByUUID(gameID);
+    const gameData = await getCurricularDataByUUID(gameID, orgId);
     console.log('Game data', gameData);
     if (gameData && Object.keys(gameData).length > 0) {
       const gameKey = Object.keys(gameData)[0];
-      console.log('Game name:', gameData[gameKey].CurricularName);
-      return gameData[gameKey].CurricularName || 'UnknownGame';
+      console.log('Game name:', gameData[gameKey].name);
+      return gameData[gameKey].name || 'UnknownGame';
     }
     return 'UnknownGame';
   } catch (error) {
@@ -1401,12 +1867,12 @@ export const getGameNameByUUID = async (gameID) => {
   }
 };
 
-// Get level name using level UUID
-export const getLevelNameByUUID = async (levelUUID) => {
+// Get level name using level UUID within an organization
+export const getLevelNameByUUID = async (levelUUID, orgId) => {
   try {
     if (!levelUUID) return 'UnknownLevel';
     
-    const levelData = await getConjectureDataByUUID(levelUUID);
+    const levelData = await getConjectureDataByUUID(levelUUID, orgId);
     if (levelData && Object.keys(levelData).length > 0) {
       const levelKey = Object.keys(levelData)[0];
       // First try to get the level Name field
@@ -1428,12 +1894,12 @@ export const getLevelNameByUUID = async (levelUUID) => {
   }
 };
 
-// Find game that contains a specific level UUID
-export const findGameByLevelUUID = async (levelUUID) => {
+// Find game that contains a specific level UUID within an organization
+export const findGameByLevelUUID = async (levelUUID, orgId) => {
   try {
     if (!levelUUID) return null;
     
-    const gamesRef = ref(db, 'Game');
+    const gamesRef = ref(db, `orgs/${orgId}/games`);
     const gamesSnapshot = await get(gamesRef);
     
     if (!gamesSnapshot.exists()) return null;
@@ -1442,9 +1908,9 @@ export const findGameByLevelUUID = async (levelUUID) => {
     
     for (const gameKey in games) {
       const game = games[gameKey];
-      if (game.ConjectureUUIDs && Array.isArray(game.ConjectureUUIDs) && 
-          game.ConjectureUUIDs.includes(levelUUID)) {
-        // console.log('Game found:', game.CurricularName);
+      if (game.levelIds && Array.isArray(game.levelIds) && 
+          game.levelIds.includes(levelUUID)) {
+        // console.log('Game found:', game.name);
         return game;
       }
     }
@@ -1456,11 +1922,11 @@ export const findGameByLevelUUID = async (levelUUID) => {
   }
 };
 
-// Get game name from level UUID by finding the game that contains this level
-export const getGameNameByLevelUUID = async (levelUUID) => {
+// Get game name from level UUID by finding the game that contains this level within an organization
+export const getGameNameByLevelUUID = async (levelUUID, orgId) => {
   try {
-    const game = await findGameByLevelUUID(levelUUID);
-    return game?.CurricularName || 'UnknownGame';
+    const game = await findGameByLevelUUID(levelUUID, orgId);
+    return game?.name || 'UnknownGame';
   } catch (error) {
     console.error('Error getting game name by level UUID:', error);
     return 'UnknownGame';
@@ -1492,11 +1958,11 @@ export const convertDateFormat = (dateStr) => {
     return `${year}-${month}-${day}`;
 };
 
-export const findGameIdByName = async (name) => {
+export const findGameIdByName = async (name, orgId) => {
   try {
     if (!name) return null;
     
-    const gamesRef = ref(db, 'Game');
+    const gamesRef = ref(db, `orgs/${orgId}/games`);
     const gamesSnapshot = await get(gamesRef);
     
     if (!gamesSnapshot.exists()) return null;
@@ -1505,8 +1971,8 @@ export const findGameIdByName = async (name) => {
     
     for (const gameKey in games) {
       const game = games[gameKey];
-      if (game.CurricularName && game.CurricularName.includes(name)) {
-        // console.log('Game found:', game.CurricularName);
+      if (game.name && game.name.includes(name)) {
+        // console.log('Game found:', game.name);
         return game.UUID;
       }
     }

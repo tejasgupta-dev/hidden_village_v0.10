@@ -6,6 +6,11 @@ import CursorMode from "./CursorMode.js";
 import Pose from "./Pose/index";
 import Background from "./Background";
 import { white, darkGray, yellow } from "../utils/colors";
+import { 
+  bufferPoseDataWithAutoFlush,
+  writeToDatabaseTFAnswer,
+  writeToDatabaseMCAnswer 
+} from "../firebase/database.js";
 import { Rectangle } from "@pixi/math";
 import { bufferPoseDataWithAutoFlush } from "../firebase/database.js";
 

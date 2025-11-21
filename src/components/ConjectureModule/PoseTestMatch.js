@@ -4,7 +4,7 @@ import { TextStyle } from "@pixi/text";
 import { orange, black, white, darkGray, yellow, red, blue } from "../../utils/colors";
 import Button from "../Button";
 import RectButton from "../RectButton";
-import { getConjectureDataByUUID } from "../../firebase/database";
+import { getConjectureDataByUUIDWithCurrentOrg } from "../../firebase/database";
 import { useCallback } from "react";
 import React, { useState, useEffect } from 'react';
 import { Container } from "postcss";
@@ -20,7 +20,7 @@ const PoseTestMatch = (props) => {
   // Background for Pose Matching
   const drawModalBackground = useCallback((g) => {
     g.beginFill(darkGray, 0.9);
-    g.drawRect(0, 0, window.innerWidth, window.innerHeight);
+    g.drawRect(0, 0, width, height);
     g.endFill();
     const col1 = columnDimensions(1);
     g.beginFill(yellow, 1);
@@ -28,7 +28,7 @@ const PoseTestMatch = (props) => {
     const col3 = columnDimensions(3);
     g.drawRect(col3.x, col3.y, col3.width, col3.height);
     g.endFill();
-  }, []);
+  }, [width, height, columnDimensions]);
 
   // Get pose data from local storage
   useEffect(() => {

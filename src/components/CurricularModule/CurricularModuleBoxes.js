@@ -36,6 +36,13 @@ function handlePinInput(key, triggerRerender) {
   }
 }
 
+function handlePublicToggle(triggerRerender) {
+  const currentValue = localStorage.getItem('GameIsPublic') === 'true';
+  const newValue = !currentValue;
+  localStorage.setItem('GameIsPublic', newValue ? 'true' : 'false');
+  triggerRerender();
+}
+
 function handleLevelClicked(conjecture, conjectureCallback) {
   setEditLevel(false);
   setGoBackFromLevelEdit("NEWGAME");
@@ -282,6 +289,28 @@ export const CurricularContentEditor = (props) => {
       {createInputBox(180, 0.10, 1, 0.210, 0.17, 'CurricularKeywords', width, height, (key) => handleCurricularKeywords(key, triggerRerender), renderKey)}
       {createInputBox(220, 0.10, 0.8, 0.55, 0.106, 'CurricularAuthor', width, height, null, renderKey, true)}
       {createInputBox(4, 0.10, 0.3, 0.730, 0.175, 'CurricularPIN', width, height, (key) => handlePinInput(key, triggerRerender), renderKey)}
+      
+      {/* Public checkbox */}
+      {(() => {
+        const isPublic = localStorage.getItem('GameIsPublic') === 'true';
+        return (
+          <>
+            {createTextElement("Public:", 0.700, 0.31, 0.018, width, height)}
+            <InputBox
+              height={height * 0.08}
+              width={width * 0.15}
+              x={width * 0.77}
+              y={height * 0.32}
+              color={isPublic ? green : white}
+              fontSize={width * 0.012}
+              text={isPublic ? 'YES' : 'NO'}
+              fontColor={isPublic ? white : black}
+              fontWeight={600}
+              callback={() => handlePublicToggle(triggerRerender)}
+            />
+          </>
+        );
+      })()}
 
       {createTextElement("Game Editor", 0.43, 0.030, 0.025, width, height)}
       {createTextElement("Keywords:", 0.110, 0.17, 0.018, width, height)}

@@ -9,7 +9,7 @@ import Tween from '../Tween';
 
 import LevelPlayMachine from './LevelPlayMachine';
 import {
-  getConjectureDataByUUID,
+  getConjectureDataByUUIDWithCurrentOrg,
   writeToDatabaseIntuitionStart,
   writeToDatabaseIntuitionEnd,
 } from '../../firebase/database';
@@ -59,7 +59,7 @@ export default function LevelPlay(props) {
 
   /* ---------- load conjecture data ---------- */
   useEffect(() => {
-    getConjectureDataByUUID(UUID)
+    getConjectureDataByUUIDWithCurrentOrg(UUID)
       .then((d) => {
         setConjectureData(d);
 
@@ -159,6 +159,15 @@ export default function LevelPlay(props) {
   // Only show story/dialogue content if settings.story is true
   return (
     <>
+      {/* NOTE: TO OPTIMIZE DATABASE STORAGE AND NOT INCUR ADDITIONAL COSTS, 
+          VIDEO RECORDING IS ONLY RETAINED FOR THE STATES MENTIONED BELOW.
+          SIMPLY ADD THE STATE NAME TO ENABLE RECORDING FOR THAT PHASE */}
+      {/* TODO: Re-enable video recording after fixing CORS configuration in Firebase Storage */}
+      {/* {(['tween','poseMatching', 'intuition', 'insight'].includes(state.value)) && (
+        <VideoRecorder phase={state.value} curricularID={UUID} gameID={gameID} />
+      )} */}
+
+      {/* Intro dialogue */}
       {state.value === 'introDialogue' &&
         !hasShownIntro(currentConjectureIdx) &&
         conjectureData && 

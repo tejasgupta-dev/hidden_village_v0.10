@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { Text } from "@inlet/react-pixi";
+import { TextStyle } from "@pixi/text";
 import Background from "../Background";
 import { blue, white, red, neonGreen, green, black } from "../../utils/colors";
 import RectButton from "../RectButton";
-import { getCurricularList, writeToDatabaseGameSelect, writeToDatabaseNewSession } from "../../firebase/database";
-import { getUserNameFromDatabase, getUserRoleFromDatabase } from "../../firebase/userDatabase";
+import { getCurricularListWithCurrentOrg, writeToDatabaseGameSelect, writeToDatabaseNewSession } from "../../firebase/database";
+import { getUserNameFromDatabase, getCurrentUserContext, getCurrentClassContext, getClassInfo } from "../../firebase/userDatabase";
 import { CurricularSelectorBoxes } from "./CurricularSelectorModuleBoxes";
 import { useMachine } from "@xstate/react";
 import { Curriculum } from "../CurricularModule/CurricularModule";
@@ -19,11 +21,49 @@ export function setPlayGame(trueOrFalse) {
   playGame = trueOrFalse;
 }
 
-export function handlePIN(curricular, message = "Please Enter the PIN.") { // this function is meant to be used as an if statement (ex: if(handlePIN){...} )
-  const existingPIN = curricular["CurricularPIN"];
+export async function handlePIN(curricular, message = "Please Enter the PIN.", firebaseApp = null) { // this function is meant to be used as an if statement (ex: if(await handlePIN){...} )
+  const existingPIN = curricular["pin"] || curricular["CurricularPIN"];
 
   if (existingPIN == "" || existingPIN == "undefined" || existingPIN == null) { // no existing PIN
     return true;
+  }
+
+  // Check hierarchy - if user can edit without PIN, skip PIN check
+  if (firebaseApp) {
+    try {
+      const { getAuth } = await import("firebase/auth");
+      const { canEditWithoutPIN, getCurrentUserContext } = await import("../../firebase/userDatabase");
+      const auth = getAuth(firebaseApp);
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        const userContext = await getCurrentUserContext(firebaseApp);
+        const resourceOwnerId = curricular.AuthorID || curricular.createdBy;
+        const resourceOrgId = userContext?.orgId; // Assuming game is in current org
+        
+        if (resourceOwnerId && resourceOrgId) {
+          const canEdit = await canEditWithoutPIN(
+            currentUser.uid,
+            resourceOwnerId,
+            resourceOrgId,
+            userContext?.role,
+            resourceOrgId,
+            firebaseApp
+          );
+          
+          if (canEdit) {
+            return true; // Can edit without PIN
+          }
+        }
+        
+        // Check if user is the owner
+        if (resourceOwnerId === currentUser.uid) {
+          return true; // Owner can always edit without PIN
+        }
+      }
+    } catch (error) {
+      console.error('Error checking edit permission:', error);
+      // Fall through to PIN check on error
+    }
   }
 
   const enteredPIN = prompt(message);
@@ -32,12 +72,12 @@ export function handlePIN(curricular, message = "Please Enter the PIN.") { // th
     return true;
   }
   else if (enteredPIN != null && enteredPIN != "") { // recursively try to have the user enter a PIN when it is incorrect
-    return handlePIN(curricular, "Incorrect PIN, please try again.");
+    return handlePIN(curricular, "Incorrect PIN, please try again.", firebaseApp);
   }
   return false; // do nothing if cancel is clicked
 }
 
-async function handleGameClicked(curricular, curricularCallback, setLoading) {
+async function handleGameClicked(curricular, curricularCallback, setLoading, firebaseApp) {
   if (Curriculum.getCurrentUUID() === curricular["UUID"]) {
     Curriculum.setCurrentUUID(null);
     return;
@@ -49,7 +89,7 @@ async function handleGameClicked(curricular, curricularCallback, setLoading) {
     if (playGame) {
       Curriculum.setCurrentUUID(curricular["UUID"]);
       await Curriculum.setCurricularEditor(curricular);
-    } else if (handlePIN(curricular) && !playGame) {
+    } else if (await handlePIN(curricular, "Please Enter the PIN.", firebaseApp) && !playGame) {
       console.log("Attempting to edit game");
       Curriculum.setCurrentUUID(curricular["UUID"]);
       await Curriculum.setCurricularEditor(curricular);
@@ -61,9 +101,18 @@ async function handleGameClicked(curricular, curricularCallback, setLoading) {
 
     setLoading(false); // stop loading before callback
     console.log("Levels fetched, redirecting!");
-    curricularCallback();
+    if (curricularCallback) {
+      curricularCallback();
+    } else {
+      console.error("Error in handleGameClicked: curricularCallback is undefined");
+    }
   } catch (error) {
     console.error("Error in handleGameClicked:", error);
+    console.error("Error details:", {
+      message: error.message,
+      stack: error.stack,
+      curricular: curricular
+    });
     setLoading(false); // make sure loading is turned off on error
   }
 }
@@ -71,30 +120,237 @@ async function handleGameClicked(curricular, curricularCallback, setLoading) {
 
 const CurricularSelectModule = (props) => {
   
-  const { height, width, mainCallback, curricularCallback, userRole } = props;
+  const { height, width, mainCallback, curricularCallback, userRole, firebaseApp } = props;
   const [curricularList, setCurricularList] = useState([]);
+  const [filteredCurricularList, setFilteredCurricularList] = useState([]);
   const [currentPage, setCurrentPage] = useState(0);
   const [selectedCurricular, setSelectedCurricular] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showPublic, setShowPublic] = useState(false);
 
   useEffect(() => {
+    let isMounted = true;
+    
     const fetchData = async () => {
       try {
-        const result = await getCurricularList(getPlayGame());
-        setCurricularList(result);
-        setLoading(false);
+        const isPlayMode = getPlayGame();
+        
+        if (isPlayMode) {
+          // PLAY mode: show only games assigned to current class
+          const { classId, orgId } = await getCurrentClassContext(firebaseApp);
+          
+          if (!isMounted) return;
+          
+          if (!classId || !orgId) {
+            console.warn('No class context found - showing organization and public games');
+            // Get all games (organization games + public games from other orgs)
+            const allGames = await getCurricularListWithCurrentOrg(isPlayMode, true);
+            
+            if (!isMounted) return;
+            
+            // Filter: organization games (without _isFromOtherOrg) + public games (with isPublic === true or _isFromOtherOrg === true)
+            let availableGames = [];
+            if (allGames) {
+              availableGames = allGames.filter(game => {
+                // Games from current organization (not from other orgs)
+                if (!game._isFromOtherOrg) {
+                  return true;
+                }
+                // Public games from other organizations
+                if (game._isFromOtherOrg && game.isPublic === true) {
+                  return true;
+                }
+                return false;
+              });
+            }
+            
+            console.log('Available games (org + public):', availableGames.length, 'out of', allGames ? allGames.length : 0);
+            if (isMounted) {
+              setCurricularList(availableGames);
+              setLoading(false);
+            }
+            return;
+          }
+          
+          // Get games assigned to current class
+          const classInfo = await getClassInfo(orgId, classId, firebaseApp);
+          const assignedGameIds = classInfo?.assignedGames ? Object.keys(classInfo.assignedGames) : [];
+          
+          console.log('Current class:', classId, 'Assigned games:', assignedGameIds);
+          
+          // Get all games
+          const allGames = await getCurricularListWithCurrentOrg(isPlayMode, true);
+          
+          if (!isMounted) return;
+          
+          // Filter only games assigned to current class
+          const classGames = allGames ? allGames.filter(game => assignedGameIds.includes(game.UUID)) : [];
+          
+          console.log('Filtered games for class:', classGames.length, 'out of', allGames ? allGames.length : 0);
+          if (isMounted) {
+            setCurricularList(classGames);
+          }
+        } else {
+          // EDIT mode: show all games created by current user
+          console.log('EDIT mode: showing all user games');
+          const result = await getCurricularListWithCurrentOrg(isPlayMode, true);
+          if (isMounted) {
+            setCurricularList(result || []);
+          }
+        }
+        
+        if (isMounted) {
+          setLoading(false);
+        }
       } catch (error) {
-        console.error('Error fetching data:', error);
-        setLoading(false);
+        // console.error('Error fetching data:', error);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     fetchData();
+    
+    // Cleanup function to prevent state update on unmounted component
+    return () => {
+      isMounted = false;
+    };
   }, []);
+  
+  // Apply filters
+  useEffect(() => {
+    let isMounted = true;
+    
+    const applyFilters = async () => {
+      let filtered = [...curricularList];
+      
+      // Filter by public/private - if showPublic is false, hide public games from other orgs
+      if (!showPublic) {
+        filtered = filtered.filter(curricular => !curricular._isFromOtherOrg);
+      }
+      
+      // Only update state if component is still mounted
+      if (isMounted) {
+        setFilteredCurricularList(filtered);
+        setCurrentPage(0); // Reset to first page when filters change
+      }
+    };
+    
+    applyFilters();
+    
+    // Cleanup function to prevent state update on unmounted component
+    return () => {
+      isMounted = false;
+    };
+  }, [curricularList, showPublic, firebaseApp]);
+
+  // Listen for user context changes (organization/class switches)
+  useEffect(() => {
+    let isMounted = true;
+    
+    const handleUserContextChange = () => {
+      console.log('CurricularSelector: User context changed, refreshing curricular list...');
+      const fetchData = async () => {
+        try {
+          const isPlayMode = getPlayGame();
+          console.log('CurricularSelector: Play mode:', isPlayMode);
+          
+          if (isPlayMode) {
+            // PLAY mode: show only games assigned to current class
+            const { classId, orgId } = await getCurrentClassContext(firebaseApp);
+            console.log('CurricularSelector: Current class context:', { classId, orgId });
+            
+            if (!isMounted) return;
+            
+            if (!classId || !orgId) {
+              console.warn('CurricularSelector: No class context found - showing organization and public games');
+              // Get all games (organization games + public games from other orgs)
+              const allGames = await getCurricularListWithCurrentOrg(isPlayMode, true);
+              
+              if (!isMounted) return;
+              
+              // Filter: organization games (without _isFromOtherOrg) + public games (with isPublic === true or _isFromOtherOrg === true)
+              let availableGames = [];
+              if (allGames) {
+                availableGames = allGames.filter(game => {
+                  // Games from current organization (not from other orgs)
+                  if (!game._isFromOtherOrg) {
+                    return true;
+                  }
+                  // Public games from other organizations
+                  if (game._isFromOtherOrg && game.isPublic === true) {
+                    return true;
+                  }
+                  return false;
+                });
+              }
+              
+              console.log('CurricularSelector: Available games (org + public):', availableGames.length, 'out of', allGames ? allGames.length : 0);
+              if (isMounted) {
+                setCurricularList(availableGames);
+                setLoading(false);
+              }
+              return;
+            }
+            
+            // Get games assigned to current class
+            const classInfo = await getClassInfo(orgId, classId, firebaseApp);
+            const assignedGameIds = classInfo?.assignedGames ? Object.keys(classInfo.assignedGames) : [];
+            
+            console.log('CurricularSelector: Updated current class:', classId, 'Assigned games:', assignedGameIds);
+            
+            // Get all games
+            const allGames = await getCurricularListWithCurrentOrg(isPlayMode, true);
+            
+            if (!isMounted) return;
+            
+            // Filter only games assigned to current class
+            const classGames = allGames ? allGames.filter(game => assignedGameIds.includes(game.UUID)) : [];
+            
+            console.log('CurricularSelector: Updated filtered games for class:', classGames.length, 'out of', allGames.length);
+            if (isMounted) {
+              setCurricularList(classGames);
+            }
+          } else {
+            // EDIT mode: show all games created by current user
+            console.log('CurricularSelector: EDIT mode: showing all user games');
+            const result = await getCurricularListWithCurrentOrg(isPlayMode, true);
+            console.log('CurricularSelector: Updated games for edit mode:', result?.length || 0);
+            if (isMounted) {
+              setCurricularList(result || []);
+            }
+          }
+          
+          if (isMounted) {
+            setLoading(false);
+          }
+        } catch (error) {
+          console.error('CurricularSelector: Error refreshing data:', error);
+          if (isMounted) {
+            setLoading(false);
+          }
+        }
+      };
+
+      fetchData();
+    };
+
+    // Add event listener
+    console.log('CurricularSelector: Adding userContextChanged event listener');
+    window.addEventListener('userContextChanged', handleUserContextChange);
+
+    // Cleanup
+    return () => {
+      isMounted = false;
+      console.log('CurricularSelector: Removing userContextChanged event listener');
+      window.removeEventListener('userContextChanged', handleUserContextChange);
+    };
+  }, [firebaseApp]);
 
   //use to get a fixed number of conjectures per page and to navigate between the pages
   const curricularPerPage = 7;
-  const totalPages = Math.ceil((curricularList?.length || 0) / curricularPerPage);
+  const totalPages = Math.ceil((filteredCurricularList?.length || 0) / curricularPerPage);
 
   const nextPage = () => {
     if (currentPage < totalPages - 1) {
@@ -119,7 +375,7 @@ const CurricularSelectModule = (props) => {
 
   // use to determine the subset of games to display based on the current page
   const startIndex = currentPage * curricularPerPage;
-  const currentCurriculars = (curricularList || []).slice(startIndex, startIndex + curricularPerPage);
+  const currentCurriculars = (filteredCurricularList || []).slice(startIndex, startIndex + curricularPerPage);
 
   // draw the buttons that show the author name, name of game, and keywords, and the add conjecture button
   const drawCurricularList = (xMultiplier, yMultiplier, fontSizeMultiplier, totalWidth, totalHeight) => {
@@ -135,7 +391,7 @@ const CurricularSelectModule = (props) => {
             color={selectedCurricular && selectedCurricular.UUID === curricular["UUID"] ? neonGreen : white}
             fontSize={selectedCurricular && selectedCurricular.UUID === curricular["UUID"] ? totalWidth * fontSizeMultiplier / 1.1 : totalWidth * fontSizeMultiplier / 1.4}
             fontColor={selectedCurricular && selectedCurricular.UUID === curricular["UUID"] ? white : blue}
-            text={curricular["CurricularAuthor"]}
+            text={curricular["author"] || curricular["CurricularAuthor"] || "Unknown"}
             fontWeight="bold"
             callback={() => {
               handleCurricularSelection(curricular);
@@ -153,7 +409,7 @@ const CurricularSelectModule = (props) => {
             color={selectedCurricular && selectedCurricular.UUID === curricular["UUID"] ? neonGreen : white}
             fontSize={selectedCurricular && selectedCurricular.UUID === curricular["UUID"] ? totalWidth * fontSizeMultiplier / 1.1 : totalWidth * fontSizeMultiplier / 1.4}
             fontColor={selectedCurricular && selectedCurricular.UUID === curricular["UUID"] ? white : blue}
-            text={curricular["CurricularName"]}
+            text={curricular["name"] || curricular["CurricularName"] || "Untitled"}
             fontWeight="bold"
             callback={() => {
               handleCurricularSelection(curricular);
@@ -171,7 +427,7 @@ const CurricularSelectModule = (props) => {
             color={selectedCurricular && selectedCurricular.UUID === curricular["UUID"] ? neonGreen : white}
             fontSize={selectedCurricular && selectedCurricular.UUID === curricular["UUID"] ? totalWidth * fontSizeMultiplier / 1.1 : totalWidth * fontSizeMultiplier / 1.4}
             fontColor={selectedCurricular && selectedCurricular.UUID === curricular["UUID"] ? white : blue}
-            text={curricular["CurricularKeywords"]}
+            text={curricular["keywords"] || curricular["CurricularKeywords"] || ""}
             fontWeight="bold"
             callback={() => {
               handleCurricularSelection(curricular);
@@ -242,6 +498,20 @@ const CurricularSelectModule = (props) => {
         alpha={totalPages <= 1 || currentPage === totalPages - 1 ? 0.3 : 1}
       />
 
+      {/* Filters */}
+      <RectButton
+        height={height * 0.2}
+        width={width * 0.15}
+        x={width * 0.1}
+        y={height * 0.07}
+        color={showPublic ? green : white}
+        fontSize={width * 0.012}
+        fontColor={showPublic ? white : black}
+        text={showPublic ? "SHOW PUBLIC: YES" : "SHOW PUBLIC: NO"}
+        fontWeight={600}
+        callback={() => setShowPublic(!showPublic)}
+      />
+
       <RectButton
         height={height * 0.13}
         width={width * 0.26}
@@ -272,13 +542,31 @@ const CurricularSelectModule = (props) => {
         fontWeight={800}
         callback={
           selectedCurricular 
-            ? () => handleGameClicked(selectedCurricular, curricularCallback, setLoading)
+            ? () => handleGameClicked(selectedCurricular, curricularCallback, setLoading, firebaseApp)
             : null
         }
       />
 
       <CurricularSelectorBoxes height={height} width={width} />
-      {drawCurricularList(0.15, 0.3, 0.018, width, height)}
+      
+      {curricularList.length === 0 ? (
+        <Text
+          text={getPlayGame() 
+            ? "No games available. If you are in a class, contact your teacher to have games assigned to your class. Otherwise, check for public games or games from your organization."
+            : "No games found. Create some games first."}
+          x={width * 0.15}
+          y={height * 0.4}
+          style={new TextStyle({
+            fontFamily: "Arial",
+            fontSize: 24,
+            fill: [blue],
+            wordWrap: true,
+            wordWrapWidth: width * 0.7,
+          })}
+        />
+      ) : (
+        drawCurricularList(0.15, 0.3, 0.018, width, height)
+      )}
     </>
   );
 };

@@ -6,7 +6,7 @@ import RectButton from "../RectButton";
 // Import necessary Firebase functions
 import { getDatabase, ref, get, update } from "firebase/database";
 import { getAuth } from "firebase/auth"; // Import getAuth
-import { getConjectureDataByUUID, deleteFromDatabaseCurricular, loadGameDialoguesFromFirebase, saveGame } from "../../firebase/database";
+import { getConjectureDataByUUIDWithCurrentOrg, deleteFromDatabaseCurricularWithCurrentOrg, loadGameDialoguesFromFirebaseWithCurrentOrg, saveGameWithCurrentOrg } from "../../firebase/database";
 import { CurricularContentEditor } from "../CurricularModule/CurricularModuleBoxes";
 import { setAddtoCurricular } from '../ConjectureSelector/ConjectureSelectorModule';
 import Settings from '../Settings';
@@ -67,20 +67,53 @@ export const Curriculum = {
   },
 
   async setCurricularEditor(curricular) { // fill in curriculum data
+    console.log('Curriculum: setCurricularEditor called with:', curricular);
     this.CurrentConjectures = []; // remove previous list of levels
-    if (curricular["ConjectureUUIDs"]) { // only fill in existing values
-      for (let i = 0; i < curricular.ConjectureUUIDs.length; i++) {
-        const conjectureList = await getConjectureDataByUUID(curricular.ConjectureUUIDs[i]);
-        const conjecture = conjectureList[curricular.ConjectureUUIDs[i]];
-        this.CurrentConjectures.push(conjecture);
+    
+    // Check for both old and new field names for backward compatibility
+    const levelIds = curricular["levelIds"] || curricular["ConjectureUUIDs"];
+    
+    if (levelIds && levelIds.length > 0) { // only fill in existing values
+      console.log('Curriculum: Loading conjectures for UUIDs:', levelIds);
+      for (let i = 0; i < levelIds.length; i++) {
+        console.log(`Curriculum: Loading conjecture ${i + 1}/${levelIds.length}:`, levelIds[i]);
+        try {
+          const conjectureList = await getConjectureDataByUUIDWithCurrentOrg(levelIds[i]);
+          if (conjectureList && conjectureList[levelIds[i]]) {
+            const conjecture = conjectureList[levelIds[i]];
+            console.log(`Curriculum: Loaded conjecture ${i + 1}:`, conjecture);
+            this.CurrentConjectures.push(conjecture);
+          } else {
+            console.warn(`Curriculum: Conjecture ${levelIds[i]} not found or could not be loaded`);
+          }
+        } catch (error) {
+          console.error(`Curriculum: Error loading conjecture ${levelIds[i]}:`, error);
+          // Continue loading other conjectures even if one fails
+        }
       }
+      console.log('Curriculum: Total conjectures loaded:', this.CurrentConjectures.length);
+    } else {
+      console.log('Curriculum: No levelIds or ConjectureUUIDs found in curricular data');
     }
-    localStorage.setItem('CurricularName', curricular["CurricularName"]);
-    localStorage.setItem('CurricularAuthor', curricular["CurricularAuthor"]);
-    localStorage.setItem('CurricularKeywords', curricular["CurricularKeywords"]);
-    if (curricular["CurricularPIN"] != "undefined" && curricular["CurricularPIN"] != null) {
-      localStorage.setItem('CurricularPIN', curricular["CurricularPIN"]);
+    
+    console.log('Curriculum: Setting localStorage values...');
+    // Use new field names from the database structure
+    localStorage.setItem('CurricularName', curricular["name"] || curricular["CurricularName"]);
+    localStorage.setItem('CurricularAuthor', curricular["author"] || curricular["CurricularAuthor"]);
+    localStorage.setItem('CurricularKeywords', curricular["keywords"] || curricular["CurricularKeywords"]);
+    const pinValue = curricular["pin"] || curricular["CurricularPIN"];
+    if (pinValue != "undefined" && pinValue != null) {
+      localStorage.setItem('CurricularPIN', pinValue);
     }
+    // Load isPublic flag (default to false)
+    const isPublicValue = curricular["isPublic"] || false;
+    localStorage.setItem('GameIsPublic', isPublicValue ? 'true' : 'false');
+    console.log('Curriculum: localStorage values set:', {
+      name: curricular["name"] || curricular["CurricularName"],
+      author: curricular["author"] || curricular["CurricularAuthor"],
+      keywords: curricular["keywords"] || curricular["CurricularKeywords"],
+      pin: curricular["pin"] || curricular["CurricularPIN"]
+    });
   },
 
   clearCurriculum() {
@@ -99,6 +132,7 @@ const CurricularModule = (props) => {
     localStorage.removeItem('CurricularAuthor');
     localStorage.removeItem('CurricularKeywords');
     localStorage.removeItem('CurricularPIN');
+    localStorage.removeItem('GameIsPublic');
     Curriculum.clearCurriculum();
   };
 
@@ -143,7 +177,7 @@ const CurricularModule = (props) => {
     <>
       {!showSettingsMenu && (
         <>
-          <Background height={height * 1.1} width={width} />
+          <Background height={height} width={width} />
           <CurricularContentEditor height={height} width={width} userName={userName} conjectureCallback={conjectureCallback}/>
 
           {/* Buttons */}
@@ -241,7 +275,7 @@ const CurricularModule = (props) => {
             text={"SAVE DRAFT"}
             fontWeight={800}
             callback={async () => {
-              const success = await saveGame(Curriculum.getCurrentUUID(), false);
+              const success = await saveGameWithCurrentOrg(Curriculum.getCurrentUUID(), false);
               if (success) {
                 enhancedMainCallback();
               }
@@ -258,7 +292,7 @@ const CurricularModule = (props) => {
             text={"PUBLISH"}
             fontWeight={800}
             callback={async () => {
-              const success = await saveGame(Curriculum.getCurrentUUID(), true);
+              const success = await saveGameWithCurrentOrg(Curriculum.getCurrentUUID(), true);
               if (success) {
                 enhancedMainCallback();
               }

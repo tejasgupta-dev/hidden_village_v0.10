@@ -13,10 +13,13 @@ export const PlayMenuMachine = createMachine({
         PLAY: "play", // move to play
         SETTINGS: "settings", // move to settings
         ADMIN: "admin", // move to admin
+        INVITES: "invites", // move to invites
         NEWGAME: "newGame", //move to new game
         STORYEDITOR: "storyEditor", //move to story editor
         LEVELSELECT: "levelSelect", //move to edit level
-        GAMESELECT: "gameSelect"
+        GAMESELECT: "gameSelect",
+        ORGANIZATIONS: "organizations", // move to organizations
+        CLASSES: "classes" // move to classes
       },
     },
 
@@ -36,6 +39,8 @@ export const PlayMenuMachine = createMachine({
       on: {
         MAIN: "main", // move to home
         ADDNEWUSER: "addNewUser", // move to add new user
+        ORGANIZATIONS: "organizations", // move to organizations
+        CLASSES: "classes" // move to classes
       },
     },
 
@@ -96,6 +101,28 @@ export const PlayMenuMachine = createMachine({
         NEWGAME: "newGame", // move to new game
         MAIN: "main", // move to home
         PLAY: "play",
+      }
+    },
+
+    organizations: {
+      on: {
+        MAIN: "main", // move to home
+        ADMIN: "admin", // move to admin
+        INVITES: "invites", // move to invites
+      }
+    },
+
+    invites: {
+      on: {
+        MAIN: "main", // move to home
+        ORGANIZATIONS: "organizations", // move to organizations
+      }
+    },
+
+    classes: {
+      on: {
+        MAIN: "main", // move to home
+        ADMIN: "admin", // move to admin
       }
     }
   }

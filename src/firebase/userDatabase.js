@@ -1,26 +1,80 @@
-import { ref, push, getDatabase, set, query, equalTo, get, orderByChild } from "firebase/database";
-import { getAuth, onAuthStateChanged, importUsers, createUserWithEmailAndPassword, setPersistence, browserSessionPersistence  } from "firebase/auth";
+import { ref, push, getDatabase, set, query, equalTo, get, orderByChild, remove, update } from "firebase/database";
+import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, setPersistence, browserSessionPersistence  } from "firebase/auth";
 import { async } from "regenerator-runtime";
-
-const db = getDatabase();
+import { v4 as uuidv4 } from 'uuid';
 
 // User Id functionality will be added in a different PR
 let userId;
-
-// Get the Firebase authentication instance
-const auth = getAuth();
-
-// Listen for changes to the authentication state
-// and update the userId variable accordingly
-onAuthStateChanged(auth, (user) => {
-    userId = user.uid;
-});
 
 const UserPermissions = {
     Admin: 'Admin',
     Developer: 'Developer',
     Teacher: 'Teacher',
     Student: 'Student',
+};
+
+// Default Organization name constant
+const DEFAULT_ORG_NAME = 'Default Organization';
+
+// Helper function to check if organization is the Default Organization
+export const isDefaultOrganization = async (orgId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const orgRef = ref(db, `orgs/${orgId}`);
+        const snapshot = await get(orgRef);
+        
+        if (!snapshot.exists()) {
+            return false;
+        }
+        
+        const orgData = snapshot.val();
+        return orgData.name === DEFAULT_ORG_NAME;
+    } catch (error) {
+        console.error('Error checking if default organization:', error);
+        return false;
+    }
+};
+
+// Helper function to get user email by UID
+export const getUserEmailByUid = async (uid, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const userRef = ref(db, `users/${uid}`);
+        const snapshot = await get(userRef);
+        
+        if (!snapshot.exists()) {
+            return uid; // Return UID if user not found
+        }
+        
+        const userData = snapshot.val();
+        return userData.userEmail || uid; // Return email or UID as fallback
+    } catch (error) {
+        console.error('Error getting user email:', error);
+        return uid; // Return UID on error
+    }
+};
+
+// Function to refresh user context after organization/class changes
+export const refreshUserContext = async (firebaseApp) => {
+    try {
+        // This function can be called after switching organizations/classes
+        // to trigger a context refresh in components that use getCurrentUserContext
+        console.log('refreshUserContext: User context refresh requested');
+        
+        // We can dispatch a custom event that components can listen to
+        if (typeof window !== 'undefined') {
+            console.log('refreshUserContext: Dispatching userContextChanged event');
+            window.dispatchEvent(new CustomEvent('userContextChanged'));
+            console.log('refreshUserContext: Event dispatched successfully');
+        } else {
+            console.warn('refreshUserContext: Window object not available, cannot dispatch event');
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('refreshUserContext: Error refreshing user context:', error);
+        return false;
+    }
 };
 
 export const writeNewUserToDatabase = async (userEmail, userRole) => {
@@ -140,137 +194,294 @@ export const writeCurrentUserToDatabaseNewUser = async (newID,newEmail,newRole, 
 // .catch((error) => {
 //     console.error("Error retrieving user role:", error);
 // });
-export const getUserRoleFromDatabase = async (props) => {
-    const userPath = `Users/${userId}`;
 
-    // Get the user snapshot from the database
-    const userSnapshot = await get(ref(db, userPath));
+// Create a new organization
+export const createOrganization = async (name, ownerUid, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const orgId = uuidv4();
+        const now = new Date().toISOString();
+        
+        const orgData = {
+            name: name,
+            ownerUid: ownerUid,
+            createdAt: now,
+            isArchived: false,
+            members: {
+                [ownerUid]: {
+                    uid: ownerUid,
+                    role: 'Admin',
+                    status: 'active'
+                }
+            }
+        };
+        
+        // Create organization
+        await set(ref(db, `orgs/${orgId}`), orgData);
+        
+        // CREATE DEFAULT CLASS ONLY FOR DEFAULT ORGANIZATION
+        const isDefaultOrg = name === DEFAULT_ORG_NAME;
+        
+        if (isDefaultOrg) {
+            await createDefaultClass(orgId, firebaseApp);
+            
+            // Add owner to default class as teacher
+            await set(ref(db, `orgs/${orgId}/classes/default/teachers/${ownerUid}`), {
+                addedAt: now,
+                addedBy: 'system'
+            });
+        }
+        
+        // Add organization to user's org list
+        const userOrgData = {
+            joinedAt: now,
+            roleSnapshot: 'Admin',
+            status: 'active',
+            updatedAt: now
+        };
+        
+        // Only set currentClassId if Default Organization
+        if (isDefaultOrg) {
+            userOrgData.currentClassId = 'default';
+            userOrgData.classes = {
+                default: {
+                    joinedAt: now,
+                    role: 'teacher'
+                }
+            };
+        }
+        
+        await set(ref(db, `users/${ownerUid}/orgs/${orgId}`), userOrgData);
+        
+        console.log('Organization created with default class:', orgId);
+        return orgId;
+    } catch (error) {
+        console.error('Error creating organization:', error);
+        throw error;
+    }
+};
 
-    if (userSnapshot.exists()) {
-        // User exists, return the user's role
-        return userSnapshot.val().userRole;
-    } else {
-        // User does not exist in the database
+// Delete organization (Admin only)
+export const deleteOrganization = async (orgId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const auth = getAuth(firebaseApp);
+        const currentUser = auth.currentUser;
+        
+        if (!currentUser) {
+            throw new Error('No authenticated user');
+        }
+        
+        // Check if this is Default Organization - cannot be deleted
+        const isDefault = await isDefaultOrganization(orgId, firebaseApp);
+        if (isDefault) {
+            throw new Error('Cannot delete Default Organization. This organization is protected.');
+        }
+        
+        // Get organization info
+        const orgRef = ref(db, `orgs/${orgId}`);
+        const orgSnapshot = await get(orgRef);
+        
+        if (!orgSnapshot.exists()) {
+            throw new Error('Organization not found');
+        }
+        
+        const orgData = orgSnapshot.val();
+        
+        // Check if user is Admin in this organization
+        const userRole = orgData.members?.[currentUser.uid]?.role;
+        if (userRole !== 'Admin') {
+            throw new Error('Only Admins can delete organizations');
+        }
+        
+        // Get all members to remove organization from their user records
+        const members = orgData.members || {};
+        const memberIds = Object.keys(members);
+        
+        // Remove organization from all users
+        const userUpdates = memberIds.map(uid => 
+            remove(ref(db, `users/${uid}/orgs/${orgId}`))
+        );
+        
+        // Delete organization data (includes levels and games)
+        await Promise.all([
+            ...userUpdates,
+            remove(ref(db, `orgs/${orgId}`))
+        ]);
+        
+        console.log(`Organization ${orgId} deleted successfully`);
+        return { success: true, memberCount: memberIds.length };
+    } catch (error) {
+        console.error('Error deleting organization:', error);
+        throw error;
+    }
+};
+
+// Get organization information by ID
+export const getOrganizationInfo = async (orgId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const orgRef = ref(db, `orgs/${orgId}`);
+        const orgSnapshot = await get(orgRef);
+        
+        if (orgSnapshot.exists()) {
+            return { id: orgId, ...orgSnapshot.val() };
+        }
+        return null;
+    } catch (error) {
+        console.error('Error getting organization info:', error);
         return null;
     }
 };
 
-export const getUserOrganizationFromDatabase = async (props) => {
-    const userPath = `Users/${userId}`;
+// Get current user's primary organization and role
+export const getCurrentUserContext = async (firebaseApp) => {
+    try {
+        const auth = getAuth(firebaseApp);
+        const user = auth.currentUser;
+        
+        if (!user) {
+            console.warn('No authenticated user');
+            return { orgId: null, role: null, orgName: 'Not Authenticated' };
+        }
+        
+        // First check if user has a primary organization set
+        const db = getDatabase(firebaseApp);
+        const userRef = ref(db, `users/${user.uid}`);
+        const userSnapshot = await get(userRef);
+        
+        if (userSnapshot.exists()) {
+            const userData = userSnapshot.val();
+            console.log('User data:', userData);
+            
+            // If user has a primary organization set, use it
+            if (userData.primaryOrgId) {
+                console.log('Using primaryOrgId:', userData.primaryOrgId);
+                const role = await getUserRoleInOrg(user.uid, userData.primaryOrgId, firebaseApp);
+                // Get organization name
+                const orgRef = ref(db, `orgs/${userData.primaryOrgId}/name`);
+                const orgSnapshot = await get(orgRef);
+                const orgName = orgSnapshot.exists() ? orgSnapshot.val() : 'Unknown Organization';
+                return { orgId: userData.primaryOrgId, role, orgName };
+            }
+        }
+        
+        // Fallback: use the first organization from user's org list
+        const userOrgs = await getUserOrgsFromDatabase(user.uid, firebaseApp);
+        const orgIds = Object.keys(userOrgs);
+        
+        if (orgIds.length === 0) {
+            console.warn('User is not in any organization');
+            return { orgId: null, role: null, orgName: 'No Organization' };
+        }
+        
+        // Use the first organization as primary
+        const primaryOrgId = orgIds[0];
+        const role = await getUserRoleInOrg(user.uid, primaryOrgId, firebaseApp);
+        
+        // Get organization name
+        const orgRef = ref(db, `orgs/${primaryOrgId}/name`);
+        const orgSnapshot = await get(orgRef);
+        const orgName = orgSnapshot.exists() ? orgSnapshot.val() : 'Unknown Organization';
+        
+        return { orgId: primaryOrgId, role, orgName };
+    } catch (error) {
+        console.error('Error getting current user context:', error);
+        return { orgId: null, role: null, orgName: 'Error' };
+    }
+};
 
-    // Get the user snapshot from the database
-    const userSnapshot = await get(ref(db, userPath));
-
-    if (userSnapshot.exists()) {
-        // User exists, return the user's role
-        return userSnapshot.val().userOrg;
-    } else {
-        // User does not exist in the database
+// Backward compatibility function - returns role from primary organization
+export const getUserRoleFromDatabase = async (firebaseApp) => {
+    try {
+        const { role } = await getCurrentUserContext(firebaseApp);
+        return role;
+    } catch (error) {
+        console.error('Error getting user role:', error);
         return null;
     }
 };
 
-export const getUserNameFromDatabase = async (props) => {
-    const userPath = `Users/${userId}`;
+// Get current user's organization info for display
+export const getCurrentUserOrgInfo = async (firebaseApp) => {
+    try {
+        const { orgId, role } = await getCurrentUserContext(firebaseApp);
+        if (!orgId) {
+            return { orgName: 'No Organization', role: null };
+        }
+        
+        // Get organization name
+        const db = getDatabase(firebaseApp);
+        const orgRef = ref(db, `orgs/${orgId}/name`);
+        const orgSnapshot = await get(orgRef);
+        const orgName = orgSnapshot.exists() ? orgSnapshot.val() : 'Unknown Organization';
+        
+        return { orgName, role, orgId };
+    } catch (error) {
+        console.error('Error getting user org info:', error);
+        return { orgName: 'Error', role: null };
+    }
+};
 
-    // Get the user snapshot from the database
-    const userSnapshot = await get(ref(db, userPath));
-
-    if (userSnapshot.exists()) {
-        // User exists, return the user's role
-        return userSnapshot.val().userName;
-    } else {
-        // User does not exist in the database
-        // we should put the user in the database if they are not found
-        try{
-            console.log("User Not Found - Entering user into database")
-            // Get the Firebase authentication instance
-            const auth = getAuth();
-
-            // Log information about the current user, if one exists
-            const currentUser = auth.currentUser;
-
-            // make this user a dev - they were probably created directly in firebase.
-            await writeCurrentUserToDatabaseNewUser(currentUser.uid,currentUser.email,UserPermissions.Developer)
-
-        }catch(error){
-            console.log("User not found")
+export const getUserNameFromDatabase = async (firebaseApp) => {
+    try {
+        const auth = getAuth(firebaseApp);
+        const user = auth.currentUser;
+        
+        if (!user) {
+            console.log("No authenticated user");
             return "USER NOT FOUND";
         }
+        
+        const db = getDatabase(firebaseApp);
+        const userPath = `users/${user.uid}`;
+        const userSnapshot = await get(ref(db, userPath));
+
+        if (userSnapshot.exists()) {
+            // User exists, return the user's name
+            return userSnapshot.val().userName;
+        } else {
+            // User doesn't exist in the database
+            console.log("User not found in database");
+            return "USER NOT FOUND";
+        }
+    } catch (error) {
+        console.error('Error getting user name:', error);
         return "USER NOT FOUND";
     }
 };
 
-export const changeUserRoleInDatabase = async (userId, newRole) => {
 
-    // const user = auth.currentUser;
-
-    // if (user) {
-    //     // User is signed in.
-    //     const CurrentUserId = user.uid;
-    //     console.log('User ID:', userId);
-    // } else {
-    //     // No user signed in.
-    //     console.log('No user signed in.');
-    // }
-
-    // if(userId == CurrentUserId){
-    //     console.log("This is working I promise")
-    // }
-    
-
-    console.log(userId)
-    const userPath = `Users/${userId}`;
-
-    // Get the user snapshot from the database
-    const userSnapshot = await get(ref(db, userPath));
-
-    if (userSnapshot.val() === null) {
-        // User does not exist
-        alert("User does not exist in the database.");
-        return false;
-    }
-
-    const promises = [
-        set(ref(db, `${userPath}/userRole`), newRole),
-    ];
-
-    return Promise.all(promises)
-        .then(() => {
-            // alert("User role successfully changed in the database.");
-            return true;
-        })
-        .catch((error) => {
-            console.error("Error changing user role:", error);
-            alert("OOPSIE POOPSIE. Cannot change user role.");
-            return false;
-        });
-};
-
-// return a list of users by organization
-export const getUsersByOrganizationFromDatabase = async (organization) => {
+// Get list of users by organization ID
+export const getUsersByOrganizationFromDatabase = async (orgId, firebaseApp) => {
     try {
-        const usersRef = ref(db, 'Users');
-        const usersQuery = query(usersRef, orderByChild('userOrg'), equalTo(organization));
-        
-        console.log('Executing users query...');
-        const usersSnapshot = await get(usersQuery);
+        const db = getDatabase(firebaseApp);
+        const membersRef = ref(db, `orgs/${orgId}/members`);
+        const membersSnapshot = await get(membersRef);
 
-        if (usersSnapshot.exists()) {
-            console.log('Users found for organization:', organization);
+        if (membersSnapshot.exists()) {
+            console.log('Users found for organization:', orgId);
             const usersList = [];
 
-            // Loop through the users and add them to the list
-            usersSnapshot.forEach((userSnapshot) => {
-                const userData = userSnapshot.val();
-                usersList.push(userData);
-            });
+            // Loop through the members and get their full user data
+            const members = membersSnapshot.val();
+            for (const uid in members) {
+                const userRef = ref(db, `users/${uid}`);
+                const userSnapshot = await get(userRef);
+                
+                if (userSnapshot.exists()) {
+                    const userData = userSnapshot.val();
+                    // Add organization-specific data
+                    userData.roleInOrg = members[uid].role;
+                    userData.statusInOrg = members[uid].status;
+                    usersList.push(userData);
+                }
+            }
 
             console.log('Userlist:', usersList);
             return usersList;
         } else {
-            console.log('No users found for organization:', organization);
-            // No users found for the given organization
+            console.log('No users found for organization:', orgId);
             return [];
         }
     } catch (error) {
@@ -279,9 +490,9 @@ export const getUsersByOrganizationFromDatabase = async (organization) => {
     }
 };
 
-// get user email for data download auto populate
+// Get user email for data download auto populate
 export const getUserEmailFromDatabase = async (props) => {
-    const userPath = `Users/${userId}`;
+    const userPath = `users/${userId}`;
 
     // Get the user snapshot from the database
     const userSnapshot = await get(ref(db, userPath));
@@ -292,5 +503,1001 @@ export const getUserEmailFromDatabase = async (props) => {
     } else {
         // User does not exist in the database
         return null;
+    }
+};
+
+// Get all organizations for a user
+export const getUserOrgsFromDatabase = async (uid, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const orgsRef = ref(db, `users/${uid}/orgs`);
+        const snapshot = await get(orgsRef);
+        return snapshot.exists() ? snapshot.val() : {};
+    } catch (error) {
+        console.error('Error getting user organizations:', error);
+        return {};
+    }
+};
+
+// Get user role in specific organization
+export const getUserRoleInOrg = async (uid, orgId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const orgRef = ref(db, `users/${uid}/orgs/${orgId}/roleSnapshot`);
+        const snapshot = await get(orgRef);
+        return snapshot.exists() ? snapshot.val() : null;
+    } catch (error) {
+        console.error('Error getting user role in organization:', error);
+        return null;
+    }
+};
+
+// Get user status in organization
+export const getUserStatusInOrg = async (uid, orgId) => {
+    try {
+        const statusRef = ref(db, `users/${uid}/orgs/${orgId}/status`);
+        const snapshot = await get(statusRef);
+        return snapshot.exists() ? snapshot.val() : null;
+    } catch (error) {
+        console.error('Error getting user status in organization:', error);
+        return null;
+    }
+};
+
+// Add user to organization
+export const addUserToOrganization = async (uid, orgId, role, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const timestamp = new Date().toISOString();
+        
+        // Check if Default Class exists in this organization
+        const defaultClassRef = ref(db, `orgs/${orgId}/classes/default`);
+        const defaultClassSnapshot = await get(defaultClassRef);
+        const hasDefaultClass = defaultClassSnapshot.exists();
+        
+        // Determine class role based on organization role
+        const classRole = (role === 'Teacher' || role === 'Admin' || role === 'Developer') ? 'teacher' : 'student';
+        const classRoleGroup = (role === 'Teacher' || role === 'Admin' || role === 'Developer') ? 'teachers' : 'students';
+        
+        const updates = [];
+        
+        // Prepare user org data
+        const userOrgData = {
+            roleSnapshot: role,
+            status: 'active',
+            joinedAt: timestamp,
+            updatedAt: timestamp
+        };
+        
+        // Only add to Default Class if it exists
+        if (hasDefaultClass) {
+            userOrgData.currentClassId = 'default';
+            userOrgData.classes = {
+                default: {
+                    joinedAt: timestamp,
+                    role: classRole
+                }
+            };
+            
+            // Add to default class in organization
+            updates.push(
+                set(ref(db, `orgs/${orgId}/classes/default/${classRoleGroup}/${uid}`), {
+                    addedAt: timestamp,
+                    addedBy: 'system'
+                })
+            );
+        }
+        
+        updates.push(
+            // Add to users/orgs
+            set(ref(db, `users/${uid}/orgs/${orgId}`), userOrgData),
+            // Add to orgs/members
+            set(ref(db, `orgs/${orgId}/members/${uid}`), {
+                uid,
+                role,
+                status: 'active'
+            })
+        );
+        
+        await Promise.all(updates);
+        
+        const classMsg = hasDefaultClass ? ' and added to Default Class' : '';
+        console.log(`User ${uid} added to organization ${orgId} with role ${role}${classMsg}`);
+        return true;
+    } catch (error) {
+        console.error("Error adding user to organization:", error);
+        return false;
+    }
+};
+
+// Remove user from organization
+export const removeUserFromOrganization = async (uid, orgId, firebaseApp) => {
+    try {
+        // Check if this is Default Organization - users cannot be removed by admin
+        const isDefault = await isDefaultOrganization(orgId, firebaseApp);
+        if (isDefault) {
+            throw new Error('Cannot remove users from Default Organization. Users can leave voluntarily.');
+        }
+        
+        const db = getDatabase(firebaseApp);
+        await Promise.all([
+            remove(ref(db, `users/${uid}/orgs/${orgId}`)),
+            remove(ref(db, `orgs/${orgId}/members/${uid}`))
+        ]);
+        
+        console.log(`User ${uid} removed from organization ${orgId}`);
+        return true;
+    } catch (error) {
+        console.error("Error removing user from organization:", error);
+        throw error;
+    }
+};
+
+// Leave organization (self-initiated by user)
+export const leaveOrganization = async (userId, orgId, firebaseApp) => {
+    try {
+        // Check if this is Default Organization - cannot leave
+        const isDefault = await isDefaultOrganization(orgId, firebaseApp);
+        if (isDefault) {
+            throw new Error('Cannot leave Default Organization.');
+        }
+        
+        const db = getDatabase(firebaseApp);
+        
+        // Check if user has other organizations
+        const userOrgsRef = ref(db, `users/${userId}/orgs`);
+        const userOrgsSnapshot = await get(userOrgsRef);
+        
+        if (!userOrgsSnapshot.exists()) {
+            throw new Error('User has no organizations');
+        }
+        
+        const userOrgs = userOrgsSnapshot.val();
+        const orgIds = Object.keys(userOrgs);
+        
+        if (orgIds.length === 1 && orgIds[0] === orgId) {
+            throw new Error('Cannot leave your only organization');
+        }
+        
+        // Get user's primary org to check if switching is needed
+        const userRef = ref(db, `users/${userId}`);
+        const userSnapshot = await get(userRef);
+        const userData = userSnapshot.val();
+        const primaryOrgId = userData?.primaryOrgId;
+        
+        // Remove user from all classes in this organization
+        const classesRef = ref(db, `users/${userId}/orgs/${orgId}/classes`);
+        const classesSnapshot = await get(classesRef);
+        
+        if (classesSnapshot.exists()) {
+            const classes = classesSnapshot.val();
+            const classIds = Object.keys(classes);
+            
+            for (const classId of classIds) {
+                // Remove from class students/teachers
+                await Promise.all([
+                    remove(ref(db, `orgs/${orgId}/classes/${classId}/students/${userId}`)),
+                    remove(ref(db, `orgs/${orgId}/classes/${classId}/teachers/${userId}`))
+                ]);
+            }
+        }
+        
+        // Remove user from organization
+        await Promise.all([
+            remove(ref(db, `users/${userId}/orgs/${orgId}`)),
+            remove(ref(db, `orgs/${orgId}/members/${userId}`))
+        ]);
+        
+        // If leaving current organization, switch to another one
+        if (primaryOrgId === orgId) {
+            const remainingOrgIds = orgIds.filter(id => id !== orgId);
+            if (remainingOrgIds.length > 0) {
+                await set(ref(db, `users/${userId}/primaryOrgId`), remainingOrgIds[0]);
+                console.log(`Switched primary organization to: ${remainingOrgIds[0]}`);
+            }
+        }
+        
+        console.log(`User ${userId} left organization ${orgId}`);
+        return true;
+    } catch (error) {
+        console.error('Error leaving organization:', error);
+        throw error;
+    }
+};
+
+// Switch user's primary organization
+export const switchPrimaryOrganization = async (userId, newOrgId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const auth = getAuth(firebaseApp);
+        const user = auth.currentUser;
+        
+        if (!user || user.uid !== userId) {
+            throw new Error('Unauthorized');
+        }
+        
+        // Verify user is member of the new organization
+        const userOrgs = await getUserOrgsFromDatabase(userId, firebaseApp);
+        if (!userOrgs[newOrgId]) {
+            throw new Error('User is not a member of this organization');
+        }
+        
+        // Update primary organization
+        const userRef = ref(db, `users/${userId}`);
+        await update(userRef, {
+            primaryOrgId: newOrgId,
+            lastOrgSwitch: new Date().toISOString()
+        });
+        
+        // Trigger context refresh event
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('userContextChanged'));
+        }
+        
+        console.log(`User ${userId} switched primary organization to ${newOrgId}`);
+        return true;
+    } catch (error) {
+        console.error('Error switching primary organization:', error);
+        throw error;
+    }
+};
+
+// Update user role in organization
+export const updateUserRoleInOrg = async (uid, orgId, newRole, firebaseApp, changerRole = null) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const auth = getAuth(firebaseApp);
+        const currentUser = auth.currentUser;
+        
+        if (!currentUser) {
+            throw new Error('No authenticated user');
+        }
+        
+        // Get current role of target user
+        const userOrgRef = ref(db, `users/${uid}/orgs/${orgId}/roleSnapshot`);
+        const userOrgSnapshot = await get(userOrgRef);
+        const currentTargetRole = userOrgSnapshot.exists() ? userOrgSnapshot.val() : null;
+        
+        // Get changer's role if not provided
+        let changerUserRole = changerRole;
+        if (!changerUserRole) {
+            const changerOrgRef = ref(db, `users/${currentUser.uid}/orgs/${orgId}/roleSnapshot`);
+            const changerOrgSnapshot = await get(changerOrgRef);
+            changerUserRole = changerOrgSnapshot.exists() ? changerOrgSnapshot.val() : null;
+        }
+        
+        // Define role hierarchy (lower number = higher role)
+        const roleHierarchy = {
+            'Admin': 0,
+            'Developer': 1,
+            'Teacher': 2,
+            'Student': 3
+        };
+        
+        // Check if changer can modify target user's role
+        if (changerUserRole && currentTargetRole) {
+            const changerLevel = roleHierarchy[changerUserRole] ?? 999;
+            const targetLevel = roleHierarchy[currentTargetRole] ?? 999;
+            const newRoleLevel = roleHierarchy[newRole] ?? 999;
+            
+            // Cannot change roles of users with higher or equal level (unless changing to lower role)
+            if (targetLevel < changerLevel) {
+                throw new Error(`Cannot change role of ${currentTargetRole}. You can only change roles equal to or below your own role (${changerUserRole}).`);
+            }
+            
+            // Cannot assign role higher than changer's role
+            if (newRoleLevel < changerLevel) {
+                throw new Error(`Cannot assign role ${newRole}. You can only assign roles equal to or below your own role (${changerUserRole}).`);
+            }
+        }
+        
+        const timestamp = new Date().toISOString();
+        
+        await Promise.all([
+            set(ref(db, `users/${uid}/orgs/${orgId}/roleSnapshot`), newRole),
+            set(ref(db, `users/${uid}/orgs/${orgId}/updatedAt`), timestamp),
+            set(ref(db, `orgs/${orgId}/members/${uid}/role`), newRole)
+        ]);
+        
+        console.log(`User ${uid} role updated to ${newRole} in organization ${orgId}`);
+        return true;
+    } catch (error) {
+        console.error("Error updating user role in organization:", error);
+        throw error; // Re-throw to allow UI to show error message
+    }
+};
+
+// Find organization by name
+export const findOrganizationByName = async (orgName, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const orgsRef = ref(db, 'orgs');
+        const orgsSnapshot = await get(orgsRef);
+        
+        if (orgsSnapshot.exists()) {
+            const orgs = orgsSnapshot.val();
+            for (const [orgId, orgData] of Object.entries(orgs)) {
+                if (orgData.name === orgName) {
+                    return orgId;
+                }
+            }
+        }
+        return null;
+    } catch (error) {
+        console.error('Error finding organization by name:', error);
+        return null;
+    }
+};
+
+// Register new user and add to Admin Organization
+export const registerNewUser = async (email, password, firebaseApp) => {
+    try {
+        // 1. Create user through Firebase Auth
+        const auth = getAuth(firebaseApp);
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+        const uid = user.uid;
+        
+        // 2. Get database instance with the app
+        const db = getDatabase(firebaseApp);
+        
+        // 3. Find or create Default Organization
+        const orgsRef = ref(db, 'orgs');
+        const orgsSnapshot = await get(orgsRef);
+        let defaultOrgId = null;
+        
+        if (orgsSnapshot.exists()) {
+            const orgs = orgsSnapshot.val();
+            // Find Default Organization by name
+            for (const [orgId, orgData] of Object.entries(orgs)) {
+                if (orgData.name === DEFAULT_ORG_NAME) {
+                    defaultOrgId = orgId;
+                    break;
+                }
+            }
+        }
+        
+        // Create Default Organization if it doesn't exist
+        if (!defaultOrgId) {
+            console.log('Default Organization not found, creating it...');
+            const newOrgId = uuidv4();
+            const now = new Date().toISOString();
+            const defaultOrgData = {
+                name: DEFAULT_ORG_NAME,
+                createdAt: now,
+                createdBy: uid,
+                isProtected: true,  // Mark as protected
+                members: {
+                    [uid]: {
+                        uid: uid,
+                        role: 'Admin',
+                        status: 'active'
+                    }
+                }
+            };
+            
+            await set(ref(db, `orgs/${newOrgId}`), defaultOrgData);
+            
+            // Create Default Class for Default Organization
+            const defaultClassId = 'default';
+            const defaultClassData = {
+                name: 'Default Class',
+                createdAt: now,
+                createdBy: uid,
+                isDefault: true
+            };
+            await set(ref(db, `orgs/${newOrgId}/classes/${defaultClassId}`), defaultClassData);
+            
+            defaultOrgId = newOrgId;
+            console.log('Default Organization created:', defaultOrgId);
+        }
+        
+        // 4. Extract username from email (part before @)
+        const userName = email.split('@')[0];
+        
+        // 5. Create user record in database
+        const now = new Date().toISOString();
+        const userData = {
+            userEmail: email,
+            userName: userName,
+            userId: uid,
+            dateCreated: now,
+            dateLastAccessed: now,
+            primaryOrgId: defaultOrgId  // Set primary organization
+        };
+        
+        await set(ref(db, `users/${uid}`), userData);
+        
+        // 6. Add user to Default Organization with Student role
+        console.log('Adding user to Default Organization:', { uid, defaultOrgId, role: 'Student' });
+        const addResult = await addUserToOrganization(uid, defaultOrgId, 'Student', firebaseApp);
+        console.log('Add user result:', addResult);
+        
+        console.log('User registered successfully:', uid);
+        return { success: true, uid: uid };
+    } catch (error) {
+        console.error('Error registering user:', error);
+        throw error;
+    }
+};
+
+// ============================================
+// INVITE CODE FUNCTIONS
+// ============================================
+
+// Generate a unique invite code for an organization
+export const generateInviteCode = async (orgId, role, creatorUid, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        
+        // Generate unique code (UUID)
+        let inviteCode;
+        let isUnique = false;
+        let attempts = 0;
+        const maxAttempts = 10;
+        
+        // Try to generate a unique code
+        while (!isUnique && attempts < maxAttempts) {
+            inviteCode = uuidv4();
+            const inviteRef = ref(db, `invites/${inviteCode}`);
+            const snapshot = await get(inviteRef);
+            isUnique = !snapshot.exists();
+            attempts++;
+        }
+        
+        if (!isUnique) {
+            throw new Error('Failed to generate unique invite code');
+        }
+        
+        // Get organization name
+        const orgRef = ref(db, `orgs/${orgId}`);
+        const orgSnapshot = await get(orgRef);
+        const orgName = orgSnapshot.exists() ? orgSnapshot.val().name : 'Unknown Organization';
+        
+        // Create invite data
+        const inviteData = {
+            code: inviteCode,
+            orgId: orgId,
+            orgName: orgName,
+            role: role,
+            createdBy: creatorUid,
+            createdAt: new Date().toISOString(),
+            status: 'active'
+        };
+        
+        // Save invite to database
+        await set(ref(db, `invites/${inviteCode}`), inviteData);
+        
+        console.log('Invite code generated:', inviteCode);
+        return inviteCode;
+    } catch (error) {
+        console.error('Error generating invite code:', error);
+        throw error;
+    }
+};
+
+// Validate an invite code
+export const validateInviteCode = async (code, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const inviteRef = ref(db, `invites/${code}`);
+        const snapshot = await get(inviteRef);
+        
+        if (!snapshot.exists()) {
+            return { valid: false, error: 'Invite code does not exist' };
+        }
+        
+        const inviteData = snapshot.val();
+        
+        if (inviteData.status !== 'active') {
+            return { valid: false, error: 'Invite code has already been used' };
+        }
+        
+        return { 
+            valid: true, 
+            invite: inviteData 
+        };
+    } catch (error) {
+        console.error('Error validating invite code:', error);
+        return { valid: false, error: 'Error validating invite code' };
+    }
+};
+
+// Use an invite code to join an organization
+export const useInviteCode = async (code, userUid, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        
+        // Validate the invite code
+        const validation = await validateInviteCode(code, firebaseApp);
+        if (!validation.valid) {
+            throw new Error(validation.error);
+        }
+        
+        const invite = validation.invite;
+        
+        // Add user to organization
+        await addUserToOrganization(userUid, invite.orgId, invite.role, firebaseApp);
+        
+        // Delete the invite code (one-time use)
+        await remove(ref(db, `invites/${code}`));
+        
+        console.log('Invite code used successfully:', code);
+        return { 
+            success: true, 
+            orgId: invite.orgId, 
+            orgName: invite.orgName, 
+            role: invite.role 
+        };
+    } catch (error) {
+        console.error('Error using invite code:', error);
+        throw error;
+    }
+};
+
+// Get all active invites for an organization
+export const getInvitesForOrganization = async (orgId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const invitesRef = ref(db, 'invites');
+        const snapshot = await get(invitesRef);
+        
+        if (!snapshot.exists()) {
+            return [];
+        }
+        
+        const allInvites = snapshot.val();
+        const orgInvites = [];
+        
+        // Filter invites for this organization
+        for (const [code, inviteData] of Object.entries(allInvites)) {
+            if (inviteData.orgId === orgId && inviteData.status === 'active') {
+                orgInvites.push(inviteData);
+            }
+        }
+        
+        return orgInvites;
+    } catch (error) {
+        console.error('Error getting invites for organization:', error);
+        return [];
+    }
+};
+
+// Delete an invite code
+export const deleteInviteCode = async (code, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        await remove(ref(db, `invites/${code}`));
+        console.log('Invite code deleted:', code);
+        return { success: true };
+    } catch (error) {
+        console.error('Error deleting invite code:', error);
+        throw error;
+    }
+};
+
+// =====================================================
+// CLASS MANAGEMENT FUNCTIONS
+// =====================================================
+
+// Create Default Class when organization is created
+export const createDefaultClass = async (orgId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const classData = {
+            name: "Default Class",
+            createdBy: "system",
+            createdAt: new Date().toISOString(),
+            isDefault: true,
+            teachers: {},
+            students: {},
+            assignedGames: {}
+        };
+        await set(ref(db, `orgs/${orgId}/classes/default`), classData);
+        console.log('Default class created for organization:', orgId);
+        return 'default';
+    } catch (error) {
+        console.error('Error creating default class:', error);
+        throw error;
+    }
+};
+
+// Create new class
+export const createClass = async (orgId, className, creatorUid, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const classId = uuidv4();
+        const now = new Date().toISOString();
+        
+        const classData = {
+            name: className,
+            createdBy: creatorUid,
+            createdAt: now,
+            isDefault: false,
+            teachers: {
+                [creatorUid]: {
+                    addedAt: now,
+                    addedBy: creatorUid
+                }
+            },
+            students: {},
+            assignedGames: {}
+        };
+        
+        await set(ref(db, `orgs/${orgId}/classes/${classId}`), classData);
+        
+        // Add class to creator's user profile
+        await set(ref(db, `users/${creatorUid}/orgs/${orgId}/classes/${classId}`), {
+            joinedAt: now,
+            role: 'teacher'
+        });
+        
+        console.log('Class created:', classId, className);
+        return classId;
+    } catch (error) {
+        console.error('Error creating class:', error);
+        throw error;
+    }
+};
+
+// Get all classes in organization
+export const getClassesInOrg = async (orgId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const classesRef = ref(db, `orgs/${orgId}/classes`);
+        const snapshot = await get(classesRef);
+        
+        if (!snapshot.exists()) return {};
+        return snapshot.val();
+    } catch (error) {
+        console.error('Error getting classes in org:', error);
+        return {};
+    }
+};
+
+// Get user's classes in organization
+export const getUserClassesInOrg = async (uid, orgId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const userClassesRef = ref(db, `users/${uid}/orgs/${orgId}/classes`);
+        const snapshot = await get(userClassesRef);
+        
+        if (!snapshot.exists()) return {};
+        return snapshot.val();
+    } catch (error) {
+        console.error('Error getting user classes:', error);
+        return {};
+    }
+};
+
+// Check if user can edit resource without PIN based on hierarchy
+export const canEditWithoutPIN = async (userId, resourceOwnerId, resourceOrgId, userRole, userOrgId, firebaseApp) => {
+    try {
+        // Must be in the same organization
+        if (resourceOrgId !== userOrgId) {
+            return false;
+        }
+        
+        // Admin and Developer can edit everything in their organization
+        if (userRole === 'Admin' || userRole === 'Developer') {
+            return true;
+        }
+        
+        // Teacher can edit resources created by their students
+        if (userRole === 'Teacher') {
+            const db = getDatabase(firebaseApp);
+            
+            // Get all classes where teacher is a teacher
+            const teacherClasses = await getUserClassesInOrg(userId, userOrgId, firebaseApp);
+            const teacherClassIds = Object.keys(teacherClasses).filter(classId => {
+                const classData = teacherClasses[classId];
+                return classData.role === 'teacher';
+            });
+            
+            if (teacherClassIds.length === 0) {
+                return false;
+            }
+            
+            // Check if resource owner is a student in any of teacher's classes
+            for (const classId of teacherClassIds) {
+                const classStudentsRef = ref(db, `orgs/${userOrgId}/classes/${classId}/students/${resourceOwnerId}`);
+                const studentSnapshot = await get(classStudentsRef);
+                
+                if (studentSnapshot.exists()) {
+                    return true; // Resource owner is a student in teacher's class
+                }
+            }
+            
+            return false;
+        }
+        
+        // Students always need PIN for other people's resources
+        // (They can edit their own without PIN, but that's handled elsewhere)
+        return false;
+    } catch (error) {
+        console.error('Error checking edit permission:', error);
+        return false; // Default to requiring PIN on error
+    }
+};
+
+// Get class info
+export const getClassInfo = async (orgId, classId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const classRef = ref(db, `orgs/${orgId}/classes/${classId}`);
+        const snapshot = await get(classRef);
+        
+        if (!snapshot.exists()) return null;
+        return snapshot.val();
+    } catch (error) {
+        console.error('Error getting class info:', error);
+        return null;
+    }
+};
+
+// Delete class
+export const deleteClass = async (orgId, classId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const classInfo = await getClassInfo(orgId, classId, firebaseApp);
+        
+        if (!classInfo) throw new Error('Class not found');
+        if (classInfo.isDefault) throw new Error('Cannot delete default class');
+        
+        // Remove class from all users
+        const allMembers = {
+            ...classInfo.teachers || {},
+            ...classInfo.students || {}
+        };
+        
+        const userUpdates = Object.keys(allMembers).map(uid =>
+            remove(ref(db, `users/${uid}/orgs/${orgId}/classes/${classId}`))
+        );
+        
+        // Delete class
+        await Promise.all([
+            ...userUpdates,
+            remove(ref(db, `orgs/${orgId}/classes/${classId}`))
+        ]);
+        
+        console.log('Class deleted:', classId);
+        return true;
+    } catch (error) {
+        console.error('Error deleting class:', error);
+        throw error;
+    }
+};
+
+// Assign students to classes
+export const assignStudentsToClasses = async (orgId, studentUids, classIds, assignerUid, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const updates = [];
+        const now = new Date().toISOString();
+        
+        for (const studentUid of studentUids) {
+            // Get current classes for this student in this organization
+            const userClasses = await getUserClassesInOrg(studentUid, orgId, firebaseApp);
+            const currentClassIds = Object.keys(userClasses || {});
+            
+            // For students: remove from all other classes before adding to new ones
+            // (Students can only be in one class per organization)
+            const userOrgRef = ref(db, `users/${studentUid}/orgs/${orgId}`);
+            const userOrgSnapshot = await get(userOrgRef);
+            const userRole = userOrgSnapshot.exists() ? userOrgSnapshot.val().roleSnapshot : null;
+            
+            if (userRole === 'Student') {
+                // Remove student from all current classes
+                for (const oldClassId of currentClassIds) {
+                    // Skip if this class is in the new assignment list
+                    if (classIds.includes(oldClassId)) {
+                        continue;
+                    }
+                    
+                    // Remove from class students
+                    updates.push(
+                        remove(ref(db, `orgs/${orgId}/classes/${oldClassId}/students/${studentUid}`))
+                    );
+                    
+                    // Remove from user profile
+                    updates.push(
+                        remove(ref(db, `users/${studentUid}/orgs/${orgId}/classes/${oldClassId}`))
+                    );
+                }
+            }
+            
+            // Add to new classes (only first class for students)
+            const targetClassIds = (userRole === 'Student' && classIds.length > 0) ? [classIds[0]] : classIds;
+            
+            for (const classId of targetClassIds) {
+                // Skip if already in this class
+                if (currentClassIds.includes(classId)) {
+                    continue;
+                }
+                
+                // Add to class
+                updates.push(
+                    set(ref(db, `orgs/${orgId}/classes/${classId}/students/${studentUid}`), {
+                        addedAt: now,
+                        addedBy: assignerUid
+                    })
+                );
+                
+                // Add to user profile
+                updates.push(
+                    set(ref(db, `users/${studentUid}/orgs/${orgId}/classes/${classId}`), {
+                        joinedAt: now,
+                        role: 'student'
+                    })
+                );
+                
+                // Update currentClassId for students (only one class allowed)
+                if (userRole === 'Student') {
+                    updates.push(
+                        set(ref(db, `users/${studentUid}/orgs/${orgId}/currentClassId`), classId)
+                    );
+                }
+            }
+        }
+        
+        await Promise.all(updates);
+        console.log('Students assigned to classes');
+        return true;
+    } catch (error) {
+        console.error('Error assigning students to classes:', error);
+        throw error;
+    }
+};
+
+// Remove user from class
+export const removeUserFromClass = async (orgId, classId, userId, firebaseApp) => {
+    try {
+        // Check if trying to remove from Default Class in Default Organization
+        const isDefaultOrg = await isDefaultOrganization(orgId, firebaseApp);
+        if (isDefaultOrg && classId === 'default') {
+            throw new Error('Cannot remove users from Default Class in Default Organization.');
+        }
+        
+        const db = getDatabase(firebaseApp);
+        const updates = [];
+        
+        // Remove from class students
+        updates.push(
+            remove(ref(db, `orgs/${orgId}/classes/${classId}/students/${userId}`))
+        );
+        
+        // Remove from class teachers
+        updates.push(
+            remove(ref(db, `orgs/${orgId}/classes/${classId}/teachers/${userId}`))
+        );
+        
+        // Remove from user profile
+        updates.push(
+            remove(ref(db, `users/${userId}/orgs/${orgId}/classes/${classId}`))
+        );
+        
+        await Promise.all(updates);
+        console.log(`User ${userId} removed from class ${classId}`);
+        return true;
+    } catch (error) {
+        // Don't log error if it's an expected exception (for Default Class)
+        if (error.message && error.message.includes('Default Class')) {
+            throw error; // Just re-throw the error for UI handling
+        }
+        console.error('Error removing user from class:', error);
+        throw error;
+    }
+};
+
+// Remove game from class
+export const removeGameFromClass = async (orgId, classId, gameId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        
+        // Remove from class assigned games
+        await remove(ref(db, `orgs/${orgId}/classes/${classId}/assignedGames/${gameId}`));
+        
+        console.log(`Game ${gameId} removed from class ${classId}`);
+        return true;
+    } catch (error) {
+        console.error('Error removing game from class:', error);
+        throw error;
+    }
+};
+
+// Assign games to classes
+export const assignGamesToClasses = async (orgId, gameIds, classIds, assignerUid, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        const updates = [];
+        const now = new Date().toISOString();
+        
+        for (const gameId of gameIds) {
+            for (const classId of classIds) {
+                updates.push(
+                    set(ref(db, `orgs/${orgId}/classes/${classId}/assignedGames/${gameId}`), {
+                        addedAt: now,
+                        addedBy: assignerUid
+                    })
+                );
+            }
+        }
+        
+        await Promise.all(updates);
+        console.log('Games assigned to classes');
+        return true;
+    } catch (error) {
+        console.error('Error assigning games to classes:', error);
+        throw error;
+    }
+};
+
+// Switch user's current class
+export const switchUserClass = async (uid, orgId, classId, firebaseApp) => {
+    try {
+        const db = getDatabase(firebaseApp);
+        await set(ref(db, `users/${uid}/orgs/${orgId}/currentClassId`), classId);
+        console.log('User switched to class:', classId);
+        return true;
+    } catch (error) {
+        console.error('Error switching user class:', error);
+        throw error;
+    }
+};
+
+// Get current class context
+export const getCurrentClassContext = async (firebaseApp) => {
+    try {
+        const auth = getAuth(firebaseApp);
+        const user = auth.currentUser;
+        
+        if (!user) return { classId: null, className: null, orgId: null };
+        
+        const { orgId } = await getCurrentUserContext(firebaseApp);
+        if (!orgId) return { classId: null, className: null, orgId: null };
+        
+        const db = getDatabase(firebaseApp);
+        const currentClassRef = ref(db, `users/${user.uid}/orgs/${orgId}/currentClassId`);
+        const snapshot = await get(currentClassRef);
+        
+        const classId = snapshot.exists() ? snapshot.val() : 'default';
+        
+        // Get class name
+        const classInfo = await getClassInfo(orgId, classId, firebaseApp);
+        const className = classInfo ? classInfo.name : 'Unknown Class';
+        
+        return { classId, className, orgId };
+    } catch (error) {
+        console.error('Error getting current class context:', error);
+        return { classId: null, className: null, orgId: null };
+    }
+};
+
+// Check and create Default Class if missing
+export const ensureDefaultClass = async (orgId, firebaseApp) => {
+    try {
+        // Only create Default Class for Default Organization
+        const isDefault = await isDefaultOrganization(orgId, firebaseApp);
+        if (!isDefault) {
+            console.log('Not Default Organization, skipping Default Class creation');
+            return true;
+        }
+        
+        const db = getDatabase(firebaseApp);
+        const defaultClassRef = ref(db, `orgs/${orgId}/classes/default`);
+        const snapshot = await get(defaultClassRef);
+        
+        if (!snapshot.exists()) {
+            console.log('Default class not found, creating it...');
+            await createDefaultClass(orgId, firebaseApp);
+            console.log('Default class created successfully');
+        } else {
+            console.log('Default class already exists');
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('Error ensuring default class:', error);
+        return false;
     }
 };

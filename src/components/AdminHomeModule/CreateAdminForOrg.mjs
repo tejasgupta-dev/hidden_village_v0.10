@@ -7,6 +7,9 @@ import { ref, push, getDatabase, set, query, equalTo, get, orderByChild } from "
 import dotenv from 'dotenv';
 dotenv.config();
 
+// Import the uuid library
+import { v4 as uuidv4 } from 'uuid';
+
 // Now you can access your environment variables using process.env
 const firebaseConfig = {
     apiKey: process.env.apiKey,
@@ -21,6 +24,7 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const db = getDatabase(app);
 
 
 
@@ -31,8 +35,56 @@ const UserPermissions = {
     Student: 'Student',
 };
 
+// Create organization
+export const createOrganization = async (name, ownerUid) => {
+    const orgId = uuidv4();
+    const timestamp = new Date().toISOString();
+    
+    try {
+        await set(ref(db, `orgs/${orgId}`), {
+            name,
+            ownerUid,
+            createdAt: timestamp,
+            isArchived: false
+        });
+        
+        console.log(`Organization created: ${name} (${orgId})`);
+        return orgId;
+    } catch (error) {
+        console.error("Error creating organization:", error);
+        throw error;
+    }
+};
 
-export const writeCurrentUserToDatabaseNewUser = async (newID,newEmail,newRole, newOrg) => {
+// Add user to organization
+export const addUserToOrg = async (uid, orgId, role) => {
+    const timestamp = new Date().toISOString();
+    
+    try {
+        await Promise.all([
+            set(ref(db, `users/${uid}/orgs/${orgId}`), {
+                roleSnapshot: role,
+                status: 'active',
+                joinedAt: timestamp,
+                updatedAt: timestamp
+            }),
+            set(ref(db, `orgs/${orgId}/members/${uid}`), {
+                uid,
+                role,
+                status: 'active'
+            })
+        ]);
+        
+        console.log(`User ${uid} added to organization ${orgId} with role ${role}`);
+        return true;
+    } catch (error) {
+        console.error("Error adding user to organization:", error);
+        throw error;
+    }
+};
+
+
+export const writeCurrentUserToDatabaseNewUser = async (newID, newEmail, newRole, orgId) => {
     // Create a new date object to get a timestamp
     const dateObj = new Date();
     const timestamp = dateObj.toISOString();
@@ -46,62 +98,49 @@ export const writeCurrentUserToDatabaseNewUser = async (newID,newEmail,newRole, 
     const userRole = newRole;
     console.log(`User Role: ${userRole}`)
 
-    const userOrg = newOrg
-    console.log(`User Org: ${userOrg}`)
+    console.log(`Organization ID: ${orgId}`)
 
-   // Extract username from email
+    // Extract username from email
     const userName = userEmail.split('@')[0];
     console.log(`User Name: ${userName}`);
 
-    // db path
-    // ref the realtime db
-    const userPath = `Users/${userId}`;
-
-    const db = getDatabase();
-
     // Check if user already exists in the database
-    const userSnapshot = await get(ref(db, userPath));
+    const userSnapshot = await get(ref(db, `users/${userId}`));
 
     if (userSnapshot.val() !== null) {
         // User already exists, do not add again
-        // alert("User already exists in the database.");
+        console.log("User already exists in the database.");
         return false;
     }
 
-    const promises = [
-        set(ref(db, `${userPath}/userId`), userId),
-        set(ref(db, `${userPath}/userName`), userName),
-        set(ref(db, `${userPath}/userEmail`),userEmail ),
-        set(ref(db, `${userPath}/userRole`),userRole),
-        set(ref(db, `${userPath}/userOrg`),userOrg),
-        set(ref(db, `${userPath}/dateCreated`),timestamp),
-        set(ref(db, `${userPath}/dateLastAcccessed`),timestamp),
+    try {
+        // Create basic user profile
+        await set(ref(db, `users/${userId}`), {
+            userId,
+            userName,
+            userEmail,
+            dateCreated: timestamp,
+            dateLastAccessed: timestamp
+        });
 
-    ];
-    return Promise.all(promises)
-    .then(() => {
-        // alert("User successfully published to database.");
-        console.log("Process Complete")
+        // Add user to organization
+        await addUserToOrg(userId, orgId, userRole);
+
+        console.log("User created and added to organization successfully");
         return true;
-    })
-    .catch(() => {
-        // alert("OOPSIE POOPSIE. Cannot publish user to database.");
-        console.log("Process Error")
+    } catch (error) {
+        console.error("Error creating user:", error);
         return false;
-    });
+    }
 };
 
-export const writeNewUserToDatabase = async (userEmail, userRole, userPassword, userOrg) => {
-    // Create a new date object to get a timestamp
-    const dateObj = new Date();
-    const timestamp = dateObj.toISOString();
+export const writeNewUserToDatabase = async (userEmail, userRole, userPassword, orgName) => {
+    try {
+        // Get the Firebase authentication instance
+        const auth = getAuth();
 
-    // Get the Firebase authentication instance
-    const auth = getAuth();
-
-    await createUserWithEmailAndPassword(auth, userEmail, userPassword)
-    .then((userCredential) => {
-
+        const userCredential = await createUserWithEmailAndPassword(auth, userEmail, userPassword);
+        
         console.log("User created successfully:", userCredential.user);
 
         // Additional user information
@@ -111,16 +150,21 @@ export const writeNewUserToDatabase = async (userEmail, userRole, userPassword, 
         console.log("New User display name:", user.displayName);
 
         const newID = user.uid;
-        console.log(newID)
         const newEmail = user.email;
         const newRole = userRole;
-        // lets addd user to the realtime database now
-    
-        writeCurrentUserToDatabaseNewUser(newID, newEmail, newRole, userOrg);
-    })
-    .catch((error) => {
-        console.error("Error creating auth user", error);
-        // Handle errors (e.g., invalid email, weak password)
-    });
+
+        // Create organization first
+        const orgId = await createOrganization(orgName, newID);
+        
+        // Add user to the database and organization
+        await writeCurrentUserToDatabaseNewUser(newID, newEmail, newRole, orgId);
+        
+        console.log("User and organization created successfully");
+        return { success: true, orgId, userId: newID };
+        
+    } catch (error) {
+        console.error("Error creating user:", error);
+        return { success: false, error: error.message };
+    }
 }
 

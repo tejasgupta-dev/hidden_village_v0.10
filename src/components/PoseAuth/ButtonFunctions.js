@@ -21,7 +21,7 @@ function isPoseValid(poseData, state) {
          .map((key) => key.replace('Landmarks', '').replace(/^./, (c) => c.toUpperCase()))
          .join(', ');
       alert(
-         `⚠️ Cannot capture pose.\n` +
+         `Cannot capture pose.\n` +
          `Please make sure your ${formattedNames.toLowerCase()} ${missingGroups.length === 1 ? 'is' : 'are'} fully visible on the camera for the "${state}" pose.`
       );
       return false;
@@ -50,7 +50,7 @@ function isPoseValid(poseData, state) {
       if (ratio < VALID_RATIO_THRESHOLD) {
          const label = key.replace('Landmarks', '').replace(/^./, (c) => c.toUpperCase());
          alert(
-            `❌ Cannot capture.\n\nToo many invalid points in "${label}" for the "${state}" pose.\n` +
+            `Cannot capture.\n\nToo many invalid points in "${label}" for the "${state}" pose.\n` +
             `We detected only ${Math.round(ratio * 100)}% valid points. Please adjust your position or lighting.`
          );
          return false;

@@ -2,12 +2,15 @@ import React, { useState, useEffect } from 'react';
 import Background from "../Background";
 import { blue, white, red, neonGreen, green, black } from "../../utils/colors";
 import RectButton from "../RectButton";
-import { getConjectureList, searchConjecturesByWord } from "../../firebase/database";
+import { getConjectureListWithCurrentOrg, searchConjecturesByWordWithCurrentOrg } from "../../firebase/database";
 import { ConjectureSelectorBoxes } from "./ConjectureSelectorModuleBoxes";
 import { useMachine } from "@xstate/react";
 import { Curriculum } from "../CurricularModule/CurricularModule";
 import { currentConjecture, setEditLevel, setGoBackFromLevelEdit } from "../ConjectureModule/ConjectureModule"
 import PixiLoader from '../utilities/PixiLoader';
+import { getAuth } from "firebase/auth";
+import firebase from "firebase/compat/app";
+import { canEditWithoutPIN, getCurrentUserContext } from "../../firebase/userDatabase";
 
 import InputBox from '../InputBox';
 
@@ -21,10 +24,46 @@ export function setAddtoCurricular(trueOrFalse) {
   addToCurricular = trueOrFalse;
 }
 
-export function handlePIN(conjecture, message = "Please Enter the PIN.") { // this function is meant to be used as an if statement (ex: if(handlePIN){...} )
+export async function handlePIN(conjecture, message = "Please Enter the PIN.", firebaseApp = null) { // this function is meant to be used as an if statement (ex: if(await handlePIN){...} )
   const existingPIN = conjecture["Text Boxes"]?.["PIN"] || conjecture["PIN"];
   if (existingPIN == "" || existingPIN == "undefined" || existingPIN == null) { // no existing PIN
     return true;
+  }
+
+  // Check hierarchy - if user can edit without PIN, skip PIN check
+  if (firebaseApp) {
+    try {
+      const auth = getAuth(firebaseApp);
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        const userContext = await getCurrentUserContext(firebaseApp);
+        const resourceOwnerId = conjecture.AuthorID || conjecture.createdBy;
+        const resourceOrgId = userContext?.orgId; // Assuming level is in current org
+        
+        if (resourceOwnerId && resourceOrgId) {
+          const canEdit = await canEditWithoutPIN(
+            currentUser.uid,
+            resourceOwnerId,
+            resourceOrgId,
+            userContext?.role,
+            resourceOrgId,
+            firebaseApp
+          );
+          
+          if (canEdit) {
+            return true; // Can edit without PIN
+          }
+        }
+        
+        // Check if user is the owner
+        if (resourceOwnerId === currentUser.uid) {
+          return true; // Owner can always edit without PIN
+        }
+      }
+    } catch (error) {
+      console.error('Error checking edit permission:', error);
+      // Fall through to PIN check on error
+    }
   }
 
   const enteredPIN = prompt(message);
@@ -32,52 +71,104 @@ export function handlePIN(conjecture, message = "Please Enter the PIN.") { // th
     return true;
   }
   else if (enteredPIN != null && enteredPIN != "") { // recursively try to have the user enter a PIN when it is incorrect
-    return handlePIN(conjecture, "Incorrect PIN, please try again.");
+    return handlePIN(conjecture, "Incorrect PIN, please try again.", firebaseApp);
   }
   return false; // do nothing if cancel is clicked
 }
 
-function handleLevelClicked(conjecture, conjectureCallback) {
+async function handleLevelClicked(conjecture, conjectureCallback, firebaseApp = null) {
+  console.log('handleLevelClicked: Called with conjecture:', conjecture);
+  console.log('handleLevelClicked: addToCurricular =', addToCurricular);
+  
   if (addToCurricular) { // if the user wants to preview a level before adding it to the game in the game editor
+    console.log('handleLevelClicked: Preview mode - setting up for curricular preview');
     setEditLevel(false);
     setGoBackFromLevelEdit("LEVELSELECT");
     currentConjecture.setConjecture(conjecture);
     conjectureCallback(conjecture);
   }
-  else if (handlePIN(conjecture)) { // when the user pulls up the list of levels in the level editor
+  else if (await handlePIN(conjecture, "Please Enter the PIN.", firebaseApp)) { // when the user pulls up the list of levels in the level editor
+    console.log('handleLevelClicked: Edit mode - setting up for level editing');
     setEditLevel(true);
     setGoBackFromLevelEdit("MAIN");
     currentConjecture.setConjecture(conjecture);
     conjectureCallback(conjecture);
+  } else {
+    console.log('handleLevelClicked: PIN was cancelled or invalid');
   }
 }
 
 const ConjectureSelectModule = (props) => {
   console.log("ConjectureSelectModule Runs now");
-  const { height, width, conjectureCallback, backCallback, curricularCallback } = props;
+  const { height, width, conjectureCallback, backCallback, curricularCallback, firebaseApp } = props;
+  const app = firebaseApp || firebase.app();
   const [conjectureList, setConjectureList] = useState([]);
+  const [filteredConjectureList, setFilteredConjectureList] = useState([]);
   const [currentPage, setCurrentPage] = useState(0);
   const [selectedConjecture, setSelectedConjecture] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showPublic, setShowPublic] = useState(false);
 
   useEffect(() => {
+    let isMounted = true;
+    
     const fetchData = async () => {
       try {
-        const result = await getConjectureList(addToCurricular);
+        const result = await getConjectureListWithCurrentOrg(addToCurricular, true);
+        
+        if (!isMounted) return;
+        
         setConjectureList(result);
-        setLoading(false);
+        
+        if (isMounted) {
+          setLoading(false);
+        }
       } catch (error) {
         console.error('Error fetching data:', error);
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     fetchData();
+    
+    // Cleanup function to prevent state update on unmounted component
+    return () => {
+      isMounted = false;
+    };
   }, []);
+  
+  // Apply filters
+  useEffect(() => {
+    let isMounted = true;
+    
+    const applyFilters = async () => {
+      let filtered = [...conjectureList];
+      
+      // Filter by public/private - if showPublic is false, hide public levels from other orgs
+      if (!showPublic) {
+        filtered = filtered.filter(conjecture => !conjecture._isFromOtherOrg);
+      }
+      
+      // Only update state if component is still mounted
+      if (isMounted) {
+        setFilteredConjectureList(filtered);
+        setCurrentPage(0); // Reset to first page when filters change
+      }
+    };
+    
+    applyFilters();
+    
+    // Cleanup function to prevent state update on unmounted component
+    return () => {
+      isMounted = false;
+    };
+  }, [conjectureList, showPublic, app]);
 
   //use to get a fixed number of conjectures per page and to navigate between the pages
   const conjecturesPerPage = 7;
-  const totalPages = Math.ceil((conjectureList?.length || 0) / conjecturesPerPage);
+  const totalPages = Math.ceil((filteredConjectureList?.length || 0) / conjecturesPerPage);
 
   const nextPage = () => {
     if (currentPage < totalPages - 1) {
@@ -94,7 +185,7 @@ const ConjectureSelectModule = (props) => {
   const searchConjectures = async (searchWord) => {
     try {
       console.log("Search Button")
-      const result = await searchConjecturesByWord(searchWord);
+      const result = await searchConjecturesByWordWithCurrentOrg(searchWord);
       console.log(result)
 
       setConjectureList(result);
@@ -116,7 +207,7 @@ const ConjectureSelectModule = (props) => {
 
   // use to determine the subset of conjectures to display based on the current page
   const startIndex = currentPage * conjecturesPerPage;
-  const currentConjectures = (conjectureList || []).slice(startIndex, startIndex + conjecturesPerPage);
+  const currentConjectures = (filteredConjectureList || []).slice(startIndex, startIndex + conjecturesPerPage);
 
   // draw the buttons that show the author name, name of conjecture, and keywords, and the add conjecture button
   const drawConjectureList = (xMultiplier, yMultiplier, fontSizeMultiplier, totalWidth, totalHeight) => {
@@ -290,6 +381,20 @@ const ConjectureSelectModule = (props) => {
         fontWeight={300}
         callback={sendSearchPrompt} // Create Popup
       />
+      
+      {/* Filters */}
+      <RectButton
+        height={height * 0.2}
+        width={width * 0.15}
+        x={width * 0.1}
+        y={height * 0.05}
+        color={showPublic ? green : white}
+        fontSize={width * 0.012}
+        fontColor={showPublic ? white : black}
+        text={showPublic ? "SHOW PUBLIC: YES" : "SHOW PUBLIC: NO"}
+        fontWeight={600}
+        callback={() => setShowPublic(!showPublic)}
+      />
 
       <RectButton
         height={height * 0.13}
@@ -317,7 +422,7 @@ const ConjectureSelectModule = (props) => {
         fontWeight={800}
         callback={
           selectedConjecture
-            ? () => handleLevelClicked(selectedConjecture, conjectureCallback)
+            ? () => handleLevelClicked(selectedConjecture, conjectureCallback, app)
             : null
         }
       />

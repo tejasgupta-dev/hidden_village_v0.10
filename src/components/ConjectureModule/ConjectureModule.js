@@ -4,9 +4,9 @@ import { powderBlue, skyBlue, cornflowerBlue, green, neonGreen, black, blue, whi
 import Button from "../Button";
 import RectButton from "../RectButton";
 import InputBox from "../InputBox";
-import { ConjectureBox, KeywordsBox, NameBox, PINBox } from "./ConjectureModuleBoxes";
+import { ConjectureBox, KeywordsBox, NameBox, PINBox, PublicCheckbox } from "./ConjectureModuleBoxes";
 import { EndBox, IntermediateBox, StartBox } from "../PoseAuth/PoseAuthoringBoxes";
-import { writeToDatabaseConjecture, writeToDatabaseConjectureDraft, keysToPush, searchConjecturesByWord, deleteFromDatabaseConjecture} from "../../firebase/database";
+import { writeToDatabaseConjectureWithCurrentOrg, writeToDatabaseConjectureDraftWithCurrentOrg, keysToPush, searchConjecturesByWordWithCurrentOrg, deleteFromDatabaseConjectureWithCurrentOrg} from "../../firebase/database";
 import { useMachine } from "@xstate/react";
 import { ConjectureEditorMachine } from "../../machines/conjectureEditorMachine";
 
@@ -31,29 +31,38 @@ export const currentConjecture = {
   CurrentUUID: [],
 
   setConjecture(conjecture) {
+    console.log('currentConjecture: setConjecture called with:', conjecture);
     this.CurrentConjecture = conjecture;
+    console.log('currentConjecture: CurrentConjecture set to:', this.CurrentConjecture);
   },
 
   getCurrentConjecture() {
+    console.log('currentConjecture: getCurrentConjecture called, returning:', this.CurrentConjecture);
     return this.CurrentConjecture;
   },
 
   setCurrentUUID(UUID){
+    console.log('currentConjecture: setCurrentUUID called with:', UUID);
     this.CurrentUUID = UUID;
+    console.log('currentConjecture: CurrentUUID set to:', this.CurrentUUID);
   },
 
   getCurrentUUID(){
     if(this.CurrentUUID != null && this.CurrentUUID != ""){
+      console.log('currentConjecture: getCurrentUUID returning:', this.CurrentUUID);
       return this.CurrentUUID;
     }
     else{
+      console.log('currentConjecture: getCurrentUUID returning null (CurrentUUID is:', this.CurrentUUID, ')');
       return null;
     }
   },
 
   clearConjecture(){
+    console.log('currentConjecture: clearConjecture called');
     this.setConjecture(null); // remove previous list of levels
     this.setCurrentUUID(null); // remove UUID
+    console.log('currentConjecture: cleared');
   },
 }
 
@@ -72,29 +81,40 @@ export const currentConjecture = {
 // fill in local storage using currentConjecture if an existing conjecture is selected
 // currentConjecture receives the value when the conjecture is clicked from ConjectureSelectorModule
 function setLocalStorage(){ 
+      console.log('setLocalStorage: Starting to set localStorage from currentConjecture');
       const conj = currentConjecture.getCurrentConjecture() ?? {};
+      console.log('setLocalStorage: Current conjecture data:', conj);
 
       if (!localStorage.getItem('Correct Answer')) {
         localStorage.setItem('Correct Answer', 'A');
+        console.log('setLocalStorage: Set default Correct Answer to A');
       }
 
-      if (Object.keys(conj).length === 0) return;
+      if (Object.keys(conj).length === 0) {
+        console.log('setLocalStorage: No conjecture data found, skipping localStorage setup');
+        return;
+      }
 
+      console.log('setLocalStorage: Setting text box values...');
   // 1. Text-box values
   keysToPush.forEach((k) => {
     if (k === 'PIN' && !getEditLevel()) {
       localStorage.removeItem(k); // Make sure PIN is not in localStorage during preview
+      console.log(`setLocalStorage: Removed PIN from localStorage (preview mode)`);
       return;
     }
 
     const val = conj['Text Boxes']?.[k];
     if (val !== undefined && val !== null && val !== '') {
       localStorage.setItem(k, val);
+      console.log(`setLocalStorage: Set ${k} = "${val}"`);
     } else {
       localStorage.removeItem(k);          // ← no bogus "undefined"
+      console.log(`setLocalStorage: Removed ${k} (value was: ${val})`);
     }
   });
 
+  console.log('setLocalStorage: Setting pose data...');
   // 2. Pose JSON
   const poseKeys = [
     ['Start Pose',        'start.json'],
@@ -105,11 +125,14 @@ function setLocalStorage(){
     const pose = conj[dbKey]?.poseData;
     if (pose) {
       localStorage.setItem(lsKey, pose);
+      console.log(`setLocalStorage: Set ${lsKey} with pose data`);
     } else {
       localStorage.removeItem(lsKey);
+      console.log(`setLocalStorage: Removed ${lsKey} (no pose data)`);
     }
   });
 
+  console.log('setLocalStorage: Setting tolerance values...');
   // 3. Tolerance
   const toleranceKeys = [
     ['Start Pose',        'Start Tolerance'],
@@ -120,17 +143,26 @@ function setLocalStorage(){
     const tol = conj[dbKey]?.tolerance;
     if (tol !== undefined && tol !== null && tol !== '') {
       localStorage.setItem(lsKey, tol);
+      console.log(`setLocalStorage: Set ${lsKey} = ${tol}`);
     } else {
       localStorage.removeItem(lsKey);
+      console.log(`setLocalStorage: Removed ${lsKey} (value was: ${tol})`);
     }
   });
 
+  console.log('setLocalStorage: Setting UUID and cleaning up...');
   // 4. Remember UUID (needed when the user hits SAVE/PUBLISH)
   currentConjecture.CurrentUUID = conj.UUID ?? null;
   currentConjecture.CurrentConjecture = null;   // avoid re-entrancy
+  console.log(`setLocalStorage: Set CurrentUUID to ${currentConjecture.CurrentUUID}`);
 
   // 5. Default correct answer
-  if (!localStorage.getItem('Correct Answer')) localStorage.setItem('Correct Answer', 'A');
+  if (!localStorage.getItem('Correct Answer')) {
+    localStorage.setItem('Correct Answer', 'A');
+    console.log('setLocalStorage: Set default Correct Answer to A');
+  }
+  
+  console.log('setLocalStorage: Completed localStorage setup');
  }
 
 const ConjectureModule = (props) => {
@@ -174,7 +206,7 @@ const ConjectureModule = (props) => {
     
     if (confirmDelete) {
       try {
-        await deleteFromDatabaseConjecture(currentUUID);
+        await deleteFromDatabaseConjectureWithCurrentOrg(currentUUID);
         // Reset everything after successful deletion
         currentConjecture.clearConjecture();
         resetConjectureValues();
@@ -188,7 +220,7 @@ const ConjectureModule = (props) => {
   };
   
   const handlePublish = async (currentUUID) => {
-    const success = await writeToDatabaseConjecture(currentUUID);
+    const success = await writeToDatabaseConjectureWithCurrentOrg(currentUUID);
     if (success) {
       currentConjecture.clearConjecture();
       resetConjectureValues();
@@ -197,7 +229,7 @@ const ConjectureModule = (props) => {
   };
 
   const handleSaveDraft = async (currentUUID) => {
-    const success = await writeToDatabaseConjectureDraft(currentUUID);
+    const success = await writeToDatabaseConjectureDraftWithCurrentOrg(currentUUID);
     if (success) {
       currentConjecture.clearConjecture();
       resetConjectureValues();
@@ -207,9 +239,10 @@ const ConjectureModule = (props) => {
 
   return (
     <>
-      <Background height={height * 1.1} width={width} />
+      <Background height={height} width={width} />
       <NameBox height={height} width={width} boxState={state.value} username={userName}/>
       <PINBox height={height} width={width} />
+      <PublicCheckbox height={height} width={width} />
       <StartBox height={height * 0.5} width={width * 0.5} x={5} y={4.6} boxState={null} similarityScores={null} inCE={true} />
       <IntermediateBox height={height * 0.5} width={width * 0.5} x={9} y={1.906} boxState={null} similarityScores={null} inCE={true} />
       <EndBox height={height * 0.5} width={width * 0.5} x={13} y={1.2035} boxState={null} similarityScores={null} inCE={true} />

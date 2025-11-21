@@ -1,0 +1,508 @@
+import React, { useState, useEffect } from 'react';
+import { Text } from "@inlet/react-pixi";
+import { TextStyle } from "@pixi/text";
+import { blue, white, red, green, black, navyBlue } from "../../utils/colors";
+import RectButton from "../RectButton";
+import Background from "../Background";
+import OrganizationList from "./OrganizationList";
+import { getCurrentUserContext, getUserOrgsFromDatabase, getOrganizationInfo, findOrganizationByName, createOrganization, useInviteCode, deleteOrganization, leaveOrganization, refreshUserContext, isDefaultOrganization } from "../../firebase/userDatabase";
+import { getAuth } from "firebase/auth";
+import { getDatabase, ref, get, set } from "firebase/database";
+
+const OrganizationManager = ({ width, height, firebaseApp, mainCallback, onInvitesClick }) => {
+  const [organizations, setOrganizations] = useState([]);
+  const [currentOrgId, setCurrentOrgId] = useState(null);
+  const [currentOrgName, setCurrentOrgName] = useState('Loading...');
+  const [loading, setLoading] = useState(true);
+  const [createError, setCreateError] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [joinError, setJoinError] = useState(null);
+  const [joining, setJoining] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState(null);
+
+  useEffect(() => {
+    loadOrganizations();
+  }, []);
+
+  // Listen for user context changes (organization switches)
+  useEffect(() => {
+    const handleUserContextChange = () => {
+      console.log('OrganizationManager: User context changed, refreshing organization data...');
+      loadOrganizations();
+    };
+
+    // Add event listener
+    console.log('OrganizationManager: Adding userContextChanged event listener');
+    window.addEventListener('userContextChanged', handleUserContextChange);
+
+    // Cleanup
+    return () => {
+      console.log('OrganizationManager: Removing userContextChanged event listener');
+      window.removeEventListener('userContextChanged', handleUserContextChange);
+    };
+  }, []);
+
+  const loadOrganizations = async () => {
+    try {
+      console.log('OrganizationManager: Starting loadOrganizations...');
+      setLoading(true);
+      
+      // Get current user context
+      const { orgId } = await getCurrentUserContext(firebaseApp);
+      console.log('OrganizationManager: Current orgId from context:', orgId);
+      setCurrentOrgId(orgId);
+      
+      // Get user's organizations
+      const auth = getAuth(firebaseApp);
+      const user = auth.currentUser;
+      if (!user) {
+        console.warn('OrganizationManager: No authenticated user');
+        return;
+      }
+
+      console.log('OrganizationManager: Current user:', user.uid);
+      setCurrentUserId(user.uid);
+
+      const userOrgs = await getUserOrgsFromDatabase(user.uid, firebaseApp);
+      console.log('OrganizationManager: User orgs from database:', userOrgs);
+      const orgList = [];
+      
+      // Get full organization data for each org
+      for (const [orgId, orgData] of Object.entries(userOrgs)) {
+        const orgInfo = await getOrganizationInfo(orgId, firebaseApp);
+        if (orgInfo) {
+          orgList.push({
+            id: orgId,
+            name: orgInfo.name || 'Unknown Organization',
+            roleSnapshot: orgData.roleSnapshot || 'Member',
+            status: orgData.status || 'active'
+          });
+        }
+      }
+      
+      console.log('OrganizationManager: Processed org list:', orgList);
+      setOrganizations(orgList);
+      
+      // Set current organization name
+      const currentOrg = orgList.find(org => org.id === orgId);
+      const orgName = currentOrg ? currentOrg.name : 'None';
+      console.log('OrganizationManager: Setting current org name:', orgName);
+      setCurrentOrgName(orgName);
+      
+      setLoading(false);
+      console.log('OrganizationManager: loadOrganizations completed');
+    } catch (error) {
+      console.error('OrganizationManager: Error loading organizations:', error);
+      setCurrentOrgName('Error loading organizations');
+      setLoading(false);
+    }
+  };
+
+  const handleOrganizationSelect = async (organization) => {
+    try {
+      console.log('Switching to organization:', organization);
+      
+      // Get current user
+      const auth = getAuth(firebaseApp);
+      const user = auth.currentUser;
+      if (!user) {
+        console.error('No authenticated user');
+        return;
+      }
+      
+      // Update user's primary organization in database
+      const db = getDatabase(firebaseApp);
+      const userRef = ref(db, `users/${user.uid}`);
+      const userSnapshot = await get(userRef);
+      
+      if (userSnapshot.exists()) {
+        const userData = userSnapshot.val();
+        userData.primaryOrgId = organization.id;
+        userData.primaryOrgName = organization.name;
+        userData.lastOrgSwitch = new Date().toISOString();
+        
+        await set(userRef, userData);
+        console.log('Primary organization updated to:', organization.name);
+        
+        // Update current organization display
+        setCurrentOrgId(organization.id);
+        setCurrentOrgName(organization.name);
+        
+        // Show success message (optional)
+        console.log('Successfully switched to organization:', organization.name);
+        
+        // Refresh user context and reload organization data
+        await refreshUserContext(firebaseApp);
+        await loadOrganizations(); // Reload organizations to get updated context
+        
+        console.log('Organization switched successfully');
+      }
+    } catch (error) {
+      console.error('Error switching organization:', error);
+    }
+  };
+
+  const handleJoinOrganization = async (inviteCode) => {
+    try {
+      setJoining(true);
+      setJoinError(null);
+      
+      // Validate code
+      if (!inviteCode || inviteCode.trim() === '') {
+        setJoinError('Invite code cannot be empty');
+        setJoining(false);
+        return;
+      }
+      
+      // Get current user
+      const auth = getAuth(firebaseApp);
+      const user = auth.currentUser;
+      if (!user) {
+        setJoinError('User not authenticated');
+        setJoining(false);
+        return;
+      }
+      
+      // Use invite code to join organization
+      const result = await useInviteCode(inviteCode.trim(), user.uid, firebaseApp);
+      
+      console.log('Successfully joined organization:', result.orgName);
+      
+      // Reset state
+      setJoining(false);
+      setJoinError(null);
+      
+      // Refresh organization list
+      await loadOrganizations();
+      
+    } catch (error) {
+      console.error('Error joining organization:', error);
+      setJoinError(error.message || 'Failed to join organization');
+      setJoining(false);
+    }
+  };
+
+  const handleDeleteOrganization = async (organization) => {
+    try {
+      // Check if this is Default Organization - cannot delete
+      const isDefault = await isDefaultOrganization(organization.id, firebaseApp);
+      if (isDefault) {
+        alert('Cannot delete Default Organization.');
+        return;
+      }
+      
+      // Prevent deleting current organization
+      if (organization.id === currentOrgId) {
+        alert('Cannot delete your current organization. Please switch to another organization first.');
+        return;
+      }
+      
+      // Get member count
+      const orgInfo = await getOrganizationInfo(organization.id, firebaseApp);
+      const memberCount = orgInfo.members ? Object.keys(orgInfo.members).length : 0;
+      
+      // Show confirmation with warning
+      const confirmMessage = `WARNING: This action cannot be undone!\n\n` +
+        `You are about to DELETE "${organization.name}".\n\n` +
+        `This will:\n` +
+        `- Remove ${memberCount} member(s) from this organization\n` +
+        `- Delete all levels and games\n` +
+        `- Remove all organization data\n\n` +
+        `Type the organization name to confirm: ${organization.name}`;
+      
+      const userInput = window.prompt(confirmMessage);
+      
+      if (userInput !== organization.name) {
+        if (userInput !== null) {
+          alert('Organization name does not match. Deletion cancelled.');
+        }
+        return;
+      }
+      
+      // Delete organization
+      await deleteOrganization(organization.id, firebaseApp);
+      
+      alert(`Organization "${organization.name}" has been deleted successfully.`);
+      
+      // Reload organizations list
+      await loadOrganizations();
+    } catch (error) {
+      console.error('Error deleting organization:', error);
+      alert(`Failed to delete organization: ${error.message}`);
+    }
+  };
+
+  const handleLeaveOrganization = async (organization) => {
+    try {
+      // Check if this is Default Organization - cannot leave
+      const isDefault = await isDefaultOrganization(organization.id, firebaseApp);
+      if (isDefault) {
+        alert('Cannot leave Default Organization.');
+        return;
+      }
+      
+      // Check if user has other organizations
+      if (organizations.length === 1) {
+        alert('Cannot leave your only organization.');
+        return;
+      }
+      
+      // Confirm leaving
+      const confirmLeave = confirm(
+        `Are you sure you want to leave "${organization.name}"?\n\n` +
+        `You will no longer have access to this organization's content.`
+      );
+      
+      if (!confirmLeave) return;
+      
+      // Leave organization
+      await leaveOrganization(currentUserId, organization.id, firebaseApp);
+      
+      alert(`You have left "${organization.name}" successfully.`);
+      
+      // Refresh user context and reload organization data
+      await refreshUserContext(firebaseApp);
+      await loadOrganizations(); // Reload organizations to get updated context
+      
+      console.log('Left organization successfully');
+    } catch (error) {
+      console.error('Error leaving organization:', error);
+      alert(`Failed to leave organization: ${error.message}`);
+    }
+  };
+
+  const handleCreateOrganization = async (orgName) => {
+    try {
+      setCreating(true);
+      setCreateError(null);
+      
+      // Validate name
+      if (!orgName || orgName.trim() === '') {
+        setCreateError('Organization name cannot be empty');
+        setCreating(false);
+        return;
+      }
+      
+      // Check if organization with this name already exists
+      const existingOrgId = await findOrganizationByName(orgName.trim(), firebaseApp);
+      if (existingOrgId) {
+        setCreateError('Organization with this name already exists');
+        setCreating(false);
+        return;
+      }
+      
+      // Get current user
+      const auth = getAuth(firebaseApp);
+      const user = auth.currentUser;
+      if (!user) {
+        setCreateError('User not authenticated');
+        setCreating(false);
+        return;
+      }
+      
+      // Create organization (user is automatically added as Admin)
+      await createOrganization(orgName.trim(), user.uid, firebaseApp);
+      
+      // Reset state
+      setCreating(false);
+      setCreateError(null);
+      
+      // Refresh organization list
+      await loadOrganizations();
+      
+    } catch (error) {
+      console.error('Error creating organization:', error);
+      setCreateError('Failed to create organization');
+      setCreating(false);
+    }
+  };
+
+
+
+  // Don't render if still loading or critical data is missing
+  if (loading || !currentOrgName || currentOrgName === 'Loading...') {
+    console.log('OrganizationManager: Still loading or currentOrgName is missing, showing loading screen');
+    return (
+      <>
+        <Background height={height} width={width} />
+        <Text
+          text="Loading organizations..."
+          x={width * 0.5}
+          y={height * 0.5}
+          style={new TextStyle({
+            align: "center",
+            fontFamily: "Arial",
+            fontSize: 24,
+            fontWeight: "bold",
+            fill: [white],
+          })}
+        />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Background height={height} width={width} />
+      
+      {/* Title */}
+      <Text
+        text="Organization Manager"
+        x={width * 0.12}
+        y={height * 0.01}
+        style={new TextStyle({
+          align: "center",
+          fontFamily: "Futura",
+          fontSize: 80,
+          fontWeight: 800,
+          fill: [blue],
+          letterSpacing: -5,
+        })}
+      />
+      
+      {/* Current Organization */}
+      <Text
+        text={`CURRENT ORGANIZATION: ${currentOrgName || 'Loading...'}`}
+        x={width * 0.12}
+        y={height * 0.12}
+        style={new TextStyle({
+          align: "left",
+          fontFamily: "Arial",
+          fontSize: 24,
+          fontWeight: "bold",
+          fill: [black],
+        })}
+      />
+      
+      {/* Organizations List */}
+      {organizations.length > 0 && (
+        <OrganizationList 
+          organizations={organizations} 
+          height={height * 0.5}
+          width={width * 0.5}
+          x={width * 0.1}
+          y={height * 0.25}
+          currentOrgId={currentOrgId}
+          onOrganizationSelect={handleOrganizationSelect}
+          onOrganizationDelete={handleDeleteOrganization}
+          onOrganizationLeave={handleLeaveOrganization}
+          currentUserId={currentUserId}
+          firebaseApp={firebaseApp}
+        />
+      )}
+      
+      {/* Action Buttons (Right Side) */}
+      <RectButton
+        height={height * 0.12}
+        width={width * 0.3}
+        x={width * 0.65}
+        y={height * 0.25}
+        color={blue}
+        fontSize={width * 0.012}
+        fontColor={white}
+        text={joining ? "JOINING..." : "JOIN ORGANIZATION"}
+        fontWeight={800}
+        callback={async () => {
+          const inviteCode = window.prompt('Enter invite code:');
+          if (inviteCode) {
+            await handleJoinOrganization(inviteCode);
+          }
+        }}
+      />
+      
+      <RectButton
+        height={height * 0.12}
+        width={width * 0.3}
+        x={width * 0.65}
+        y={height * 0.35}
+        color={green}
+        fontSize={width * 0.012}
+        fontColor={white}
+        text={creating ? "CREATING..." : "CREATE NEW ORGANIZATION"}
+        fontWeight={800}
+        callback={async () => {
+          const orgName = window.prompt('Enter organization name:');
+          if (orgName) {
+            await handleCreateOrganization(orgName);
+          }
+        }}
+      />
+      
+      {onInvitesClick && (
+        <RectButton
+          height={height * 0.12}
+          width={width * 0.3}
+          x={width * 0.65}
+          y={height * 0.45}
+          color={red}
+          fontSize={width * 0.012}
+          fontColor={white}
+          text="INVITES"
+          fontWeight={800}
+          callback={onInvitesClick}
+        />
+      )}
+      
+      {/* Join Error Message */}
+      {joinError && (
+        <Text
+          text={joinError}
+          x={width * 0.1}
+          y={height * 0.35}
+          style={new TextStyle({
+            align: "left",
+            fontFamily: "Arial",
+            fontSize: 18,
+            fontWeight: "bold",
+            fill: [red],
+          })}
+        />
+      )}
+      
+      {/* Create Error Message */}
+      {createError && (
+        <Text
+          text={createError}
+          x={width * 0.1}
+          y={height * 0.5}
+          style={new TextStyle({
+            align: "left",
+            fontFamily: "Arial",
+            fontSize: 18,
+            fontWeight: "bold",
+            fill: [red],
+          })}
+        />
+      )}
+      
+      {/* Bottom Navigation Buttons */}
+      <RectButton
+        height={height * 0.08}
+        width={width * 0.2}
+        x={width * 0.6}
+        y={height * 0.88}
+        color={navyBlue} 
+        fontSize={width * 0.012}
+        fontColor={white} 
+        text={loading ? "REFRESHING..." : "REFRESH"}
+        fontWeight={800}
+        callback={loadOrganizations}
+      />
+      
+      <RectButton
+        height={height * 0.08}
+        width={width * 0.2}
+        x={width * 0.8}
+        y={height * 0.88}
+        color={red}
+        fontSize={width * 0.012}
+        fontColor={white}
+        text="BACK"
+        fontWeight={800}
+        callback={mainCallback}
+      />
+    </>
+  );
+};
+
+export default OrganizationManager;

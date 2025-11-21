@@ -1,51 +1,44 @@
-import React from 'react';
-import {Container, Sprite, Text,Graphics } from "@inlet/react-pixi";
+import React, { useState } from 'react';
+import { Text, Graphics } from "@inlet/react-pixi";
 import { TextStyle } from "@pixi/text";
-import RectButton from '../RectButton';  // Replace with your actual UI library
-import UserObject from './UserObject'
-import { green, neonGreen, black, blue, white, pink, orange, red, transparent, turquoise } from "../../utils/colors";
-import { useState } from 'react';
-import { getUserNameFromDatabase } from "../../firebase/userDatabase"
+import RectButton from '../RectButton';
+import InviteObject from './InviteObject';
+import { green, black, white } from "../../utils/colors";
 
-async function getName(){ // Get the username of the current user
-    const name = await getUserNameFromDatabase();
-    return name;
-}
+const InviteList = (props) => {
+    const { width, height, x, y, invites, onDelete, onCopy, deleting } = props;
 
-const UserList = (props) => {
-    const { width, height, x, y, users, refreshUserListCallback, orgId, currentUserRole } = props;
+    const [startIndex, setStartIndex] = useState(0);
 
-        const [startIndex, setStartIndex] = useState(0);
+    // Calculate table dimensions
+    const tableWidth = width;
+    const tableHeight = height;
+    const rowHeight = 40;
+    const headerHeight = rowHeight;
+    const headerY = y;
+    const firstRowY = y + rowHeight;
+    
+    // Calculate how many invites fit in the table (excluding header row)
+    const availableHeight = tableHeight - headerHeight;
+    const invitesPerPage = Math.max(1, Math.floor(availableHeight / rowHeight));
 
-        // Calculate table dimensions
-        const tableWidth = width;
-        const tableHeight = height;
-        const rowHeight = 40;
-        const headerHeight = rowHeight;
-        const headerY = y;
-        const firstRowY = y + rowHeight;
-        
-        // Calculate how many users fit in the table (excluding header row)
-        const availableHeight = tableHeight - headerHeight;
-        const usersPerPage = Math.max(1, Math.floor(availableHeight / rowHeight));
-    
-        // Function to handle incrementing the start index
-        const handleNextPage = () => {
-            if (startIndex + usersPerPage < users.length) {
-                setStartIndex(startIndex + usersPerPage);
-            }
-        };
-    
-        // Function to handle decrementing the start index
-        const handlePrevPage = () => {
-            if (startIndex - usersPerPage >= 0) {
-                setStartIndex(startIndex - usersPerPage);
-            }
-        };
-    
-        // Slice the users based on the current start index and number of users per page
-        const displayedUsers = users.slice(startIndex, startIndex + usersPerPage);
-    
+    // Function to handle incrementing the start index
+    const handleNextPage = () => {
+        if (startIndex + invitesPerPage < invites.length) {
+            setStartIndex(startIndex + invitesPerPage);
+        }
+    };
+
+    // Function to handle decrementing the start index
+    const handlePrevPage = () => {
+        if (startIndex - invitesPerPage >= 0) {
+            setStartIndex(startIndex - invitesPerPage);
+        }
+    };
+
+    // Slice the invites based on the current start index and number of invites per page
+    const displayedInvites = invites.slice(startIndex, startIndex + invitesPerPage);
+
     return (
         <>
             {/* Table Frame */}
@@ -67,7 +60,7 @@ const UserList = (props) => {
             <Text
                 x={x + tableWidth * 0.05}
                 y={headerY + rowHeight * 0.3}
-                text={'USER'}
+                text={'CODE'}
                 style={
                     new TextStyle({
                         align: 'left',
@@ -79,7 +72,7 @@ const UserList = (props) => {
                 }
             />
             <Text
-                x={x + tableWidth * 0.35}
+                x={x + tableWidth * 0.5}
                 y={headerY + rowHeight * 0.3}
                 text={'ROLE'}
                 style={
@@ -93,7 +86,21 @@ const UserList = (props) => {
                 }
             />
             <Text
-                x={x + tableWidth * 0.7}
+                x={x + tableWidth * 0.66}
+                y={headerY + rowHeight * 0.3}
+                text={'COPY'}
+                style={
+                    new TextStyle({
+                        align: 'center',
+                        fontFamily: 'Arial',
+                        fontSize: 20,
+                        fontWeight: 'bold',
+                        fill: [black],
+                    })
+                }
+            />
+            <Text
+                x={x + tableWidth * 0.8}
                 y={headerY + rowHeight * 0.3}
                 text={'DELETE'}
                 style={
@@ -117,59 +124,53 @@ const UserList = (props) => {
                     g.lineTo(tableWidth, 0);
                 }}
             />
-            {/* Display Users */}
-            {displayedUsers.map((user, index) => {
-                // Get user role from current organization context
-                const userRole = user.roleInOrg || user.userRole || 'Member'; // fallback to 'Member' if no role
-                
+            
+            {/* Display Invites */}
+            {displayedInvites.map((invite, index) => {
                 return (
-                    <UserObject
-                        key={index} 
+                    <InviteObject
+                        key={invite.code} 
                         width={tableWidth}
                         height={rowHeight}
                         x={x}
                         y={firstRowY + (index * rowHeight)}
                         index={index}
-                        username={user.userName || user.userEmail || 'Unknown'}
-                        role={userRole}
-                        userId = {user.userId}
-                        orgId = {orgId}
-                        refreshUserListCallback = {refreshUserListCallback}
-                        currentUserRole={currentUserRole}
+                        invite={invite}
+                        onDelete={onDelete}
+                        onCopy={onCopy}
+                        deleting={deleting === invite.code}
                     />
                 );
             })}
+            
             {/* Pagination Buttons - positioned at bottom right of table */}
             <RectButton
                 height={height * 0.12}
                 width={width * 0.1}
                 x={x + tableWidth - 100}
                 y={y + tableHeight - 40}
-                color={green}
+                color={startIndex > 0 ? green : 0xcccccc}
                 fontSize={20}
                 fontColor={white}
                 text={"<"}
                 fontWeight={800}
-                callback={() => {
-                    handlePrevPage();
-                }}
+                callback={handlePrevPage}
             />
             <RectButton
                 height={height * 0.12}
                 width={width * 0.1}
                 x={x + tableWidth - 50}
                 y={y + tableHeight - 40}
-                color={green}
+                color={startIndex + invitesPerPage < invites.length ? green : 0xcccccc}
                 fontSize={20}
                 fontColor={white}
                 text={">"}
                 fontWeight={800}
-                callback={() => {
-                    handleNextPage();
-                }}
+                callback={handleNextPage}
             />
         </>
     );
 };
 
-export default UserList;
+export default InviteList;
+
