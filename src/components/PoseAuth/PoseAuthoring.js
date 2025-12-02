@@ -424,9 +424,9 @@ const handleReset = () => {
         )}
         {/* Timer adjustment buttons (PoseAuthoring) */}
         <RectButton
-          width={28}
-          height={28}
-          x={mainBoxX + mainBoxWidth - 105}
+          width={40}
+          height={40}
+          x={mainBoxX + mainBoxWidth - 100}
           y={mainBoxY + 27}
           text="-"
           color="#9ca3af"
@@ -434,9 +434,9 @@ const handleReset = () => {
           callback={() => changeTimerLocal(-1)}
         />
         <RectButton
-          width={28}
-          height={28}
-          x={mainBoxX + mainBoxWidth - 15}
+          width={40}
+          height={40}
+          x={mainBoxX + mainBoxWidth - 20}
           y={mainBoxY + 27}
           text="+"
           color="#2563eb"

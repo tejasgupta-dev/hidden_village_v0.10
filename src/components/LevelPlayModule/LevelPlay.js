@@ -6,7 +6,6 @@ import Chapter from '../Chapter';
 import ConjecturePoseContainter from '../ConjecturePoseMatch/ConjecturePoseContainer';
 import ExperimentalTask from '../ExperimentalTask';
 import Tween from '../Tween';
-
 import LevelPlayMachine from './LevelPlayMachine';
 import {
   getConjectureDataByUUID,
@@ -14,6 +13,7 @@ import {
   writeToDatabaseIntuitionEnd,
 } from '../../firebase/database';
 import NewStage from '../NewStage';
+import { getUserSettings } from '../../firebase/userSettings';
 
 export default function LevelPlay(props) {
   const {
@@ -49,6 +49,11 @@ export default function LevelPlay(props) {
   const [tolerances, setTolerances] = useState([]);
   const [expText, setExpText] = useState('');
   const [settings, setSettings] = useState(null);
+  const [repetitionCountFromDB, setRepetitionCountFromDB] = useState(null);
+  // default repetitions fallback
+  const repetitionCount = (repetitionCountFromDB && Number.isInteger(repetitionCountFromDB))
+    ? Math.max(1, repetitionCountFromDB)
+    : (settings && Number.isInteger(settings.repetitions) ? Math.max(1, settings.repetitions) : 3);
   const tweenDuration = 2000;
   const tweenLoopCount = 2;
 
@@ -62,15 +67,29 @@ export default function LevelPlay(props) {
     getConjectureDataByUUID(UUID)
       .then((d) => {
         setConjectureData(d);
-
+        // Read repetitions from the database record if present
+        try {
+          const raw = d?.[UUID]?.Repetitions ?? d?.[UUID]?.repetitions;
+          if (raw != null) {
+            const parsed = parseInt(String(raw), 10);
+            if (!Number.isNaN(parsed) && parsed >= 1) {
+              setRepetitionCountFromDB(parsed);
+            } else {
+              setRepetitionCountFromDB(null);
+            }
+          } else {
+            setRepetitionCountFromDB(null);
+          }
+        } catch (e) {
+          console.warn("Failed to parse Repetitions from DB:", e);
+          setRepetitionCountFromDB(null);
+        }
         const { ['Start Pose']: s, ['Intermediate Pose']: i, ['End Pose']: e } = d[UUID];
-
         setPoses([
           JSON.parse(s.poseData),
           JSON.parse(i.poseData),
           JSON.parse(e.poseData),
         ]);
-
         const tolArray = [s, i, e].map((pose) =>
           typeof pose.tolerance === 'string' || typeof pose.tolerance === 'number'
             ? parseInt(pose.tolerance)
@@ -139,8 +158,9 @@ export default function LevelPlay(props) {
   // If story is disabled, skip intro/outro so the game continues
   useEffect(() => {
     if (!settings) return;
+
+    // Skip story intro/outro when story setting is disabled
     if (settings.story === false) {
-      // If we're stuck at the intro, mark it shown and advance
       if (state.value === 'introDialogue') {
         try {
           markIntroShown(currentConjectureIdx);
@@ -149,10 +169,35 @@ export default function LevelPlay(props) {
         }
         send('NEXT');
       }
-      // If we're at the outro, finish the level immediately
       if (state.value === 'outroDialogue') {
         onLevelComplete?.();
       }
+    }
+
+    // Skip the tween animation when the tween setting is disabled
+    // (advance to the next state immediately)
+    if (settings.tween === false && state.value === 'tween') {
+      send('NEXT');
+    }
+
+    // Skip the pose-matching module when the poseMatching setting is disabled
+    if (settings.poseMatching === false && state.value === 'poseMatching') {
+      send('NEXT');
+    }
+
+    // Skip the intuition module when the intuition setting is disabled
+    if (settings.intuition === false && state.value === 'intuition') {
+      send('NEXT');
+    }
+
+    // Skip the insight module when the insight setting is disabled
+    if (settings.insight === false && state.value === 'insight') {
+      send('NEXT');
+    }
+
+    // Skip the multiple choice module when the multipleChoice setting is disabled
+    if (settings.multipleChoice === false && state.value === 'mcq') {
+      send('NEXT');
     }
   }, [settings, state.value, currentConjectureIdx, markIntroShown, send, onLevelComplete]);
   
@@ -215,6 +260,9 @@ export default function LevelPlay(props) {
           tolerances={tolerances}
           onCompleteCallback={handleNext}
           gameID={gameID}
+          // NEW: enable single-match-per-logical-pose behavior and pass repetitions
+          singleMatchPerPose={true}
+          repetitions={repetitionCount}
         />
       )}
 
