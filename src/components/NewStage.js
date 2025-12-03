@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { Container, Text, Graphics, Sprite } from '@inlet/react-pixi';
 import Background from './Background';
 import Pose from './Pose/index';
@@ -10,9 +10,14 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
   const [hoveredBox, setHoveredBox] = useState(null);
   const [hoverTime, setHoverTime] = useState(0);
   const [cursorPos, setCursorPos] = useState({ x: -100, y: -100 });
+  const [showQuestion, setShowQuestion] = useState(true);
+  const [questionOpacity, setQuestionOpacity] = useState(1.0);
   const hoverTimerRef = useRef(null);
   const onCompleteRef = useRef(onComplete);
   const mainTimerRef = useRef(null);
+  const fadeIntervalRef = useRef(null);
+  const questionTimerRef = useRef(null);
+  const buttonPressRef = useRef(false);
 
   // Visual spacing for clearer MCQ boxes
   const H_PAD = 24;   
@@ -64,17 +69,89 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
     g.endFill();
   }, [columnDimensions]);
 
+  const clearQuestionTimers = useCallback(() => {
+    if (questionTimerRef.current) {
+      clearTimeout(questionTimerRef.current);
+      questionTimerRef.current = null;
+    }
+    if (fadeIntervalRef.current) {
+      clearInterval(fadeIntervalRef.current);
+      fadeIntervalRef.current = null;
+    }
+  }, []);
+
+  const startFadeOut = useCallback(() => {
+    const fadeDuration = 2000;
+    const fadeSteps = 20;
+    const stepDuration = fadeDuration / fadeSteps;
+    const opacityStep = 1.0 / fadeSteps;
+
+    let currentStep = 0;
+    fadeIntervalRef.current = setInterval(() => {
+      currentStep += 1;
+      const newOpacity = Math.max(0, 1.0 - currentStep * opacityStep);
+      setQuestionOpacity(newOpacity);
+
+      if (currentStep >= fadeSteps) {
+        clearQuestionTimers();
+        setShowQuestion(false);
+        setQuestionOpacity(0);
+      }
+    }, stepDuration);
+  }, [clearQuestionTimers]);
+
+  const startQuestionOverlay = useCallback(() => {
+    clearQuestionTimers();
+    setShowQuestion(true);
+    setQuestionOpacity(1.0);
+
+    questionTimerRef.current = setTimeout(() => {
+      startFadeOut();
+    }, 5000);
+  }, [clearQuestionTimers, startFadeOut]);
+
+  const hideQuestionOverlay = useCallback(() => {
+    clearQuestionTimers();
+    setShowQuestion(false);
+    setQuestionOpacity(0);
+  }, [clearQuestionTimers]);
+
+  const restartMainTimer = useCallback(() => {
+    if (mainTimerRef.current) {
+      clearTimeout(mainTimerRef.current);
+    }
+
+    mainTimerRef.current = setTimeout(() => {
+      console.log("NewStage: Calling onComplete from main timer");
+      onCompleteRef.current();
+    }, 50000);
+  }, []);
+
+  const handleQuestionButtonToggle = useCallback(() => {
+    if (showQuestion) {
+      hideQuestionOverlay();
+    } else {
+      startQuestionOverlay();
+    }
+    restartMainTimer();
+  }, [hideQuestionOverlay, restartMainTimer, showQuestion, startQuestionOverlay]);
+
   // Keep onComplete ref up to date
   useEffect(() => {
     onCompleteRef.current = onComplete;
   }, [onComplete]);
 
-  // 20-second main timer
+  // Question display: show for 5 seconds, then fade out over 2 seconds
   useEffect(() => {
-    mainTimerRef.current = setTimeout(() => {
-      console.log("NewStage: Calling onComplete from main timer");
-      onCompleteRef.current();
-    }, 20000);
+    startQuestionOverlay();
+    return () => {
+      clearQuestionTimers();
+    };
+  }, [clearQuestionTimers, startQuestionOverlay]);
+
+  // 50-second main timer
+  useEffect(() => {
+    restartMainTimer();
 
     return () => {
       if (mainTimerRef.current) {
@@ -82,7 +159,7 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
         mainTimerRef.current = null;
       }
     };
-  }, []);
+  }, [restartMainTimer]);
 
   const rectsOverlap = (a, b) => !(
     a.x + a.width  < b.x ||
@@ -98,7 +175,26 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
   const L = computeOptionRects(leftCol);
   const R = computeOptionRects(rightCol);
 
-  // Custom hover detection for multiple choice boxes
+  // Question bar dimensions (dynamic height based on content)
+  const questionBarWidth = window.innerWidth * 0.8;
+  const approxCharWidth = 20;
+  const approxCharsPerLine = Math.max(1, Math.floor((questionBarWidth - 80) / approxCharWidth));
+  const lineCount = Math.max(1, Math.ceil(question.length / approxCharsPerLine));
+  const questionBarHeight = Math.max(120, lineCount * 48 + 60);
+  const questionBarX = (window.innerWidth - questionBarWidth) / 2;
+  const questionBarY = (window.innerHeight - questionBarHeight) / 2;
+
+  // Question button dimensions
+  const questionButtonWidth = 180;
+  const questionButtonHeight = 60;
+  const questionButtonX = (window.innerWidth / 2) - (questionButtonWidth / 2);;
+  const questionButtonY = 32;
+  const questionButtonRect = useMemo(
+    () => new Rectangle(questionButtonX, questionButtonY, questionButtonWidth, questionButtonHeight),
+    [questionButtonHeight, questionButtonWidth, questionButtonX, questionButtonY]
+  );
+
+  // Custom hover detection for multiple choice boxes and question button
   useEffect(() => {
     const rightTip = poseData?.rightHandLandmarks?.[8];
     const leftTip  = poseData?.leftHandLandmarks?.[8];
@@ -111,6 +207,28 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
       y: lm.y * window.innerHeight,
     };
     setCursorPos(pos);
+
+    const buttonRect = questionButtonRect;
+    const cursorRadius = 20;
+    const cursorArea = new Rectangle(pos.x - cursorRadius, pos.y - cursorRadius, cursorRadius * 2, cursorRadius * 2);
+    const overButton = rectsOverlap(cursorArea, buttonRect);
+
+    if (overButton) {
+      if (!buttonPressRef.current) {
+        buttonPressRef.current = true;
+        handleQuestionButtonToggle();
+      }
+      setHoveredBox(null);
+      return;
+    } else {
+      buttonPressRef.current = false;
+    }
+
+    // Don't detect hover during question display phase
+    if (showQuestion) {
+      setHoveredBox(null);
+      return;
+    }
     
     
     const hitAreas = {
@@ -119,9 +237,6 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
       rightTop:    R.top,
       rightBottom: R.bottom,
     };
-  
-    const cursorRadius = 20; // half-size in px (adjustable)
-    const cursorArea = new Rectangle(pos.x - cursorRadius, pos.y - cursorRadius, cursorRadius * 2, cursorRadius * 2);
   
     let next = null;
     for (const [name, box] of Object.entries(hitAreas)) {
@@ -135,10 +250,10 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
       setHoveredBox(next);
       setHoverTime(0);
     }
-  }, [poseData, columnDimensions, hoveredBox]);
+  }, [poseData, columnDimensions, handleQuestionButtonToggle, hoveredBox, questionButtonRect, showQuestion]);
   
   
-  // B) TIMER tied ONLY to hoveredBox changes
+  // Timer tied ONLY to hoveredBox changes
   useEffect(() => {
     if (!hoveredBox) return;
   
@@ -149,17 +264,17 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
         clearTimeout(mainTimerRef.current);
         mainTimerRef.current = null;
       }
-      onCompleteRef.current();   // will actually fire now
+      onCompleteRef.current();   
     }, 2000);
   
-    // show countdown (optional)
-    const tick = setInterval(() => setHoverTime((t) => Math.min(2, t + 0.1)), 100);
-    return () => {
-      clearTimeout(hoverTimerRef.current);
-      clearInterval(tick);
-      hoverTimerRef.current = null;
-      setHoverTime(0);
-    };
+    // show countdown as user hovers
+    // const tick = setInterval(() => setHoverTime((t) => Math.min(5, t + 0.1)), 100);
+    // return () => {
+    //   clearTimeout(hoverTimerRef.current);
+    //   clearInterval(tick);
+    //   hoverTimerRef.current = null;
+    //   setHoverTime(0);
+    // };
   }, [hoveredBox]);
 
   const col2 = columnDimensions(2);
@@ -170,24 +285,10 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
       <Graphics draw={drawModalBackground} />
       <Background height={height} width={width} />
       
-      {/* Question at the top */}
-      <Text
-        text={question}
-        y={50}
-        x={window.innerWidth / 2}
-        anchor={0.5}
-        style={{
-          align: "center",
-          fontFamily: "Futura",
-          fontSize: "3em",
-          fontWeight: 800,
-          fill: [white],
-          wordWrap: true,
-          wordWrapWidth: window.innerWidth * 0.8,
-        }}
-      />
-      
-      {/* Left Top Box */}
+      {/* MCQ boxes - only show after question phase */}
+      {!showQuestion && (
+        <>
+          {/* Left Top Box */}
       <Container>
         <Graphics
           draw={(g) => {
@@ -211,7 +312,7 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
         />
         {hoveredBox === 'leftTop' && (
           <Text
-            text={`${Math.ceil(2 - hoverTime)}s`}
+            text={`${Math.ceil(5 - hoverTime)}s`}
             x={L.top.x + L.top.width / 2}
             y={L.top.y + L.top.height / 2 + 30}
             anchor={0.5}
@@ -250,7 +351,7 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
         />
         {hoveredBox === 'leftBottom' && (
           <Text
-            text={`${Math.ceil(2 - hoverTime)}s`}
+            text={`${Math.ceil(5 - hoverTime)}s`}
             x={L.bottom.x + L.bottom.width / 2}
             y={L.bottom.y + L.bottom.height / 2 + 30}
             anchor={0.5}
@@ -289,7 +390,7 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
         />
         {hoveredBox === 'rightTop' && (
           <Text
-            text={`${Math.ceil(2 - hoverTime)}s`}
+            text={`${Math.ceil(5 - hoverTime)}s`}
             x={R.top.x + R.top.width / 2}
             y={R.top.y + R.top.height / 2 + 30}
             anchor={0.5}
@@ -328,7 +429,7 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
         />
         {hoveredBox === 'rightBottom' && (
           <Text
-            text={`${Math.ceil(2 - hoverTime)}s`}
+            text={`${Math.ceil(5 - hoverTime)}s`}
             x={R.bottom.x + R.bottom.width / 2}
             y={R.bottom.y + R.bottom.height / 2 + 30}
             anchor={0.5}
@@ -342,19 +443,77 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
           />
         )}
       </Container>
+        </>
+      )}
       
-      {/* Pose in center - On top of hitboxes so it's always visible */}
+      {/* Pose in center */}
       <Pose poseData={poseData} colAttr={col2} />
       
-      {/* Cursor sprite that follows hand position - On top of everything */}
-      <Sprite
-        image={cursorIcon}
-        x={cursorPos.x}
-        y={cursorPos.y}
-        interactive
-        anchor={0.5}
-        hitArea={new Rectangle(cursorPos.x, cursorPos.y, 76, 76)}
-      />
+      {/* Cursor sprite  */}
+      {!showQuestion && (
+        <Sprite
+          image={cursorIcon}
+          x={cursorPos.x}
+          y={cursorPos.y}
+          interactive
+          anchor={0.5}
+          hitArea={new Rectangle(cursorPos.x, cursorPos.y, 76, 76)}
+        />
+      )}
+      
+      {/* Question overlay - appears at front, then fades after 5 seconds */}
+      {showQuestion && (
+        <Container alpha={questionOpacity}>
+          {/* Dark gray bar background */}
+          <Graphics
+            draw={(g) => {
+              g.beginFill(darkGray, 0.95);
+              g.drawRect(questionBarX, questionBarY, questionBarWidth, questionBarHeight);
+              g.endFill();
+            }}
+          />
+          {/* Question text */}
+          <Text
+            text={question}
+            x={window.innerWidth / 2}
+            y={window.innerHeight / 2}
+            anchor={0.5}
+            style={{
+              align: "center",
+              fontFamily: "Futura",
+              fontSize: "3em",
+              fontWeight: 800,
+              fill: [white],
+              wordWrap: true,
+              wordWrapWidth: questionBarWidth - 80,
+            }}
+          />
+        </Container>
+      )}
+
+      {/* Question toggle button (top-middle) */}
+      <Container x={questionButtonX} y={questionButtonY}>
+        <Graphics
+          draw={(g) => {
+            g.beginFill(0x4169e1, 1);
+            g.drawRoundedRect(0, 0, questionButtonWidth, questionButtonHeight, 16);
+            g.endFill();
+          }}
+        />
+        <Text
+          text="Question"
+          x={questionButtonWidth / 2}
+          y={questionButtonHeight / 2}
+          anchor={0.5}
+          style={{
+            align: "center",
+            fontFamily: "Futura",
+            fontSize: "1.8em",
+            fontWeight: 700,
+            fill: [white],
+          }}
+        />
+      </Container>
     </Container>
   );
 };
