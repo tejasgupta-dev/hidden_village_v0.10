@@ -273,7 +273,7 @@ export default function LevelPlay(props) {
           gameID={gameID}
           poseData={poseData}
           columnDimensions={columnDimensions}
-          question="Chicken burger lettus tomato is the best things to have in my burger yum yum yum so delicious give me one now with maybe some fries??"
+          question="How many sides does a triangle have??"
         />
       )}
 
