@@ -86,7 +86,7 @@ export default function LevelPlay(props) {
     const desc = conjectureData[UUID]['Text Boxes']['Conjecture Description'];
 
     if (state.value === 'intuition') {
-      setExpText(`Read aloud:\n\n${desc}\n\nSay aloud if it is TRUE or FALSE?`);
+      setExpText(`${desc}\nDo you think this is TRUE or FALSE?`);
       writeToDatabaseIntuitionStart(gameID).catch(console.error);
     } else if (state.value === 'insight') {
       setExpText(`Now explain WHY you think:\n\n${desc}\n\n is TRUE or FALSE?`);
@@ -234,14 +234,14 @@ export default function LevelPlay(props) {
         />
       )} */}
       {state.value === 'mcq' && (
-        <NewStage
+        <NewStage  
           width={width}
           height={height}
           onComplete={handleNext}
           gameID={gameID}
           poseData={poseData}
           columnDimensions={columnDimensions}
-          question="How many sides does a triangle have?"
+          question="Chicken burger lettus tomato is the best things to have in my burger yum yum yum so delicious give me one now with maybe some fries??"
         />
       )}
 
