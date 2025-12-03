@@ -470,7 +470,7 @@ const ExperimentalTask = (props) => {
             }}
           />
           <Text
-            text="Question"
+            text="QUESTION"
             x={questionButtonWidth / 2}
             y={questionButtonHeight / 2}
             anchor={0.5}
