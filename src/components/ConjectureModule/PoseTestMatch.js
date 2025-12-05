@@ -47,7 +47,7 @@ const PoseTestMatch = (props) => {
   }, []);
 
   // create grouped array: [pose1,pose1,pose1, pose2,pose2,pose2, ...]
-  const posesToMatchGrouped = (poses || []).flatMap((p) => [p, p, p]);
+  const posesToMatchGrouped = poses || [];
 
 return(
   <> 
@@ -55,7 +55,7 @@ return(
       {poses != null && (
         <Graphics draw={drawModalBackground} >
         <>
-        <PoseMatchingSimplified
+        <PoseMatching
           poseData={poseData}
           posesToMatch={posesToMatchGrouped}
           columnDimensions={columnDimensions}
@@ -63,6 +63,7 @@ return(
           gameID={gameID}
           tolerances={tolerances}
           singleMatchPerPose={true}
+          
         />
         {/* Back Button */}
         <RectButton
