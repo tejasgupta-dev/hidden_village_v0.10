@@ -4,7 +4,9 @@ import Background from './Background';
 import Pose from './Pose/index';
 import { Rectangle } from "@pixi/math";
 import { darkGray, yellow, white } from '../utils/colors';
-import cursorIcon from '../assets/cursor.png';
+
+// Import cursor icon using URL constructor similar to CursorMode.js
+const cursorIcon = new URL("../assets/cursor.png", import.meta.url).href;
 
 const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimensions, question = "What shape is this?" }) => {
   const [hoveredBox, setHoveredBox] = useState(null);
@@ -347,14 +349,16 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
       <Pose poseData={poseData} colAttr={col2} />
       
       {/* Cursor sprite that follows hand position - On top of everything */}
-      <Sprite
-        image={cursorIcon}
-        x={cursorPos.x}
-        y={cursorPos.y}
-        interactive
-        anchor={0.5}
-        hitArea={new Rectangle(cursorPos.x, cursorPos.y, 76, 76)}
-      />
+      {cursorIcon && (
+        <Sprite
+          image={cursorIcon}
+          x={cursorPos.x}
+          y={cursorPos.y}
+          interactive
+          anchor={0.5}
+          hitArea={new Rectangle(cursorPos.x, cursorPos.y, 76, 76)}
+        />
+      )}
     </Container>
   );
 };

@@ -232,6 +232,8 @@ const PoseMatching = (props) => {
   );
 };
 
+export default PoseMatching;
+
 // const PoseMatching = (props) => {
 //   const { posesToMatch, tolerances, columnDimensions, onComplete, UUID, gameID } = props;
   

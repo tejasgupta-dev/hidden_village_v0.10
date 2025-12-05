@@ -136,7 +136,7 @@ const InviteManagementModule = ({ width, height, firebaseApp, onBack }) => {
           style={new TextStyle({
             align: "center",
             fontFamily: "Arial",
-            fontSize: 24,
+            fontSize: width * 0.018,
             fontWeight: "bold",
             fill: [white],
           })}
@@ -157,7 +157,7 @@ const InviteManagementModule = ({ width, height, firebaseApp, onBack }) => {
         style={new TextStyle({
           align: "left",
           fontFamily: "Futura",
-          fontSize: 80,
+          fontSize: width * 0.06,
           fontWeight: 800,
           fill: [blue],
           letterSpacing: -5,
@@ -172,7 +172,7 @@ const InviteManagementModule = ({ width, height, firebaseApp, onBack }) => {
         style={new TextStyle({
           align: "left",
           fontFamily: "Arial",
-          fontSize: 24,
+          fontSize: width * 0.018,
           fontWeight: "bold",
           fill: [black],
         })}
@@ -213,7 +213,7 @@ const InviteManagementModule = ({ width, height, firebaseApp, onBack }) => {
         x={width * 0.8}
         y={height * 0.88}
         color={red}
-        fontSize={width * 0.012}
+        fontSize={width * 0.015}
         fontColor={white}
         text="BACK"
         fontWeight={800}

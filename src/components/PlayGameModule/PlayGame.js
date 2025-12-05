@@ -20,7 +20,15 @@ const PlayGame = (props) => {
   const { columnDimensions, rowDimensions, height, width, backCallback, gameUUID} = props;
   const {poseData, canPlay, error, retryInitialization} = usePoseData();
 
-  const uuidsList = Curriculum.getCurrentConjectures();
+  // Use state to track changes in Curriculum.CurrentConjectures
+  const [uuidsList, setUuidsList] = useState(() => Curriculum.getCurrentConjectures());
+
+  // Update uuidsList when gameUUID changes or component mounts
+  useEffect(() => {
+    const currentConjectures = Curriculum.getCurrentConjectures();
+    setUuidsList(currentConjectures);
+    console.log('PlayGame: Updated uuidsList, count:', currentConjectures.length);
+  }, [gameUUID]);
 
   // Edge case handler: if no levels, redirect back
   useEffect(() => {

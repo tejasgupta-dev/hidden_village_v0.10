@@ -339,29 +339,68 @@ export const getCurrentOrgContext = async () => {
 
 // Wrapper functions for backward compatibility - automatically use current user's org
 export const writeToDatabaseConjectureWithCurrentOrg = async (existingUUID) => {
-  const { orgId } = await getCurrentOrgContext();
-  if (!orgId) {
-    alert("User is not in any organization. Please contact administrator.");
-    return false;
+  // Check if level is from another organization - use source org ID
+  const isFromOtherOrg = localStorage.getItem('_isFromOtherOrg') === 'true';
+  const sourceOrgId = localStorage.getItem('_sourceOrgId');
+  
+  let orgId;
+  if (isFromOtherOrg && sourceOrgId) {
+    // Use the source organization ID for levels from other organizations
+    orgId = sourceOrgId;
+  } else {
+    // Use current user's organization for levels from current organization
+    const context = await getCurrentOrgContext();
+    orgId = context.orgId;
+    if (!orgId) {
+      alert("User is not in any organization. Please contact administrator.");
+      return false;
+    }
   }
+  
   return writeToDatabaseConjecture(existingUUID, orgId);
 };
 
 export const writeToDatabaseConjectureDraftWithCurrentOrg = async (existingUUID) => {
-  const { orgId } = await getCurrentOrgContext();
-  if (!orgId) {
-    alert("User is not in any organization. Please contact administrator.");
-    return false;
+  // Check if level is from another organization - use source org ID
+  const isFromOtherOrg = localStorage.getItem('_isFromOtherOrg') === 'true';
+  const sourceOrgId = localStorage.getItem('_sourceOrgId');
+  
+  let orgId;
+  if (isFromOtherOrg && sourceOrgId) {
+    // Use the source organization ID for levels from other organizations
+    orgId = sourceOrgId;
+  } else {
+    // Use current user's organization for levels from current organization
+    const context = await getCurrentOrgContext();
+    orgId = context.orgId;
+    if (!orgId) {
+      alert("User is not in any organization. Please contact administrator.");
+      return false;
+    }
   }
+  
   return writeToDatabaseConjectureDraft(existingUUID, orgId);
 };
 
 export const deleteFromDatabaseConjectureWithCurrentOrg = async (existingUUID) => {
-  const { orgId } = await getCurrentOrgContext();
-  if (!orgId) {
-    alert("User is not in any organization. Please contact administrator.");
-    return false;
+  // Check if level is from another organization - use source org ID
+  const isFromOtherOrg = localStorage.getItem('_isFromOtherOrg') === 'true';
+  const sourceOrgId = localStorage.getItem('_sourceOrgId');
+  
+  let orgId;
+  if (isFromOtherOrg && sourceOrgId) {
+    // Use the source organization ID for levels from other organizations
+    orgId = sourceOrgId;
+  } else {
+    // Use current user's organization for levels from current organization
+    const context = await getCurrentOrgContext();
+    orgId = context.orgId;
+    if (!orgId) {
+      alert("User is not in any organization. Please contact administrator.");
+      return false;
+    }
   }
+  
   return deleteFromDatabaseConjecture(existingUUID, orgId);
 };
 
@@ -398,8 +437,8 @@ export const getConjectureListWithCurrentOrg = async (final, includePublicFromOt
             for (const [levelId, levelData] of Object.entries(otherLevels)) {
               // Only include public levels
               if (levelData.isPublic === true) {
-                // Mark as from other organization for filtering
-                result.push({ ...levelData, _isFromOtherOrg: true });
+                // Mark as from other organization for filtering and save source org ID
+                result.push({ ...levelData, _isFromOtherOrg: true, _sourceOrgId: otherOrgId });
               }
             }
           }
@@ -446,8 +485,8 @@ export const getCurricularListWithCurrentOrg = async (final, includePublicFromOt
             for (const [gameId, gameData] of Object.entries(otherGames)) {
               // Only include public games
               if (gameData.isPublic === true) {
-                // Mark as from other organization for filtering
-                result.push({ ...gameData, _isFromOtherOrg: true });
+                // Mark as from other organization for filtering and save source org ID
+                result.push({ ...gameData, _isFromOtherOrg: true, _sourceOrgId: otherOrgId });
               }
             }
           }
@@ -499,14 +538,14 @@ export const searchConjecturesByWordWithCurrentOrg = async (searchWord) => {
               // Apply the same search logic
               if (isCleared) {
                 // If cleared or empty, include all public levels
-                result.push({ ...levelData, _isFromOtherOrg: true });
+                result.push({ ...levelData, _isFromOtherOrg: true, _sourceOrgId: otherOrgId });
               } else {
                 // Check if search word matches
                 const searchWords = levelData?.['Search Words'];
                 if (searchWords) {
                   for (const word of Object.keys(searchWords)) {
                     if (word.toLowerCase() === normalizedSearchWord) {
-                      result.push({ ...levelData, _isFromOtherOrg: true });
+                      result.push({ ...levelData, _isFromOtherOrg: true, _sourceOrgId: otherOrgId });
                       break; // stop checking more keys
                     }
                   }
@@ -525,20 +564,46 @@ export const searchConjecturesByWordWithCurrentOrg = async (searchWord) => {
 };
 
 export const saveGameWithCurrentOrg = async (UUID = null, isFinal = false) => {
-  const { orgId } = await getCurrentOrgContext();
-  if (!orgId) {
-    alert("User is not in any organization. Please contact administrator.");
-    return false;
+  // Check if game is from another organization - use source org ID
+  const isFromOtherOrg = localStorage.getItem('Game_isFromOtherOrg') === 'true';
+  const sourceOrgId = localStorage.getItem('Game_sourceOrgId');
+  
+  let orgId;
+  if (isFromOtherOrg && sourceOrgId) {
+    // Use the source organization ID for games from other organizations
+    orgId = sourceOrgId;
+  } else {
+    // Use current user's organization for games from current organization
+    const context = await getCurrentOrgContext();
+    orgId = context.orgId;
+    if (!orgId) {
+      alert("User is not in any organization. Please contact administrator.");
+      return false;
+    }
   }
+  
   return saveGame(UUID, isFinal, orgId);
 };
 
 export const deleteFromDatabaseCurricularWithCurrentOrg = async (UUID) => {
-  const { orgId } = await getCurrentOrgContext();
-  if (!orgId) {
-    alert("User is not in any organization. Please contact administrator.");
-    return false;
+  // Check if game is from another organization - use source org ID
+  const isFromOtherOrg = localStorage.getItem('Game_isFromOtherOrg') === 'true';
+  const sourceOrgId = localStorage.getItem('Game_sourceOrgId');
+  
+  let orgId;
+  if (isFromOtherOrg && sourceOrgId) {
+    // Use the source organization ID for games from other organizations
+    orgId = sourceOrgId;
+  } else {
+    // Use current user's organization for games from current organization
+    const context = await getCurrentOrgContext();
+    orgId = context.orgId;
+    if (!orgId) {
+      alert("User is not in any organization. Please contact administrator.");
+      return false;
+    }
   }
+  
   return deleteFromDatabaseCurricular(UUID, orgId);
 };
 
@@ -552,8 +617,8 @@ export const saveNarrativeDraftToFirebaseWithCurrentOrg = async (UUID, dialogues
 };
 
 // Wrapper functions for data retrieval with current org
-export const getConjectureDataByUUIDWithCurrentOrg = async (conjectureID) => {
-  console.log('getConjectureDataByUUIDWithCurrentOrg: Called with conjectureID:', conjectureID);
+export const getConjectureDataByUUIDWithCurrentOrg = async (conjectureID, includePublicFromOtherOrgs = true) => {
+  console.log('getConjectureDataByUUIDWithCurrentOrg: Called with conjectureID:', conjectureID, 'includePublicFromOtherOrgs:', includePublicFromOtherOrgs);
   const { orgId } = await getCurrentOrgContext();
   console.log('getConjectureDataByUUIDWithCurrentOrg: Current orgId:', orgId);
   if (!orgId) {
@@ -567,7 +632,7 @@ export const getConjectureDataByUUIDWithCurrentOrg = async (conjectureID) => {
   console.log('getConjectureDataByUUIDWithCurrentOrg: Result from current org:', result);
   
   // If not found in current org, search in all other organizations
-  if (!result) {
+  if (!result && includePublicFromOtherOrgs) {
     console.log('getConjectureDataByUUIDWithCurrentOrg: Level not found in current org, searching in other organizations...');
     try {
       const db = getDatabase();
@@ -586,9 +651,14 @@ export const getConjectureDataByUUIDWithCurrentOrg = async (conjectureID) => {
             const otherLevels = levelsSnapshot.val();
             for (const [levelId, levelData] of Object.entries(otherLevels)) {
               if (levelData.UUID === conjectureID) {
-                console.log(`getConjectureDataByUUIDWithCurrentOrg: Found level in organization ${otherOrgId}`);
-                // Return the level data in the same format as getConjectureDataByUUID
-                return { [levelId]: levelData };
+                // Only include public levels from other organizations
+                if (levelData.isPublic === true) {
+                  console.log(`getConjectureDataByUUIDWithCurrentOrg: Found public level in organization ${otherOrgId}`);
+                  // Return the level data with UUID as key to match expected format in LevelPlay.js
+                  return { [conjectureID]: { ...levelData, _isFromOtherOrg: true, _sourceOrgId: otherOrgId } };
+                } else {
+                  console.log(`getConjectureDataByUUIDWithCurrentOrg: Found level in organization ${otherOrgId} but it is not public`);
+                }
               }
             }
           }
@@ -599,6 +669,8 @@ export const getConjectureDataByUUIDWithCurrentOrg = async (conjectureID) => {
       console.error('getConjectureDataByUUIDWithCurrentOrg: Error searching in other organizations:', error);
       // Return null if search fails
     }
+  } else if (!result && !includePublicFromOtherOrgs) {
+    console.log('getConjectureDataByUUIDWithCurrentOrg: Level not found in current org and includePublicFromOtherOrgs is false, skipping search in other organizations');
   }
   
   return result;
@@ -1243,7 +1315,8 @@ export const getConjectureDataByUUID = async (conjectureID, orgId) => {
       for (const [levelId, levelData] of Object.entries(allLevels)) {
         if (levelData.UUID === conjectureID) {
           console.log('getConjectureDataByUUID: Found matching level:', levelId);
-          return { [levelId]: levelData };
+          // Return with UUID as key to match expected format in LevelPlay.js
+          return { [conjectureID]: levelData };
         }
       }
       
@@ -1262,6 +1335,11 @@ export const getConjectureDataByUUID = async (conjectureID, orgId) => {
 // Define a function to retrieve a game based on UUID within an organization
 export const getCurricularDataByUUID = async (curricularID, orgId) => {
   try {
+    if (!curricularID || !orgId) {
+      console.warn('getCurricularDataByUUID: Missing required parameters', { curricularID, orgId });
+      return null;
+    }
+    
     // ref the realtime db - now under organization
     const dbRef = ref(db, `orgs/${orgId}/games`);
     // query to find data with the UUID
@@ -1278,7 +1356,21 @@ export const getCurricularDataByUUID = async (curricularID, orgId) => {
       return null; // This will happen if data not found
     }
   } catch (error) {
-    throw error; // this is an actual bad thing
+    // Handle index errors gracefully - Firebase requires index to be defined in rules
+    if (error.message && error.message.includes('index')) {
+      console.warn('getCurricularDataByUUID: Index not defined in Firebase rules. Add ".indexOn": "UUID" for path "/orgs/{orgId}/games"', {
+        curricularID,
+        orgId,
+        error: error.message
+      });
+    } else {
+      console.error('getCurricularDataByUUID: Error querying database', {
+        curricularID,
+        orgId,
+        error: error.message
+      });
+    }
+    return null; // Return null instead of throwing to allow graceful fallback
   }
 };
 
@@ -1797,24 +1889,56 @@ export const removeFromDatabaseByGame = async (selectedGame, selectedStart, sele
 
 export const checkGameAuthorization = async (gameName, orgId) => {
   try {
+    // Check games in current organization
     const dbRef = ref(db, `orgs/${orgId}/games`);
-    const q = query(dbRef, orderByChild('name'), equalTo(gameName));
-    const qSnapshot = await get(q);
+    const qSnapshot = await get(dbRef);
 
     if (qSnapshot.exists()) {
-      // If there is a game with this name, continue
-      const p = query(dbRef, orderByChild('AuthorID'), equalTo(userId));
-      const pSnapshopt = await get(p);
-      // Only returns true if author matches current user
-      if (pSnapshopt.exists()) {
+      let foundInCurrentOrg = false;
+      qSnapshot.forEach((gameSnapshot) => {
+        const gameData = gameSnapshot.val();
+        if (gameData && gameData.name === gameName) {
+          foundInCurrentOrg = true;
+        }
+      });
+      
+      if (foundInCurrentOrg) {
+        // Game found in current organization - allow access
         return true;
-      } else {
-        return false;
       }
-    } else {
-      // Returns null if the game does not exist at all
-      return null; 
     }
+
+    // If not found in current organization, check public games from other organizations
+    try {
+      const orgsRef = ref(db, 'orgs');
+      const orgsSnapshot = await get(orgsRef);
+      
+      if (orgsSnapshot.exists()) {
+        const orgs = orgsSnapshot.val();
+        for (const [otherOrgId, orgData] of Object.entries(orgs)) {
+          if (otherOrgId === orgId) continue; // Skip current org
+          
+          const gamesRef = ref(db, `orgs/${otherOrgId}/games`);
+          const gamesSnapshot = await get(gamesRef);
+          
+          if (gamesSnapshot.exists()) {
+            const games = gamesSnapshot.val();
+            for (const [gameId, gameData] of Object.entries(games)) {
+              // Check if this is the game we're looking for and it's public
+              if (gameData && gameData.name === gameName && gameData.isPublic === true) {
+                // Found as public game from another org
+                return true;
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error checking public games from other orgs:', error);
+    }
+
+    // Game not found in current org or as public game from other orgs
+    return null;
   } catch (error) {
     throw error;
   }
@@ -1822,26 +1946,50 @@ export const checkGameAuthorization = async (gameName, orgId) => {
 
 export const getAuthorizedGameList = async (orgId) => {
   try {
+    const authorizedCurricular = [];
+    
+    // Get all games from current organization
     const dbRef = ref(db, `orgs/${orgId}/games`);
-    const q = query(dbRef, orderByChild('AuthorID'), equalTo(userId));
-    const querySnapshot = await get(q);
-    console.log("Query snapshot:", querySnapshot.val());
+    const querySnapshot = await get(dbRef);
 
     if (querySnapshot.exists()) {
-      // get all the games in an array
-      const authorizedCurricular = [];
-
-      querySnapshot.forEach((authorizedCurricularSnapshot) => {
-        // push name string into list of authorized games
-        authorizedCurricular.push(authorizedCurricularSnapshot.val().name);
-      })
-      return authorizedCurricular;
-
-    } else {
-      console.log("No data found");
-      // return nothing if user has no created games
-      return null;
+      querySnapshot.forEach((gameSnapshot) => {
+        const gameData = gameSnapshot.val();
+        if (gameData && gameData.name) {
+          authorizedCurricular.push(gameData.name);
+        }
+      });
     }
+
+    // Get public games from other organizations
+    try {
+      const orgsRef = ref(db, 'orgs');
+      const orgsSnapshot = await get(orgsRef);
+      
+      if (orgsSnapshot.exists()) {
+        const orgs = orgsSnapshot.val();
+        for (const [otherOrgId, orgData] of Object.entries(orgs)) {
+          if (otherOrgId === orgId) continue; // Skip current org
+          
+          const gamesRef = ref(db, `orgs/${otherOrgId}/games`);
+          const gamesSnapshot = await get(gamesRef);
+          
+          if (gamesSnapshot.exists()) {
+            gamesSnapshot.forEach((gameSnapshot) => {
+              const gameData = gameSnapshot.val();
+              // Only include public games
+              if (gameData && gameData.isPublic === true && gameData.name) {
+                authorizedCurricular.push(gameData.name);
+              }
+            });
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching public games from other orgs:', error);
+    }
+
+    return authorizedCurricular.length > 0 ? authorizedCurricular : null;
   } catch (error) {
     console.error("Error getting game list", error);
     throw error;
@@ -1851,18 +1999,39 @@ export const getAuthorizedGameList = async (orgId) => {
 // Get game name using game UUID within an organization
 export const getGameNameByUUID = async (gameID, orgId) => {
   try {
-    // if (!gameID) return 'UnknownGame';
+    // Validate input parameters
+    if (!gameID) {
+      console.warn('getGameNameByUUID: gameID is missing');
+      return 'UnknownGame';
+    }
+    
+    if (!orgId) {
+      console.warn('getGameNameByUUID: orgId is missing', { gameID });
+      return 'UnknownGame';
+    }
     
     const gameData = await getCurricularDataByUUID(gameID, orgId);
-    console.log('Game data', gameData);
+    
     if (gameData && Object.keys(gameData).length > 0) {
       const gameKey = Object.keys(gameData)[0];
-      console.log('Game name:', gameData[gameKey].name);
-      return gameData[gameKey].name || 'UnknownGame';
+      const gameName = gameData[gameKey].name;
+      if (gameName) {
+        console.log('getGameNameByUUID: Found game name', { gameID, gameName });
+        return gameName;
+      } else {
+        console.warn('getGameNameByUUID: Game data found but name is missing', { gameID, gameKey });
+      }
+    } else {
+      console.warn('getGameNameByUUID: Game data not found', { gameID, orgId });
     }
+    
     return 'UnknownGame';
   } catch (error) {
-    console.error('Error getting game name:', error);
+    console.error('getGameNameByUUID: Error getting game name', {
+      gameID,
+      orgId,
+      error: error.message
+    });
     return 'GameNameNotFound';
   }
 };
@@ -1870,26 +2039,43 @@ export const getGameNameByUUID = async (gameID, orgId) => {
 // Get level name using level UUID within an organization
 export const getLevelNameByUUID = async (levelUUID, orgId) => {
   try {
-    if (!levelUUID) return 'UnknownLevel';
+    // Validate input parameters
+    if (!levelUUID) {
+      console.warn('getLevelNameByUUID: levelUUID is missing');
+      return 'UnknownLevel';
+    }
+    
+    if (!orgId) {
+      console.warn('getLevelNameByUUID: orgId is missing', { levelUUID });
+      return 'UnknownLevel';
+    }
     
     const levelData = await getConjectureDataByUUID(levelUUID, orgId);
     if (levelData && Object.keys(levelData).length > 0) {
       const levelKey = Object.keys(levelData)[0];
       // First try to get the level Name field
       if (levelData[levelKey].Name) {
-        console.log('Level name: ', levelData[levelKey].Name);
+        console.log('getLevelNameByUUID: Found level name', { levelUUID, name: levelData[levelKey].Name });
         return levelData[levelKey].Name;
       }
       // Otherwise try the CurricularName or conjecture name
       if (levelData[levelKey]['Text Boxes'] && 
           levelData[levelKey]['Text Boxes']['Conjecture Name']) {
-        return levelData[levelKey]['Text Boxes']['Conjecture Name'];
+        const conjectureName = levelData[levelKey]['Text Boxes']['Conjecture Name'];
+        console.log('getLevelNameByUUID: Found conjecture name', { levelUUID, name: conjectureName });
+        return conjectureName;
       }
+      console.warn('getLevelNameByUUID: Level data found but name is missing', { levelUUID, levelKey });
       return 'UnknownLevel';
     }
+    console.warn('getLevelNameByUUID: Level data not found', { levelUUID, orgId });
     return 'UnknownLevel';
   } catch (error) {
-    console.error('Error getting level name:', error);
+    console.error('getLevelNameByUUID: Error getting level name', {
+      levelUUID,
+      orgId,
+      error: error.message
+    });
     return 'UnknownLevel';
   }
 };

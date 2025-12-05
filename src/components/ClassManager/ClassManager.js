@@ -214,7 +214,7 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
           y={height * 0.5}
           style={new TextStyle({
             fontFamily: "Arial",
-            fontSize: 24,
+            fontSize: width * 0.018,
             fill: [black],
           })}
         />
@@ -257,7 +257,7 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
         y={height * 0.01}
         style={new TextStyle({
           fontFamily: "Futura",
-          fontSize: 80,
+          fontSize: width * 0.06,
           fontWeight: 800,
           fill: [blue],
           letterSpacing: -5,
@@ -271,7 +271,7 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
         y={height * 0.12}
         style={new TextStyle({
           fontFamily: "Arial",
-          fontSize: 24,
+          fontSize: width * 0.018,
           fontWeight: "bold",
           fill: [black],
         })}
@@ -287,7 +287,7 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
           y={height * 0.25}
           style={new TextStyle({
             fontFamily: "Arial",
-            fontSize: 18,
+            fontSize: width * 0.011,
             fill: [black],
             wordWrap: true,
             wordWrapWidth: width * 0.8,
@@ -316,7 +316,7 @@ const ClassManager = ({ width, height, firebaseApp, mainCallback }) => {
           y={height * 0.4}
           style={new TextStyle({
             fontFamily: "Arial",
-            fontSize: 18,
+            fontSize: width * 0.011,
             fill: [black],
           })}
         />

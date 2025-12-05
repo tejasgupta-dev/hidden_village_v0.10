@@ -66,8 +66,8 @@ export const Curriculum = {
     this.CurrentConjectures.splice(index, 1);;
   },
 
-  async setCurricularEditor(curricular) { // fill in curriculum data
-    console.log('Curriculum: setCurricularEditor called with:', curricular);
+  async setCurricularEditor(curricular, showPublic = true) { // fill in curriculum data
+    console.log('Curriculum: setCurricularEditor called with:', curricular, 'showPublic:', showPublic);
     this.CurrentConjectures = []; // remove previous list of levels
     
     // Check for both old and new field names for backward compatibility
@@ -78,7 +78,8 @@ export const Curriculum = {
       for (let i = 0; i < levelIds.length; i++) {
         console.log(`Curriculum: Loading conjecture ${i + 1}/${levelIds.length}:`, levelIds[i]);
         try {
-          const conjectureList = await getConjectureDataByUUIDWithCurrentOrg(levelIds[i]);
+          // Pass showPublic to control whether to load public levels from other orgs
+          const conjectureList = await getConjectureDataByUUIDWithCurrentOrg(levelIds[i], showPublic);
           if (conjectureList && conjectureList[levelIds[i]]) {
             const conjecture = conjectureList[levelIds[i]];
             console.log(`Curriculum: Loaded conjecture ${i + 1}:`, conjecture);
@@ -108,6 +109,20 @@ export const Curriculum = {
     // Load isPublic flag (default to false)
     const isPublicValue = curricular["isPublic"] || false;
     localStorage.setItem('GameIsPublic', isPublicValue ? 'true' : 'false');
+    
+    // Save organization info to prevent editing games from other orgs
+    if (curricular._isFromOtherOrg === true) {
+      localStorage.setItem('Game_isFromOtherOrg', 'true');
+      if (curricular._sourceOrgId) {
+        localStorage.setItem('Game_sourceOrgId', curricular._sourceOrgId);
+      }
+      console.log('Curriculum: Game is from another organization, saved org info');
+    } else {
+      localStorage.removeItem('Game_isFromOtherOrg');
+      localStorage.removeItem('Game_sourceOrgId');
+      console.log('Curriculum: Game is from current organization');
+    }
+    
     console.log('Curriculum: localStorage values set:', {
       name: curricular["name"] || curricular["CurricularName"],
       author: curricular["author"] || curricular["CurricularAuthor"],
@@ -133,6 +148,8 @@ const CurricularModule = (props) => {
     localStorage.removeItem('CurricularKeywords');
     localStorage.removeItem('CurricularPIN');
     localStorage.removeItem('GameIsPublic');
+    localStorage.removeItem('Game_isFromOtherOrg');
+    localStorage.removeItem('Game_sourceOrgId');
     Curriculum.clearCurriculum();
   };
 

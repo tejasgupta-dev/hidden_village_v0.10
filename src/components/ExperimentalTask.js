@@ -1,8 +1,10 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import * as PIXI from "pixi.js";
 import { Graphics, Text, Sprite } from "@inlet/react-pixi";
-import cursorIcon from '../assets/cursor.png';
 import CursorMode from "./CursorMode.js";
+
+// Import cursor icon using URL constructor similar to CursorMode.js
+const cursorIcon = new URL("../assets/cursor.png", import.meta.url).href;
 import Pose from "./Pose/index";
 import Background from "./Background";
 import { white, darkGray, yellow } from "../utils/colors";
@@ -12,7 +14,6 @@ import {
   writeToDatabaseMCAnswer 
 } from "../firebase/database.js";
 import { Rectangle } from "@pixi/math";
-import { bufferPoseDataWithAutoFlush } from "../firebase/database.js";
 
 /** Safe Firebase write error handler */
 const handleWriteError = (error) => {
@@ -302,14 +303,16 @@ const ExperimentalTask = (props) => {
           />
         )}
         {/* Cursor sprite */}
-         <Sprite
-          image={cursorIcon}
-        x={cursorPos.x}
-        y={cursorPos.y}
-        interactive = {false}
-        anchor={0.5}
-        hitArea={new Rectangle(cursorPos.x, cursorPos.y, 76, 76)}
-        />
+        {cursorIcon && (
+          <Sprite
+            image={cursorIcon}
+            x={cursorPos.x}
+            y={cursorPos.y}
+            interactive={false}
+            anchor={0.5}
+            hitArea={new Rectangle(cursorPos.x, cursorPos.y, 76, 76)}
+          />
+        )}
         
         {/* Pose overlay */}
         <Pose poseData={poseData} colAttr={columnDimensions(2)} />

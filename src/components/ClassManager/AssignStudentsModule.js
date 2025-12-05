@@ -248,9 +248,9 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
 
   const getTotalUserPages = () => {
     const containerHeight = height * 0.5;
-    const headerHeight = 40;
-    const searchHeight = 30;
-    const itemHeight = 35;
+    const headerHeight = height * 0.04;
+    const searchHeight = height * 0.03;
+    const itemHeight = height * 0.037;
     const availableHeight = containerHeight - headerHeight - searchHeight;
     const itemsPerContainer = Math.max(1, Math.floor(availableHeight / itemHeight));
     return Math.ceil(getFilteredUsers().length / itemsPerContainer);
@@ -284,9 +284,9 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
 
   const getTotalAssignedUserPages = () => {
     const containerHeight = height * 0.5;
-    const headerHeight = 40;
-    const searchHeight = 30;
-    const itemHeight = 35;
+    const headerHeight = height * 0.04;
+    const searchHeight = height * 0.03;
+    const itemHeight = height * 0.037;
     const availableHeight = containerHeight - headerHeight - searchHeight;
     const itemsPerContainer = Math.max(1, Math.floor(availableHeight / itemHeight));
     return Math.ceil(getFilteredAssignedUsers().length / itemsPerContainer);
@@ -345,7 +345,7 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
           y={height * 0.5}
           style={new TextStyle({
             fontFamily: "Arial",
-            fontSize: 24,
+            fontSize: width * 0.014,
             fill: [black],
           })}
         />
@@ -377,7 +377,7 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
         y={height * 0.01}
         style={new TextStyle({
           fontFamily: "Futura",
-          fontSize: 80,
+          fontSize: width * 0.058,
           fontWeight: 800,
           fill: [blue],
           letterSpacing: -5,
@@ -417,7 +417,7 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
         text="USERS"
         style={new TextStyle({
           fontFamily: 'Arial',
-          fontSize: 20,
+          fontSize: width * 0.014,
           fontWeight: 'bold',
           fill: [black],
         })}
@@ -430,7 +430,7 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
         x={usersContainerX + containerWidth * 0.05}
         y={containerY + headerHeight + 5}
         color={white}
-        fontSize={12}
+        fontSize={width * 0.009}
         fontColor={black}
         text={userSearchTerm || "Type to search..."}
         fontWeight={400}
@@ -447,12 +447,12 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
       {getPaginatedUsers().slice(userCurrentPage * itemsPerContainer, (userCurrentPage + 1) * itemsPerContainer).map((user, index) => (
         <RectButton
           key={user.userId}
-          height={itemHeight - 5}
+          height={itemHeight*1.2}
           width={containerWidth * 0.9}
           x={usersContainerX + containerWidth * 0.05}
-          y={containerY + headerHeight + 35 + (index * itemHeight)}
+          y={containerY + headerHeight + searchHeight + 5 + (index * itemHeight)}
           color={selectedUsers.includes(user.userId) ? green : blue}
-          fontSize={14}
+          fontSize={width * 0.009}
           fontColor={white}
           text={`${selectedUsers.includes(user.userId) ? '✓ ' : ''}${user.userName || user.userEmail || 'Unknown'} (${user.roleInOrg || 'Member'})`}
           fontWeight={400}
@@ -508,7 +508,7 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
         text="CLASS"
         style={new TextStyle({
           fontFamily: 'Arial',
-          fontSize: 20,
+          fontSize: width * 0.014,
           fontWeight: 'bold',
           fill: [black],
         })}
@@ -523,7 +523,7 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
           x={classesContainerX + containerWidth * 0.05}
           y={containerY + headerHeight + (index * itemHeight)}
           color={selectedClasses.includes(classItem.id) ? green : blue}
-          fontSize={14}
+          fontSize={width * 0.009}
           fontColor={white}
           text={`${selectedClasses.includes(classItem.id) ? '✓ ' : ''}${classItem.name}`}
           fontWeight={400}
@@ -579,7 +579,7 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
         text="USERS (in class)"
         style={new TextStyle({
           fontFamily: 'Arial',
-          fontSize: 20,
+          fontSize: width * 0.014,
           fontWeight: 'bold',
           fill: [black],
         })}
@@ -593,7 +593,7 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
           x={assignedUsersContainerX + containerWidth * 0.05}
           y={containerY + headerHeight + 5}
           color={white}
-          fontSize={12}
+          fontSize={width * 0.007}
           fontColor={black}
           text={assignedUserSearchTerm || "Type to search..."}
           fontWeight={400}
@@ -614,9 +614,9 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
           height={itemHeight - 5}
           width={containerWidth * 0.9}
           x={assignedUsersContainerX + containerWidth * 0.05}
-          y={containerY + headerHeight + 35 + (index * itemHeight)}
+          y={containerY + headerHeight + searchHeight + 5 + (index * itemHeight)}
           color={red}
-          fontSize={14}
+          fontSize={width * 0.008}
           fontColor={white}
           text={`✗ ${user.userName || user.userEmail || 'Unknown'} (${user.roleInOrg || 'Member'})`}
           fontWeight={400}
@@ -661,7 +661,7 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
         x={width * 0.1}
         y={height * 0.88}
         color={green}
-        fontSize={width * 0.012}
+        fontSize={width * 0.010}
         fontColor={white}
         text={assigning ? "ASSIGNING..." : "ASSIGN USERS"}
         fontWeight={800}
@@ -675,7 +675,7 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
         x={width * 0.8}
         y={height * 0.88}
         color={red}
-        fontSize={width * 0.012}
+        fontSize={width * 0.010}
         fontColor={white}
         text="BACK"
         fontWeight={800}

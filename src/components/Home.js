@@ -16,7 +16,7 @@ const Home = (props) => {
         x={width * 0.5}
         y={height * 0.7}
         color={blue}
-        fontSize={120}
+        fontSize={width * 0.075}
         fontColor={yellow}
         text={"START"}
         fontWeight={800}
@@ -28,7 +28,7 @@ const Home = (props) => {
         x={width * 0.05}
         y={height * 0.1}
         color={red}
-        fontSize={14}
+        fontSize={width * 0.009}
         fontColor={white}
         text={"LOG OUT"}
         fontWeight={800}
@@ -42,7 +42,7 @@ const Home = (props) => {
           new TextStyle({
             align: "center",
             fontFamily: "Futura",
-            fontSize: 146,
+            fontSize: width * 0.091,
             fontWeight: 800,
             fill: [blue],
             letterSpacing: -5,
@@ -58,7 +58,7 @@ const Home = (props) => {
           new TextStyle({
             align: "center",
             fontFamily: "Futura",
-            fontSize: 20,
+            fontSize: width * 0.0125,
             fontWeight: 800,
             fill: [blue],
             letterSpacing: 0,

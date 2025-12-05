@@ -15,10 +15,10 @@ const InviteObject = (props) => {
     const rowCenterY = y + height * 0.5; // Vertical center of the row
     
     // Button dimensions
-    const copyButtonHeight = 45;
-    const copyButtonWidth = 200;
-    const deleteButtonHeight = 45;
-    const deleteButtonWidth = 200;
+    const copyButtonHeight = height * 0.8;
+    const copyButtonWidth = width * 0.15;
+    const deleteButtonHeight = height * 0.8;
+    const deleteButtonWidth = width * 0.15;
     
     return (
         <>
@@ -32,7 +32,7 @@ const InviteObject = (props) => {
                     new TextStyle({
                         align: 'left',
                         fontFamily: 'Arial',
-                        fontSize: 16,
+                        fontSize: width * 0.016,
                         fontWeight: 'normal',
                         fill: [black],
                     })
@@ -49,7 +49,7 @@ const InviteObject = (props) => {
                     new TextStyle({
                         align: 'center',
                         fontFamily: 'Arial',
-                        fontSize: 16,
+                        fontSize: width * 0.016,
                         fontWeight: 'normal',
                         fill: [black],
                     })
@@ -63,7 +63,7 @@ const InviteObject = (props) => {
                 x={copyCenterX}
                 y={rowCenterY}
                 color={blue}
-                fontSize={14}
+                fontSize={width * 0.013}
                 fontColor={white}
                 text="COPY"
                 fontWeight={800}
@@ -77,7 +77,7 @@ const InviteObject = (props) => {
                 x={deleteCenterX}
                 y={rowCenterY}
                 color={red}
-                fontSize={14}
+                fontSize={width * 0.013}
                 fontColor={white}
                 text={deleting ? "DELETING..." : "DELETE"}
                 fontWeight={800}

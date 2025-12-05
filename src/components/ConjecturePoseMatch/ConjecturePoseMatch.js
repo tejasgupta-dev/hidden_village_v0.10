@@ -7,7 +7,6 @@ import RectButton from "../RectButton";
 import { getConjectureDataByUUIDWithCurrentOrg } from "../../firebase/database";
 import { useCallback } from "react";
 import React, { useState, useEffect } from 'react';
-import { Container } from "postcss";
 import { set } from "firebase/database";
 import PoseMatchingSimplified from "../PoseMatching";
 

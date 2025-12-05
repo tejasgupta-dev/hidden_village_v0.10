@@ -7,8 +7,9 @@ import { TextStyle } from "@pixi/text";
 import InputBox from "../InputBox";
 import { Input } from 'postcss';
 import { useEffect, useRef, useState, } from 'react';
-import { getUserEmailFromDatabase,  } from "../../firebase/userDatabase"
+import { getUserEmailFromDatabase, getCurrentUserContext } from "../../firebase/userDatabase"
 import { getFromDatabaseByGame, convertDateFormat, checkDateFormat, checkGameAuthorization, getAuthorizedGameList, findGameIdByName, getFromDatabaseByGameCSV} from "../../firebase/database"
+import { app } from "../../firebase/init"
 import { getStorage, ref, listAll, getDownloadURL } from "firebase/storage";
 import { getDatabase, ref as dbRef, get } from "firebase/database";
 
@@ -302,25 +303,39 @@ const DataMenu = (props) => {
         text={game_name} // change this out to game_name after testing
         fontWeight={600}
         callback={async () => {
-          const game_list = await getAuthorizedGameList();
-          let gameOptions;
-          if (game_list != null) {
-            gameOptions = game_list.join('\n');
-          } else {
-            gameOptions = "No games found";
-          }
-          
-          //let promptVal = prompt("Please Enter the Game Name", game_name);
-          let promptVal = prompt(`Please Enter a Game from the following list\n\n${gameOptions}\n\n`, game_name);
-          let gameValid = await checkGameAuthorization(promptVal);
-         // console.log(gameValid);
-          while (promptVal != null && gameValid != true) {
-            promptVal = prompt(`Invalid Game Name. Please try again. Enter a Game from the following list\n\n${gameOptions}\n\n`, game_name);
-            gameValid = await checkGameAuthorization(promptVal);
-            //console.log(gameValid);
-          }
-          if (promptVal != null) {
-            setGameName(promptVal)
+          try {
+            // Получаем orgId из контекста пользователя
+            const userContext = await getCurrentUserContext(app);
+            const orgId = userContext?.orgId;
+            
+            if (!orgId) {
+              alert('Ошибка: не удалось получить ID организации. Убедитесь, что вы авторизованы и состоите в организации.');
+              return;
+            }
+            
+            const game_list = await getAuthorizedGameList(orgId);
+            let gameOptions;
+            if (game_list != null) {
+              gameOptions = game_list.join('\n');
+            } else {
+              gameOptions = "No games found";
+            }
+            
+            //let promptVal = prompt("Please Enter the Game Name", game_name);
+            let promptVal = prompt(`Please Enter a Game from the following list\n\n${gameOptions}\n\n`, game_name);
+            let gameValid = await checkGameAuthorization(promptVal, orgId);
+           // console.log(gameValid);
+            while (promptVal != null && gameValid != true) {
+              promptVal = prompt(`Invalid Game Name. Please try again. Enter a Game from the following list\n\n${gameOptions}\n\n`, game_name);
+              gameValid = await checkGameAuthorization(promptVal, orgId);
+              //console.log(gameValid);
+            }
+            if (promptVal != null) {
+              setGameName(promptVal)
+            }
+          } catch (error) {
+            console.error('Ошибка при получении списка игр:', error);
+            alert('Ошибка при загрузке списка игр. Проверьте консоль для подробностей.');
           }
         }}
       />

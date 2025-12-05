@@ -13,6 +13,7 @@ import {
   writeToDatabaseIntuitionStart,
   writeToDatabaseIntuitionEnd,
 } from '../../firebase/database';
+import { getUserSettings } from '../../firebase/userSettings';
 import NewStage from '../NewStage';
 
 export default function LevelPlay(props) {
