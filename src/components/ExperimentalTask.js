@@ -3,6 +3,9 @@ import * as PIXI from "pixi.js";
 import { Graphics, Text, Sprite, Container } from "@inlet/react-pixi";
 import cursorIcon from '../assets/cursor.png';
 import CursorMode from "./CursorMode.js";
+
+// Import cursor icon using URL constructor similar to CursorMode.js
+const cursorIcon = new URL("../assets/cursor.png", import.meta.url).href;
 import Pose from "./Pose/index";
 import Background from "./Background";
 import { white, darkGray, yellow } from "../utils/colors";
@@ -31,6 +34,8 @@ const ExperimentalTask = (props) => {
     stageType, 
     height,
     width,
+    question,
+    correctAnswer,
   } = props;
 
   const isIntuition = stageType === "intuition";
@@ -178,6 +183,10 @@ const ExperimentalTask = (props) => {
           clearTimeout(hoverTimerRef.current);
           hoverTimerRef.current = null;
         }
+        // Record timeout as answer
+        if (gameID && isIntuition) {
+          writeToDatabaseTFAnswer('TIMEOUT', correctAnswer || null, gameID, question || '').catch(console.error);
+        }
         onCompleteRef.current();
       }, 50000);
     }, []);
@@ -308,6 +317,12 @@ const ExperimentalTask = (props) => {
           clearTimeout(autoTimerRef.current);
           autoTimerRef.current = null;
         }
+        // Map hoveredBox to answer (TRUE/FALSE)
+        const selectedAnswer = hoveredBox === 'left' ? 'TRUE' : 'FALSE';
+        // Write answer to database
+        if (gameID && isIntuition) {
+          writeToDatabaseTFAnswer(selectedAnswer, correctAnswer || null, gameID, question || '').catch(console.error);
+        }
         onCompleteRef.current();
       }, 2000);
       
@@ -320,7 +335,7 @@ const ExperimentalTask = (props) => {
         hoverTimerRef.current = null;
         setHoverTime(0);
       };
-    }, [hoveredBox]);
+    }, [hoveredBox, gameID, isIntuition, correctAnswer, question]);
 
 
     return (

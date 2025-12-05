@@ -29,7 +29,8 @@ export async function handlePIN(curricular, message = "Please Enter the PIN.", f
   }
 
   // Check hierarchy - if user can edit without PIN, skip PIN check
-  if (firebaseApp) {
+  // Note: For games from other organizations, always require PIN even for admins
+  if (firebaseApp && !curricular._isFromOtherOrg) {
     try {
       const { getAuth } = await import("firebase/auth");
       const { canEditWithoutPIN, getCurrentUserContext } = await import("../../firebase/userDatabase");
@@ -38,7 +39,8 @@ export async function handlePIN(curricular, message = "Please Enter the PIN.", f
       if (currentUser) {
         const userContext = await getCurrentUserContext(firebaseApp);
         const resourceOwnerId = curricular.AuthorID || curricular.createdBy;
-        const resourceOrgId = userContext?.orgId; // Assuming game is in current org
+        // Use actual orgId of the game (from _sourceOrgId if available, otherwise current org)
+        const resourceOrgId = curricular._sourceOrgId || userContext?.orgId;
         
         if (resourceOwnerId && resourceOrgId) {
           const canEdit = await canEditWithoutPIN(
@@ -46,7 +48,7 @@ export async function handlePIN(curricular, message = "Please Enter the PIN.", f
             resourceOwnerId,
             resourceOrgId,
             userContext?.role,
-            resourceOrgId,
+            userContext?.orgId, // User's org ID
             firebaseApp
           );
           
@@ -55,9 +57,9 @@ export async function handlePIN(curricular, message = "Please Enter the PIN.", f
           }
         }
         
-        // Check if user is the owner
-        if (resourceOwnerId === currentUser.uid) {
-          return true; // Owner can always edit without PIN
+        // Check if user is the owner (only if in same organization)
+        if (resourceOwnerId === currentUser.uid && resourceOrgId === userContext?.orgId) {
+          return true; // Owner can always edit without PIN in their own organization
         }
       }
     } catch (error) {
@@ -77,7 +79,7 @@ export async function handlePIN(curricular, message = "Please Enter the PIN.", f
   return false; // do nothing if cancel is clicked
 }
 
-async function handleGameClicked(curricular, curricularCallback, setLoading, firebaseApp) {
+async function handleGameClicked(curricular, curricularCallback, setLoading, firebaseApp, showPublic = true) {
   if (Curriculum.getCurrentUUID() === curricular["UUID"]) {
     Curriculum.setCurrentUUID(null);
     return;
@@ -88,11 +90,11 @@ async function handleGameClicked(curricular, curricularCallback, setLoading, fir
   try {
     if (playGame) {
       Curriculum.setCurrentUUID(curricular["UUID"]);
-      await Curriculum.setCurricularEditor(curricular);
+      await Curriculum.setCurricularEditor(curricular, showPublic);
     } else if (await handlePIN(curricular, "Please Enter the PIN.", firebaseApp) && !playGame) {
       console.log("Attempting to edit game");
       Curriculum.setCurrentUUID(curricular["UUID"]);
-      await Curriculum.setCurricularEditor(curricular);
+      await Curriculum.setCurricularEditor(curricular, showPublic);
     } else {
     // PIN was cancelled - don't proceed
     setLoading(false);
@@ -143,28 +145,33 @@ const CurricularSelectModule = (props) => {
           
           if (!classId || !orgId) {
             console.warn('No class context found - showing organization and public games');
-            // Get all games (organization games + public games from other orgs)
-            const allGames = await getCurricularListWithCurrentOrg(isPlayMode, true);
+            // Get all games (organization games + public games from other orgs if showPublic is true)
+            const allGames = await getCurricularListWithCurrentOrg(isPlayMode, showPublic);
             
             if (!isMounted) return;
             
             // Filter: organization games (without _isFromOtherOrg) + public games (with isPublic === true or _isFromOtherOrg === true)
+            // In play mode, only show published games (isFinal === true)
             let availableGames = [];
             if (allGames) {
               availableGames = allGames.filter(game => {
+                // Only show published games in play mode
+                if (game.isFinal !== true) {
+                  return false;
+                }
                 // Games from current organization (not from other orgs)
                 if (!game._isFromOtherOrg) {
                   return true;
                 }
-                // Public games from other organizations
-                if (game._isFromOtherOrg && game.isPublic === true) {
+                // Public games from other organizations (only if showPublic is true)
+                if (showPublic && game._isFromOtherOrg && game.isPublic === true) {
                   return true;
                 }
                 return false;
               });
             }
             
-            console.log('Available games (org + public):', availableGames.length, 'out of', allGames ? allGames.length : 0);
+            console.log('Available games (org + public):', availableGames.length, 'out of', allGames ? allGames.length : 0, 'showPublic:', showPublic);
             if (isMounted) {
               setCurricularList(availableGames);
               setLoading(false);
@@ -178,22 +185,37 @@ const CurricularSelectModule = (props) => {
           
           console.log('Current class:', classId, 'Assigned games:', assignedGameIds);
           
-          // Get all games
-          const allGames = await getCurricularListWithCurrentOrg(isPlayMode, true);
+          // Get all games (with or without public games from other orgs based on showPublic)
+          const allGames = await getCurricularListWithCurrentOrg(isPlayMode, showPublic);
           
           if (!isMounted) return;
           
-          // Filter only games assigned to current class
-          const classGames = allGames ? allGames.filter(game => assignedGameIds.includes(game.UUID)) : [];
+          // Filter games: show games assigned to class OR public games from other orgs (if showPublic is true)
+          // In play mode, only show published games (isFinal === true)
+          const classGames = allGames ? allGames.filter(game => {
+            // Only show published games in play mode
+            if (game.isFinal !== true) {
+              return false;
+            }
+            // Always show games assigned to the class (if published)
+            if (assignedGameIds.includes(game.UUID)) {
+              return true;
+            }
+            // Show public games from other organizations if showPublic is true (if published)
+            if (showPublic && game._isFromOtherOrg && game.isPublic === true) {
+              return true;
+            }
+            return false;
+          }) : [];
           
-          console.log('Filtered games for class:', classGames.length, 'out of', allGames ? allGames.length : 0);
+          console.log('Filtered games for class:', classGames.length, 'out of', allGames ? allGames.length : 0, 'showPublic:', showPublic, 'assigned:', assignedGameIds.length);
           if (isMounted) {
             setCurricularList(classGames);
           }
         } else {
           // EDIT mode: show all games created by current user
           console.log('EDIT mode: showing all user games');
-          const result = await getCurricularListWithCurrentOrg(isPlayMode, true);
+          const result = await getCurricularListWithCurrentOrg(isPlayMode, showPublic);
           if (isMounted) {
             setCurricularList(result || []);
           }
@@ -216,7 +238,7 @@ const CurricularSelectModule = (props) => {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [showPublic, firebaseApp]);
   
   // Apply filters
   useEffect(() => {
@@ -229,6 +251,8 @@ const CurricularSelectModule = (props) => {
       if (!showPublic) {
         filtered = filtered.filter(curricular => !curricular._isFromOtherOrg);
       }
+      
+      console.log('CurricularSelector: Applying filters - curricularList:', curricularList.length, 'filtered:', filtered.length, 'showPublic:', showPublic);
       
       // Only update state if component is still mounted
       if (isMounted) {
@@ -271,9 +295,14 @@ const CurricularSelectModule = (props) => {
               if (!isMounted) return;
               
               // Filter: organization games (without _isFromOtherOrg) + public games (with isPublic === true or _isFromOtherOrg === true)
+              // In play mode, only show published games (isFinal === true)
               let availableGames = [];
               if (allGames) {
                 availableGames = allGames.filter(game => {
+                  // Only show published games in play mode
+                  if (game.isFinal !== true) {
+                    return false;
+                  }
                   // Games from current organization (not from other orgs)
                   if (!game._isFromOtherOrg) {
                     return true;
@@ -305,8 +334,16 @@ const CurricularSelectModule = (props) => {
             
             if (!isMounted) return;
             
-            // Filter only games assigned to current class
-            const classGames = allGames ? allGames.filter(game => assignedGameIds.includes(game.UUID)) : [];
+            // Filter only published games assigned to current class
+            // In play mode, only show published games (isFinal === true)
+            const classGames = allGames ? allGames.filter(game => {
+              // Only show published games in play mode
+              if (game.isFinal !== true) {
+                return false;
+              }
+              // Show games assigned to the class (if published)
+              return assignedGameIds.includes(game.UUID);
+            }) : [];
             
             console.log('CurricularSelector: Updated filtered games for class:', classGames.length, 'out of', allGames.length);
             if (isMounted) {
@@ -376,6 +413,11 @@ const CurricularSelectModule = (props) => {
   // use to determine the subset of games to display based on the current page
   const startIndex = currentPage * curricularPerPage;
   const currentCurriculars = (filteredCurricularList || []).slice(startIndex, startIndex + curricularPerPage);
+  
+  // Debug logging
+  useEffect(() => {
+    console.log('CurricularSelector: Rendering - filteredCurricularList:', filteredCurricularList.length, 'currentPage:', currentPage, 'currentCurriculars:', currentCurriculars.length, 'totalPages:', totalPages);
+  }, [filteredCurricularList, currentPage, currentCurriculars.length, totalPages]);
 
   // draw the buttons that show the author name, name of game, and keywords, and the add conjecture button
   const drawCurricularList = (xMultiplier, yMultiplier, fontSizeMultiplier, totalWidth, totalHeight) => {
@@ -542,14 +584,14 @@ const CurricularSelectModule = (props) => {
         fontWeight={800}
         callback={
           selectedCurricular 
-            ? () => handleGameClicked(selectedCurricular, curricularCallback, setLoading, firebaseApp)
+            ? () => handleGameClicked(selectedCurricular, curricularCallback, setLoading, firebaseApp, showPublic)
             : null
         }
       />
 
       <CurricularSelectorBoxes height={height} width={width} />
       
-      {curricularList.length === 0 ? (
+      {filteredCurricularList.length === 0 ? (
         <Text
           text={getPlayGame() 
             ? "No games available. If you are in a class, contact your teacher to have games assigned to your class. Otherwise, check for public games or games from your organization."

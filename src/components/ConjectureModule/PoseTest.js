@@ -92,6 +92,7 @@ const PoseTest = (props) => {
             conjectureCallback={conjectureCallback}
             poseData = {poseData}
             gameID={gameID}
+            UUID={UUID}
         />
     </>
     );

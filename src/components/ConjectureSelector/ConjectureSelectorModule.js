@@ -31,14 +31,16 @@ export async function handlePIN(conjecture, message = "Please Enter the PIN.", f
   }
 
   // Check hierarchy - if user can edit without PIN, skip PIN check
-  if (firebaseApp) {
+  // Note: For levels from other organizations, always require PIN even for admins
+  if (firebaseApp && !conjecture._isFromOtherOrg) {
     try {
       const auth = getAuth(firebaseApp);
       const currentUser = auth.currentUser;
       if (currentUser) {
         const userContext = await getCurrentUserContext(firebaseApp);
         const resourceOwnerId = conjecture.AuthorID || conjecture.createdBy;
-        const resourceOrgId = userContext?.orgId; // Assuming level is in current org
+        // Use actual orgId of the level (from _sourceOrgId if available, otherwise current org)
+        const resourceOrgId = conjecture._sourceOrgId || userContext?.orgId;
         
         if (resourceOwnerId && resourceOrgId) {
           const canEdit = await canEditWithoutPIN(
@@ -46,7 +48,7 @@ export async function handlePIN(conjecture, message = "Please Enter the PIN.", f
             resourceOwnerId,
             resourceOrgId,
             userContext?.role,
-            resourceOrgId,
+            userContext?.orgId, // User's org ID
             firebaseApp
           );
           
@@ -55,9 +57,9 @@ export async function handlePIN(conjecture, message = "Please Enter the PIN.", f
           }
         }
         
-        // Check if user is the owner
-        if (resourceOwnerId === currentUser.uid) {
-          return true; // Owner can always edit without PIN
+        // Check if user is the owner (only if in same organization)
+        if (resourceOwnerId === currentUser.uid && resourceOrgId === userContext?.orgId) {
+          return true; // Owner can always edit without PIN in their own organization
         }
       }
     } catch (error) {

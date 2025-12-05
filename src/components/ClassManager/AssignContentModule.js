@@ -39,6 +39,7 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
   const [classCurrentPage, setClassCurrentPage] = useState(0);
   const [assignedGameSearchTerm, setAssignedGameSearchTerm] = useState('');
   const [assignedGameCurrentPage, setAssignedGameCurrentPage] = useState(0);
+  const [showPublic, setShowPublic] = useState(false);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -47,7 +48,7 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
     return () => {
       isMountedRef.current = false;
     };
-  }, []);
+  }, [showPublic]);
 
   const loadData = async () => {
     try {
@@ -97,18 +98,15 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
         classList = [];
       }
       
-      // Load user's games (only games created by current user)
-      const allGames = await getCurricularListWithCurrentOrg(false, true);
-      const userGames = allGames ? allGames.filter(game => {
-        return game.AuthorID === currentUser.uid;
-      }) : [];
+      // Load all games from organization (and public games from other orgs if showPublic is true)
+      const allGames = await getCurricularListWithCurrentOrg(false, showPublic);
       
       // Check again if component is still mounted before updating state
       if (!isMountedRef.current) return;
       
       if (isMountedRef.current) {
         setClasses(classList);
-        setGames(userGames);
+        setGames(allGames || []);
         setLoading(false);
       }
     } catch (error) {
@@ -152,9 +150,13 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
         assignedGameIds.forEach(gameId => allAssignedGameIds.add(gameId));
       }
       
+      // Load ALL games (including public from other orgs) to find assigned games
+      // This ensures all assigned games are shown regardless of showPublic filter
+      const allGames = await getCurricularListWithCurrentOrg(false, true);
+      
       // Convert Set to Array and get full game info
       const assignedGameIds = Array.from(allAssignedGameIds);
-      const assignedGamesList = games.filter(game => assignedGameIds.includes(game.UUID));
+      const assignedGamesList = (allGames || []).filter(game => assignedGameIds.includes(game.UUID));
       
       // console.log(`Found ${assignedGamesList.length} unique games across ${classIds.length} classes`); // Remove unnecessary log
       if (isMountedRef.current) {
@@ -213,6 +215,11 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
     const assignedGameIds = new Set(assignedGames.map(game => game.UUID));
     
     return games.filter(game => {
+      // Filter by public/private - if showPublic is false, hide public games from other orgs
+      if (!showPublic && game._isFromOtherOrg === true) {
+        return false;
+      }
+      
       // Exclude games already assigned to selected classes
       if (selectedClasses.length > 0 && assignedGameIds.has(game.UUID)) {
         return false;
@@ -252,8 +259,8 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
   
   const getTotalClassPages = () => {
     const containerHeight = height * 0.5;
-    const headerHeight = 40;
-    const itemHeight = 35;
+    const headerHeight = height * 0.04;
+    const itemHeight = height * 0.057;
     const availableHeight = containerHeight - headerHeight;
     const itemsPerContainer = Math.max(1, Math.floor(availableHeight / itemHeight));
     return Math.ceil(classes.length / itemsPerContainer);
@@ -265,8 +272,8 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
 
   const getTotalAssignedGamePages = () => {
     const containerHeight = height * 0.5;
-    const headerHeight = 40;
-    const itemHeight = 35;
+    const headerHeight = height * 0.04;
+    const itemHeight = height * 0.057;
     const availableHeight = containerHeight - headerHeight;
     const itemsPerContainer = Math.max(1, Math.floor(availableHeight / itemHeight));
     return Math.ceil(getFilteredAssignedGames().length / itemsPerContainer);
@@ -325,7 +332,7 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
           y={height * 0.5}
           style={new TextStyle({
             fontFamily: "Arial",
-            fontSize: 24,
+            fontSize: width * 0.016,
             fill: [black],
           })}
         />
@@ -340,10 +347,11 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
   const gamesContainerX = width * 0.1;
   const classesContainerX = width * 0.4;
   const assignedGamesContainerX = width * 0.7;
-  const headerHeight = 40;
-  const searchHeight = 30;
-  const itemHeight = 35;
-  const availableHeight = containerHeight - headerHeight - searchHeight;
+  const headerHeight = height * 0.04;
+  const filterButtonHeight = height * 0.04;
+  const searchHeight = height * 0.03;
+  const itemHeight = height * 0.037;
+  const availableHeight = containerHeight - headerHeight - filterButtonHeight - searchHeight - 15;
   const itemsPerContainer = Math.max(1, Math.floor(availableHeight / itemHeight));
 
   return (
@@ -357,7 +365,7 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
         y={height * 0.01}
         style={new TextStyle({
           fontFamily: "Futura",
-          fontSize: 80,
+          fontSize: width * 0.06,
           fontWeight: 800,
           fill: [blue],
           letterSpacing: -5,
@@ -371,7 +379,7 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
         y={height * 0.12}
         style={new TextStyle({
           fontFamily: "Arial",
-          fontSize: 24,
+          fontSize: width * 0.018,
           fontWeight: "bold",
           fill: [black],
         })}
@@ -397,10 +405,24 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
         text="GAMES"
         style={new TextStyle({
           fontFamily: 'Arial',
-          fontSize: 20,
+          fontSize: width * 0.014,
           fontWeight: 'bold',
           fill: [black],
         })}
+      />
+      
+      {/* Public Filter Button */}
+      <RectButton
+        height={height * 0.04}
+        width={containerWidth * 0.85}
+        x={gamesContainerX + containerWidth * 0.05}
+        y={containerY + headerHeight + height * 0.04}
+        color={showPublic ? green : white}
+        fontSize={width * 0.007}
+        fontColor={showPublic ? white : black}
+        text={showPublic ? "SHOW PUBLIC: YES" : "SHOW PUBLIC: NO"}
+        fontWeight={600}
+        callback={() => setShowPublic(!showPublic)}
       />
       
       {/* Game Search */}
@@ -410,7 +432,7 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
         x={gamesContainerX + containerWidth * 0.05}
         y={containerY + headerHeight + 5}
         color={white}
-        fontSize={12}
+        fontSize={width * 0.009}
         fontColor={black}
         text={gameSearchTerm || "Type to search..."}
         fontWeight={400}
@@ -430,9 +452,9 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
           height={itemHeight - 5}
           width={containerWidth * 0.9}
           x={gamesContainerX + containerWidth * 0.05}
-          y={containerY + headerHeight + 35 + (index * itemHeight)}
+          y={containerY + headerHeight + filterButtonHeight + searchHeight + 10 + (index * itemHeight)}
           color={selectedGames.includes(game.UUID) ? green : blue}
-          fontSize={14}
+          fontSize={width * 0.009}
           fontColor={white}
           text={`${selectedGames.includes(game.UUID) ? '✓ ' : ''}${game.name || 'Unnamed Game'}`}
           fontWeight={400}
@@ -488,7 +510,7 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
         text="CLASS"
         style={new TextStyle({
           fontFamily: 'Arial',
-          fontSize: 20,
+          fontSize: width * 0.014,
           fontWeight: 'bold',
           fill: [black],
         })}
@@ -503,7 +525,7 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
           x={classesContainerX + containerWidth * 0.05}
           y={containerY + headerHeight + (index * itemHeight)}
           color={selectedClasses.includes(classItem.id) ? green : blue}
-          fontSize={14}
+          fontSize={width * 0.009}
           fontColor={white}
           text={`${selectedClasses.includes(classItem.id) ? '✓ ' : ''}${classItem.name}`}
           fontWeight={400}
@@ -559,7 +581,7 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
         text="GAMES (in class)"
         style={new TextStyle({
           fontFamily: 'Arial',
-          fontSize: 20,
+          fontSize: width * 0.014,
           fontWeight: 'bold',
           fill: [black],
         })}
@@ -573,7 +595,7 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
           x={assignedGamesContainerX + containerWidth * 0.05}
           y={containerY + headerHeight + 5}
           color={white}
-          fontSize={12}
+          fontSize={width * 0.009}
           fontColor={black}
           text={assignedGameSearchTerm || "Type to search..."}
           fontWeight={400}
@@ -594,9 +616,9 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
           height={itemHeight - 5}
           width={containerWidth * 0.9}
           x={assignedGamesContainerX + containerWidth * 0.05}
-          y={containerY + headerHeight + 35 + (index * itemHeight)}
+          y={containerY + headerHeight + searchHeight + 5 + (index * itemHeight)}
           color={red}
-          fontSize={14}
+          fontSize={width * 0.009}
           fontColor={white}
           text={`✗ ${game.name || 'Unnamed Game'}`}
           fontWeight={400}
@@ -641,7 +663,7 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
         x={width * 0.1}
         y={height * 0.88}
         color={green}
-        fontSize={width * 0.012}
+        fontSize={width * 0.010}
         fontColor={white}
         text={assigning ? "ASSIGNING..." : "ASSIGN GAMES"}
         fontWeight={800}
@@ -655,7 +677,7 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
         x={width * 0.8}
         y={height * 0.88}
         color={red}
-        fontSize={width * 0.012}
+        fontSize={width * 0.010}
         fontColor={white}
         text="BACK"
         fontWeight={800}

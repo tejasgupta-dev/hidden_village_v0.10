@@ -4,9 +4,12 @@ import Background from './Background';
 import Pose from './Pose/index';
 import { Rectangle } from "@pixi/math";
 import { darkGray, yellow, white } from '../utils/colors';
-import cursorIcon from '../assets/cursor.png';
+import { writeToDatabaseMCAnswer } from '../firebase/database';
 
-const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimensions, question = "What shape is this?" }) => {
+// Import cursor icon using URL constructor similar to CursorMode.js
+const cursorIcon = new URL("../assets/cursor.png", import.meta.url).href;
+
+const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimensions, question = "What shape is this?", mcqChoices = { A: 'Choice A', B: 'Choice B', C: 'Choice C', D: 'Choice D' }, correctAnswer = 'A' }) => {
   const [hoveredBox, setHoveredBox] = useState(null);
   const [hoverTime, setHoverTime] = useState(0);
   const [cursorPos, setCursorPos] = useState({ x: -100, y: -100 });
@@ -252,6 +255,31 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
     }
   }, [poseData, columnDimensions, handleQuestionButtonToggle, hoveredBox, questionButtonRect, showQuestion]);
   
+  // Timer for hiding question after cursor leaves button
+  useEffect(() => {
+    // Очистить предыдущий таймер
+    if (hideQuestionTimerRef.current) {
+      clearTimeout(hideQuestionTimerRef.current);
+      hideQuestionTimerRef.current = null;
+    }
+
+    // Если курсор ушел с кнопки и вопрос показан - запустить таймер на 1 секунду
+    if (!isHoveringButton && showQuestion) {
+      hideQuestionTimerRef.current = setTimeout(() => {
+        clearQuestionTimers();
+        setShowQuestion(false);
+        setQuestionOpacity(0);
+        hideQuestionTimerRef.current = null;
+      }, 1000);
+    }
+
+    return () => {
+      if (hideQuestionTimerRef.current) {
+        clearTimeout(hideQuestionTimerRef.current);
+        hideQuestionTimerRef.current = null;
+      }
+    };
+  }, [isHoveringButton, showQuestion, clearQuestionTimers]);
   
   // Timer tied ONLY to hoveredBox changes
   useEffect(() => {
@@ -298,7 +326,7 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
           }}
         />
         <Text
-          text="6"
+          text={mcqChoices.A}
           x={L.top.x + L.top.width / 2}
           y={L.top.y + L.top.height / 2}
           anchor={0.5}
@@ -308,6 +336,8 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
             fontSize: "2.5em",
             fontWeight: 800,
             fill: [white],
+            wordWrap: true,
+            wordWrapWidth: L.top.width - 40,
           }}
         />
         {hoveredBox === 'leftTop' && (
@@ -337,7 +367,7 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
           }}
         />
         <Text
-          text="3"
+          text={mcqChoices.B}
           x={L.bottom.x + L.bottom.width / 2}
           y={L.bottom.y + L.bottom.height / 2}
           anchor={0.5}
@@ -347,6 +377,8 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
             fontSize: "2.5em",
             fontWeight: 800,
             fill: [white],
+            wordWrap: true,
+            wordWrapWidth: L.bottom.width - 40,
           }}
         />
         {hoveredBox === 'leftBottom' && (
@@ -376,7 +408,7 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
           }}
         />
         <Text
-          text="None"
+          text={mcqChoices.C}
           x={R.top.x + R.top.width / 2}
           y={R.top.y + R.top.height / 2}
           anchor={0.5}
@@ -386,6 +418,8 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
             fontSize: "2.5em",
             fontWeight: 800,
             fill: [white],
+            wordWrap: true,
+            wordWrapWidth: R.top.width - 40,
           }}
         />
         {hoveredBox === 'rightTop' && (
@@ -415,7 +449,7 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
           }}
         />
         <Text
-          text="4"
+          text={mcqChoices.D}
           x={R.bottom.x + R.bottom.width / 2}
           y={R.bottom.y + R.bottom.height / 2}
           anchor={0.5}
@@ -425,6 +459,8 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
             fontSize: "2.5em",
             fontWeight: 800,
             fill: [white],
+            wordWrap: true,
+            wordWrapWidth: R.bottom.width - 40,
           }}
         />
         {hoveredBox === 'rightBottom' && (

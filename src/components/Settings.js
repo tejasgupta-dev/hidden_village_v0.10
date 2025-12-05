@@ -1,8 +1,108 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { Container, Graphics, Text } from "@inlet/react-pixi";
 import RectButton from "./RectButton";
 import SettingRow from "./SettingRow";
 import { setUserSettings, getUserSettings } from "../firebase/userSettings.js";
+
+// FPS Input component using DOM input element
+const FpsInput = ({ x, y, value, onChange, parentX = 0, parentY = 0 }) => {
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    // Create input element
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = value;
+    input.style.position = "fixed";
+    input.style.width = "60px";
+    input.style.height = "32px";
+    input.style.border = "2px solid #9ca3af";
+    input.style.borderRadius = "4px";
+    input.style.padding = "4px 8px";
+    input.style.fontSize = "16px";
+    input.style.fontFamily = "Arial";
+    input.style.textAlign = "center";
+    input.style.backgroundColor = "#ffffff";
+    input.style.color = "#111827";
+    input.style.zIndex = "10000";
+    input.id = "fps-input-settings";
+
+    // Function to update position
+    const updatePosition = () => {
+      const canvas = document.querySelector("canvas");
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / canvas.clientWidth;
+        const scaleY = canvas.height / canvas.clientHeight;
+        input.style.left = `${rect.left + parentX + x * scaleX}px`;
+        input.style.top = `${rect.top + parentY + y * scaleY}px`;
+      }
+    };
+
+    updatePosition();
+
+    // Handle input validation - only numbers
+    const handleInput = (e) => {
+      const inputValue = e.target.value;
+      // Allow only digits
+      if (inputValue === "" || /^\d+$/.test(inputValue)) {
+        const numValue = parseInt(inputValue, 10);
+        if (inputValue === "" || (numValue >= 1 && numValue <= 30)) {
+          onChange(inputValue);
+        } else {
+          // Revert to previous valid value
+          e.target.value = value;
+        }
+      } else {
+        // Revert to previous valid value
+        e.target.value = value;
+      }
+    };
+
+    // Handle blur - validate range and update
+    const handleBlur = (e) => {
+      const numValue = parseInt(e.target.value, 10);
+      if (isNaN(numValue) || numValue < 1) {
+        e.target.value = "1";
+        onChange("1");
+      } else if (numValue > 30) {
+        e.target.value = "30";
+        onChange("30");
+      } else {
+        onChange(String(numValue));
+      }
+    };
+
+    input.addEventListener("input", handleInput);
+    input.addEventListener("blur", handleBlur);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition);
+
+    document.body.appendChild(input);
+    inputRef.current = input;
+
+    return () => {
+      if (inputRef.current) {
+        inputRef.current.removeEventListener("input", handleInput);
+        inputRef.current.removeEventListener("blur", handleBlur);
+        if (document.body.contains(inputRef.current)) {
+          document.body.removeChild(inputRef.current);
+        }
+      }
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition);
+    };
+  }, [x, y, value, onChange, parentX, parentY]);
+
+  // Update input value when value prop changes
+  useEffect(() => {
+    if (inputRef.current && inputRef.current.value !== String(value)) {
+      inputRef.current.value = value;
+    }
+  }, [value]);
+
+  return null; // This component doesn't render anything in Pixi
+};
 
 // Typography
 const TITLE_STYLE = {
@@ -77,11 +177,28 @@ const Settings = ({ width, height, x, y, onClose }) => {
   const toggleSetting = (key) =>
     setSettings((prev) => ({ ...prev, [key]: !prev[key] }));
 
+  const updateRepetitions = (increment) =>
+    setSettings((prev) => ({
+      ...prev,
+      repetitions: Math.max(1, prev.repetitions + increment),
+    }));
+
   const updateNumberOfhints = (increment) =>
     setSettings((prev) => ({
       ...prev,
       NumberOfhints: Math.max(0, prev.NumberOfhints + increment),
     }));
+
+  const updateFps = (value) => {
+    // Validate: only numbers, between 1 and 30
+    const numValue = parseInt(value, 10);
+    if (!isNaN(numValue) && numValue >= 1 && numValue <= 30) {
+      setSettings((prev) => ({
+        ...prev,
+        fps: numValue,
+      }));
+    }
+  };
 
   const updateLanguage = () =>
     setSettings((prev) => ({
@@ -352,6 +469,56 @@ const Settings = ({ width, height, x, y, onClose }) => {
       />
 
       
+
+      {/* Number of Hints with +/- buttons */}
+      <Container position={[rightColX, firstRowY + rowSpacing * 8]}>
+        <Text text="Number of Hints:" style={LABEL_STYLE} y={0} />
+        <RectButton
+          width={40}
+          height={32}
+          x={200}
+          y={-2}
+          text="-"
+          color="#9ca3af"
+          fontColor="white"
+          callback={() => updateNumberOfhints(-1)}
+        />
+        <Text
+          text={`${settings.NumberOfhints}`}
+          style={LABEL_STYLE}
+          x={250}
+          y={0}
+        />
+        <RectButton
+          width={40}
+          height={32}
+          x={300}
+          y={-2}
+          text="+"
+          color="#2563eb"
+          fontColor="white"
+          callback={() => updateNumberOfhints(1)}
+        />
+      </Container>
+
+      {/* Language toggle */}
+      <SettingRow
+        label="Language:"
+        value={settings.language === "English"}
+        x={rightColX}
+        y={firstRowY + rowSpacing * 9}
+        onToggle={updateLanguage}
+      />
+      <Text
+        text={`(${settings.language})`}
+        style={{
+          fontFamily: "Arial",
+          fontSize: 12,
+          fill: 0x6b7280,
+        }}
+        x={rightColX + 360}
+        y={firstRowY + rowSpacing * 9}
+      />
 
       {/* Close */}
       <RectButton

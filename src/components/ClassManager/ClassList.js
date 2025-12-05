@@ -16,7 +16,7 @@ const ClassList = (props) => {
     // Calculate table dimensions
     const tableWidth = width;
     const tableHeight = height;
-    const rowHeight = 40;
+    const rowHeight = height * 0.08;
     const headerHeight = rowHeight;
     const headerY = y;
     const firstRowY = y + rowHeight;
@@ -108,7 +108,7 @@ const ClassList = (props) => {
                     new TextStyle({
                         align: 'left',
                         fontFamily: 'Arial',
-                        fontSize: 20,
+                        fontSize: width * 0.016,
                         fontWeight: 'bold',
                         fill: [black],
                     })
@@ -122,7 +122,7 @@ const ClassList = (props) => {
                     new TextStyle({
                         align: 'left',
                         fontFamily: 'Arial',
-                        fontSize: 20,
+                        fontSize: width * 0.016,
                         fontWeight: 'bold',
                         fill: [black],
                     })
@@ -136,7 +136,7 @@ const ClassList = (props) => {
                     new TextStyle({
                         align: 'center',
                         fontFamily: 'Arial',
-                        fontSize: 20,
+                        fontSize: width * 0.016,
                         fontWeight: 'bold',
                         fill: [black],
                     })
@@ -150,7 +150,7 @@ const ClassList = (props) => {
                     new TextStyle({
                         align: 'center',
                         fontFamily: 'Arial',
-                        fontSize: 20,
+                        fontSize: width * 0.016,
                         fontWeight: 'bold',
                         fill: [black],
                     })
@@ -164,7 +164,7 @@ const ClassList = (props) => {
                     new TextStyle({
                         align: 'center',
                         fontFamily: 'Arial',
-                        fontSize: 20,
+                        fontSize: width * 0.016,
                         fontWeight: 'bold',
                         fill: [black],
                     })
@@ -178,7 +178,7 @@ const ClassList = (props) => {
                     new TextStyle({
                         align: 'right',
                         fontFamily: 'Arial',
-                        fontSize: 20,
+                        fontSize: width * 0.016,
                         fontWeight: 'bold',
                         fill: [black],
                     })
@@ -229,7 +229,7 @@ const ClassList = (props) => {
                 x={x + tableWidth - 100}
                 y={y + tableHeight - 40}
                 color={green}
-                fontSize={20}
+                fontSize={width * 0.016}
                 fontColor={white}
                 text={"<"}
                 fontWeight={800}
@@ -241,7 +241,7 @@ const ClassList = (props) => {
                 x={x + tableWidth - 50}
                 y={y + tableHeight - 40}
                 color={green}
-                fontSize={20}
+                fontSize={width * 0.016}
                 fontColor={white}
                 text={">"}
                 fontWeight={800}

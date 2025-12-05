@@ -76,6 +76,8 @@ export const currentConjecture = {
   localStorage.removeItem('Start Tolerance');
   localStorage.removeItem('Intermediate Tolerance');
   localStorage.removeItem('End Tolerance');
+  localStorage.removeItem('_isFromOtherOrg');
+  localStorage.removeItem('_sourceOrgId');
 };
 
 // fill in local storage using currentConjecture if an existing conjecture is selected
@@ -156,7 +158,20 @@ function setLocalStorage(){
   currentConjecture.CurrentConjecture = null;   // avoid re-entrancy
   console.log(`setLocalStorage: Set CurrentUUID to ${currentConjecture.CurrentUUID}`);
 
-  // 5. Default correct answer
+  // 5. Save organization info to prevent editing levels from other orgs
+  if (conj._isFromOtherOrg === true) {
+    localStorage.setItem('_isFromOtherOrg', 'true');
+    if (conj._sourceOrgId) {
+      localStorage.setItem('_sourceOrgId', conj._sourceOrgId);
+    }
+    console.log('setLocalStorage: Level is from another organization, saved org info');
+  } else {
+    localStorage.removeItem('_isFromOtherOrg');
+    localStorage.removeItem('_sourceOrgId');
+    console.log('setLocalStorage: Level is from current organization');
+  }
+
+  // 6. Default correct answer
   if (!localStorage.getItem('Correct Answer')) {
     localStorage.setItem('Correct Answer', 'A');
     console.log('setLocalStorage: Set default Correct Answer to A');

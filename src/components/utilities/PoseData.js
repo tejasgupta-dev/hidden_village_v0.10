@@ -38,8 +38,6 @@ const usePoseData = () => {
 
       return hasVideo && hasAudio;
     } catch (err) {
-      console.error("Permission error:", err);
-
       if (err.name === "NotAllowedError") {
         setCameraStatus("denied");
         setMicrophoneStatus("denied");

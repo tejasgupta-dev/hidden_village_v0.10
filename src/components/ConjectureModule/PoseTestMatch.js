@@ -4,18 +4,28 @@ import { TextStyle } from "@pixi/text";
 import { orange, black, white, darkGray, yellow, red, blue } from "../../utils/colors";
 import Button from "../Button";
 import RectButton from "../RectButton";
-import { getConjectureDataByUUIDWithCurrentOrg } from "../../firebase/database";
 import { useCallback } from "react";
 import React, { useState, useEffect } from 'react';
-import { Container } from "postcss";
-import { set } from "firebase/database";
-import PoseMatching from "../PoseMatching";
+import PoseMatchingSimplified from "../PoseMatching";
+import { 
+  initializeSession, 
+  bufferPoseDataWithAutoFlush, 
+  startSmartAutoFlush, 
+  stopAutoFlush, 
+  endSession,
+  getCurrentOrgContext
+} from "../../firebase/database.js";
+import { getUserSettings } from "../../firebase/userSettings.js";
 
 
 const PoseTestMatch = (props) => {
-  const { height, width, columnDimensions, conjectureCallback, poseData, gameID} = props;
+  const { height, width, columnDimensions, conjectureCallback, poseData, gameID, UUID} = props;
   const [poses, setPoses] = useState(null);
   const [tolerances, setTolerances] = useState([]);
+  const [repetitions, setRepetitions] = useState(3); // Default value
+  
+  // Generate a test UUID if not provided (for pose testing mode)
+  const testUUID = UUID || 'pose-test-session';
 
   // Background for Pose Matching
   const drawModalBackground = useCallback((g) => {
@@ -29,6 +39,21 @@ const PoseTestMatch = (props) => {
     g.drawRect(col3.x, col3.y, col3.width, col3.height);
     g.endFill();
   }, [width, height, columnDimensions]);
+
+  // Load repetitions from user settings
+  useEffect(() => {
+    const loadRepetitions = async () => {
+      try {
+        const settings = await getUserSettings();
+        if (settings && settings.repetitions) {
+          setRepetitions(Math.max(1, parseInt(settings.repetitions, 10) || 3));
+        }
+      } catch (e) {
+        console.error("Failed to load repetitions settings, using default:", e);
+      }
+    };
+    loadRepetitions();
+  }, []);
 
   // Get pose data from local storage
   useEffect(() => {
@@ -61,6 +86,7 @@ return(
           columnDimensions={columnDimensions}
           onComplete={conjectureCallback}
           gameID={gameID}
+          UUID={testUUID}
           tolerances={tolerances}
           singleMatchPerPose={true}
           

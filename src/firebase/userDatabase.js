@@ -492,16 +492,32 @@ export const getUsersByOrganizationFromDatabase = async (orgId, firebaseApp) => 
 
 // Get user email for data download auto populate
 export const getUserEmailFromDatabase = async (props) => {
-    const userPath = `users/${userId}`;
+    try {
+        // Get current authenticated user
+        const auth = getAuth();
+        const currentUser = auth.currentUser;
+        
+        if (!currentUser) {
+            console.warn('getUserEmailFromDatabase: No authenticated user');
+            return null;
+        }
+        
+        const userId = currentUser.uid;
+        const db = getDatabase();
+        const userPath = `users/${userId}`;
 
-    // Get the user snapshot from the database
-    const userSnapshot = await get(ref(db, userPath));
+        // Get the user snapshot from the database
+        const userSnapshot = await get(ref(db, userPath));
 
-    if (userSnapshot.exists()) {
-        // User exists, return the user's email
-        return userSnapshot.val().userEmail;
-    } else {
-        // User does not exist in the database
+        if (userSnapshot.exists()) {
+            // User exists, return the user's email
+            return userSnapshot.val().userEmail;
+        } else {
+            // User does not exist in the database
+            return null;
+        }
+    } catch (error) {
+        console.error('Error getting user email from database:', error);
         return null;
     }
 };
@@ -845,6 +861,7 @@ export const registerNewUser = async (email, password, firebaseApp) => {
         const orgsRef = ref(db, 'orgs');
         const orgsSnapshot = await get(orgsRef);
         let defaultOrgId = null;
+        let wasOrgCreated = false;
         
         if (orgsSnapshot.exists()) {
             const orgs = orgsSnapshot.val();
@@ -859,6 +876,7 @@ export const registerNewUser = async (email, password, firebaseApp) => {
         
         // Create Default Organization if it doesn't exist
         if (!defaultOrgId) {
+            wasOrgCreated = true;
             console.log('Default Organization not found, creating it...');
             const newOrgId = uuidv4();
             const now = new Date().toISOString();
@@ -908,9 +926,11 @@ export const registerNewUser = async (email, password, firebaseApp) => {
         
         await set(ref(db, `users/${uid}`), userData);
         
-        // 6. Add user to Default Organization with Student role
-        console.log('Adding user to Default Organization:', { uid, defaultOrgId, role: 'Student' });
-        const addResult = await addUserToOrganization(uid, defaultOrgId, 'Student', firebaseApp);
+        // 6. Add user to Default Organization with appropriate role
+        // First user (who created the organization) gets Admin role, others get Student role
+        const userRole = wasOrgCreated ? 'Admin' : 'Student';
+        console.log('Adding user to Default Organization:', { uid, defaultOrgId, role: userRole });
+        const addResult = await addUserToOrganization(uid, defaultOrgId, userRole, firebaseApp);
         console.log('Add user result:', addResult);
         
         console.log('User registered successfully:', uid);

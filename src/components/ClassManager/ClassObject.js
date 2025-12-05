@@ -29,10 +29,10 @@ const ClassObject = (props) => {
     const rowCenterY = y + height * 0.5; // Vertical center of the row
     
     // Button dimensions - increased size
-    const switchButtonHeight = 45;
-    const switchButtonWidth = 200;
-    const deleteButtonHeight = 45;
-    const deleteButtonWidth = 200;
+    const switchButtonHeight = height * 0.8;
+    const switchButtonWidth = width * 0.15;
+    const deleteButtonHeight = height * 0.8;
+    const deleteButtonWidth = width * 0.15;
 
     return (
         <>
@@ -45,7 +45,7 @@ const ClassObject = (props) => {
                 style={new TextStyle({
                     align: 'left',
                     fontFamily: 'Arial',
-                    fontSize: 16,
+                    fontSize: width * 0.016,
                     fontWeight: 'normal',
                     fill: isCurrent ? [green] : [black],
                 })}
@@ -60,7 +60,7 @@ const ClassObject = (props) => {
                 style={new TextStyle({
                     align: 'left',
                     fontFamily: 'Arial',
-                    fontSize: 16,
+                    fontSize: width * 0.016,
                     fill: [black],
                 })}
             />
@@ -74,7 +74,7 @@ const ClassObject = (props) => {
                 style={new TextStyle({
                     align: 'center',
                     fontFamily: 'Arial',
-                    fontSize: 16,
+                    fontSize: width * 0.016,
                     fill: [black],
                 })}
             />
@@ -88,7 +88,7 @@ const ClassObject = (props) => {
                 style={new TextStyle({
                     align: 'center',
                     fontFamily: 'Arial',
-                    fontSize: 16,
+                    fontSize: width * 0.016,
                     fill: [black],
                 })}
             />
@@ -103,7 +103,7 @@ const ClassObject = (props) => {
                     style={new TextStyle({
                         align: 'center',
                         fontFamily: 'Arial',
-                        fontSize: 16,
+                        fontSize: width * 0.016,
                         fontWeight: 'bold',
                         fill: [green],
                     })}
@@ -115,7 +115,7 @@ const ClassObject = (props) => {
                     x={switchCenterX}
                     y={rowCenterY}
                     color={green}
-                    fontSize={14}
+                    fontSize={width * 0.013}
                     fontColor={white}
                     text="SWITCH"
                     fontWeight={800}
@@ -131,7 +131,7 @@ const ClassObject = (props) => {
                     x={deleteCenterX}
                     y={rowCenterY}
                     color={red}
-                    fontSize={14}
+                    fontSize={width * 0.013}
                     fontColor={white}
                     text={"DELETE"}
                     fontWeight={800}
