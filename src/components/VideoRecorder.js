@@ -1,17 +1,20 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
 import { useMachine } from "@xstate/react";
 import LevelPlayMachine from "./LevelPlayModule/LevelPlayMachine";
 import { getUserNameFromDatabase } from '../firebase/userDatabase';
 import { getGameNameByUUID, getLevelNameByUUID, getGameNameByLevelUUID, getCurricularDataByUUID, getCurrentOrgContext } from '../firebase/database';
+import { getUserSettings } from '../firebase/userSettings';
 import { storage, app } from '../firebase/init';
-import { ref, uploadBytes, getDownloadURL, getStorage } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL, getStorage } from 'firebase/storage';
 
-const VideoRecorder = ({ phase, curricularID, gameID }) => {
+const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
   const [currentPhase, setCurrentPhase] = useState(null);
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
   const streamRef = useRef(null);
   const recordingPhaseRef = useRef(null);
+  const recordedVideosRef = useRef([]); // Хранилище всех записанных видео
+  const isMountedRef = useRef(true);
   const [state, send] = useMachine(LevelPlayMachine);
 
   // Checking to ensure props were received
@@ -157,10 +160,51 @@ const VideoRecorder = ({ phase, curricularID, gameID }) => {
     return eventType.charAt(0).toUpperCase() + eventType.slice(1);
   };
 
-  // Upload the video to Firebase Storage
-  const uploadVideo = async (blob, filename, recordingPhase) => {
+  // Проверка доступности Firebase Storage
+  const checkStorageAvailability = () => {
     try {
-      console.log(`Uploading video for phase: ${recordingPhase}, filename: ${filename}`);
+      if (storage && typeof storage !== 'undefined') {
+        // Попробовать создать ref для проверки
+        const testRef = ref(storage, 'test');
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  };
+
+  // Функция скачивания видео на компьютер
+  const downloadVideoToComputer = (blob, filename) => {
+    try {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      console.log(`Video downloaded to computer: ${filename}`);
+    } catch (error) {
+      console.error('Error downloading video:', error);
+    }
+  };
+
+  // Upload the video to Firebase Storage или скачать локально
+  const uploadVideo = async (blob, filename, recordingPhase) => {
+    const isStorageAvailable = checkStorageAvailability();
+    
+    // Если Storage недоступен, скачиваем локально
+    if (!isStorageAvailable) {
+      console.log(`Storage not available, downloading video locally: ${filename}`);
+      downloadVideoToComputer(blob, filename);
+      return null;
+    }
+
+    try {
+      const fileSizeMB = (blob.size / 1024 / 1024).toFixed(2);
+      console.log(`Uploading video for phase: ${recordingPhase}, filename: ${filename}, size: ${fileSizeMB} MB`);
       
       // Убедиться, что storage инициализирован
       const storageInstance = storage || getStorage(app);
@@ -169,34 +213,102 @@ const VideoRecorder = ({ phase, curricularID, gameID }) => {
       }
       
       const videoRef = ref(storageInstance, `videos/${filename}`);
-      await uploadBytes(videoRef, blob);
-      const downloadURL = await getDownloadURL(videoRef);
-      console.log('Video uploaded successfully:', downloadURL);
-      return downloadURL;
+      
+      // Используем uploadBytesResumable для надежной загрузки с поддержкой возобновления
+      const uploadTask = uploadBytesResumable(videoRef, blob, {
+        contentType: 'video/mp4',
+        customMetadata: {
+          phase: recordingPhase || 'unknown',
+          uploadedAt: new Date().toISOString()
+        }
+      });
+
+      // Ожидаем завершения загрузки с обработкой прогресса
+      return new Promise((resolve, reject) => {
+        uploadTask.on(
+          'state_changed',
+          (snapshot) => {
+            // Отслеживание прогресса загрузки
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            console.log(`Upload progress: ${progress.toFixed(1)}%`);
+          },
+          (error) => {
+            // Обработка ошибок во время загрузки
+            console.error('Upload error:', error);
+            // Если загрузка не удалась, скачиваем локально
+            console.log('Upload failed, downloading locally instead');
+            downloadVideoToComputer(blob, filename);
+            reject(error);
+          },
+          async () => {
+            // Загрузка завершена успешно
+            try {
+              const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+              console.log('Video uploaded successfully:', downloadURL);
+              resolve(downloadURL);
+            } catch (error) {
+              console.error('Error getting download URL:', error);
+              // Если получение URL не удалось, скачиваем локально
+              downloadVideoToComputer(blob, filename);
+              reject(error);
+            }
+          }
+        );
+      });
     } catch (error) {
       console.error('Error uploading video:', error);
-      throw error; // Пробросить ошибку дальше для лучшей диагностики
+      // В случае ошибки скачиваем локально
+      downloadVideoToComputer(blob, filename);
+      throw error;
     }
   };
 
   const startRecording = async (recordingPhase) => {
+    // Проверяем настройки перед записью
+    const settings = await getUserSettings();
+    if (!settings?.videoRecording) {
+      console.log('Video recording disabled in settings');
+      return;
+    }
+
     recordedChunksRef.current = [];
-    // if (!streamRef.current) return;
+    
+    // Настройка getUserMedia с учетом audioRecording
+    const audioEnabled = settings?.audioRecording !== false;
     
     if (!streamRef.current) {
       try {
-        streamRef.current = await navigator.mediaDevices.getUserMedia({
+        const mediaConstraints = {
           video: true,
-          audio: {
+          audio: audioEnabled ? {
             echoCancellation: true,
             noiseSuppression: true
-          }
-        });
+          } : false
+        };
+        
+        streamRef.current = await navigator.mediaDevices.getUserMedia(mediaConstraints);
         console.log("Audio tracks is included:", streamRef.current.getAudioTracks().length > 0);
+        console.log(`Recording with audio: ${audioEnabled}`);
       } catch (error) {
-        console.error("Audio device access failed. Only video is recorded", error);
-        // If audio access fails, record video only
-        streamRef.current = await navigator.mediaDevices.getUserMedia({ video: true });
+        console.error("Media device access failed:", error);
+        // Если доступ к аудио не удался, пробуем только видео
+        if (audioEnabled) {
+          try {
+            streamRef.current = await navigator.mediaDevices.getUserMedia({ video: true });
+            console.log("Falling back to video-only recording");
+          } catch (videoError) {
+            console.error("Video device access also failed:", videoError);
+            return;
+          }
+        } else {
+          // Если аудио отключено в настройках, просто записываем видео
+          try {
+            streamRef.current = await navigator.mediaDevices.getUserMedia({ video: true });
+          } catch (videoError) {
+            console.error("Video device access failed:", videoError);
+            return;
+          }
+        }
       }
     }
 
@@ -217,8 +329,13 @@ const VideoRecorder = ({ phase, curricularID, gameID }) => {
       // Use the phase that was active when recording started
       const recordingPhaseValue = recordingPhase;
       
-      // Stop the recording, get metadata, and upload the video
+      // Stop the recording, get metadata, and upload/download the video
       mediaRecorderRef.current.onstop = async () => {
+        if (!isMountedRef.current) {
+          console.warn('Component unmounted, skipping video processing');
+          return;
+        }
+
         console.log(`Recording stopped for phase: ${recordingPhaseValue}`);
         if (recordedChunksRef.current.length === 0) {
           console.warn('No recorded chunks available');
@@ -232,11 +349,6 @@ const VideoRecorder = ({ phase, curricularID, gameID }) => {
           const currentDate = new Date();
           const formattedDate = `${currentDate.getFullYear()}${(currentDate.getMonth() + 1)
             .toString().padStart(2, "0")}${currentDate.getDate().toString().padStart(2, "0")}_${currentDate.getHours().toString().padStart(2, "0")}h${currentDate.getMinutes().toString().padStart(2, "0")}m${currentDate.getSeconds().toString().padStart(2, "0")}s`;
-            // .padStart(2, "0")}${currentDate
-            // .getDate()
-            // .toString()
-            // .padStart(2, "0")}${currentDate.getFullYear().toString().slice(-2)}`;
-            // .padStart(2, "0")}${currentDate.getDate().toString().padStart(2, "0")}`;
             
           const username = await getUserNameFromDatabase();
           const participantID = username ? username.padStart(3, '0') : '000';
@@ -255,13 +367,36 @@ const VideoRecorder = ({ phase, curricularID, gameID }) => {
           console.log('Generated filename:', filename);
           console.log('Using event type:', eventType, 'from recording phase:', recordingPhaseValue);
           
-          // Pass the recording phase along with the upload for logging
+          // Сохраняем видео в массив для последующего скачивания
+          const videoData = {
+            blob,
+            filename,
+            phase: recordingPhaseValue,
+            timestamp: Date.now()
+          };
+          recordedVideosRef.current.push(videoData);
+          
+          // Загружаем или скачиваем видео (uploadVideo сам решит, что делать)
           await uploadVideo(blob, filename, recordingPhaseValue);
           
         } catch (error) {
           console.error('Error generating filename or uploading video:', error);
           const fallbackFilename = `video_${new Date().getTime()}_${recordingPhaseValue || 'unknown'}.mp4`;
-          await uploadVideo(blob, fallbackFilename, recordingPhaseValue || 'unknown');
+          
+          // Сохраняем с fallback именем
+          const videoData = {
+            blob,
+            filename: fallbackFilename,
+            phase: recordingPhaseValue,
+            timestamp: Date.now()
+          };
+          recordedVideosRef.current.push(videoData);
+          
+          try {
+            await uploadVideo(blob, fallbackFilename, recordingPhaseValue || 'unknown');
+          } catch (fallbackError) {
+            console.error('Fallback upload also failed:', fallbackError);
+          }
         }
       };
       
@@ -272,8 +407,75 @@ const VideoRecorder = ({ phase, curricularID, gameID }) => {
     }
   };
 
+  // Функция для скачивания всех записанных видео
+  const downloadAllRecordedVideos = async () => {
+    if (!isMountedRef.current) {
+      console.warn('Component unmounted, cannot download videos');
+      return;
+    }
+
+    const videos = recordedVideosRef.current;
+    if (videos.length === 0) {
+      console.log('No videos recorded to download');
+      return;
+    }
+
+    console.log(`Downloading ${videos.length} recorded video(s)...`);
+    const isStorageAvailable = checkStorageAvailability();
+    
+    for (const video of videos) {
+      if (isStorageAvailable) {
+        try {
+          await uploadVideo(video.blob, video.filename, video.phase);
+        } catch (error) {
+          console.error(`Failed to upload ${video.filename}, downloading locally:`, error);
+          downloadVideoToComputer(video.blob, video.filename);
+        }
+      } else {
+        downloadVideoToComputer(video.blob, video.filename);
+      }
+    }
+    
+    console.log('All videos processed');
+  };
+
+  // Экспортируем методы через ref
+  useImperativeHandle(ref, () => ({
+    downloadAllVideos: downloadAllRecordedVideos,
+    getRecordedVideos: () => recordedVideosRef.current
+  }));
+
+  // Cleanup при размонтировании - скачиваем все видео
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      
+      // Скачиваем все видео при размонтировании
+      if (recordedVideosRef.current.length > 0) {
+        console.log('Component unmounting, downloading all recorded videos...');
+        downloadAllRecordedVideos();
+      }
+      
+      // Останавливаем запись
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        try {
+          mediaRecorderRef.current.stop();
+        } catch (e) {
+          console.warn('Error stopping recorder on unmount:', e);
+        }
+      }
+      
+      // Останавливаем стрим
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, []);
+
   // This component does not render any UI
   return null;
-};
+});
+
+VideoRecorder.displayName = 'VideoRecorder';
 
 export default VideoRecorder;

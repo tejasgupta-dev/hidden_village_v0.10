@@ -108,18 +108,12 @@ const AssignStudentsModule = ({ width, height, firebaseApp, onBack }) => {
       // Load users in organization
       const orgUsers = await getUsersByOrganizationFromDatabase(orgId, firebaseApp);
       
-      // Filter out Admin and Developer roles - only show Students and Teachers
-      const filteredUsers = orgUsers.filter(user => {
-        const userRole = user.roleInOrg || user.userRole || 'Member';
-        return userRole === 'Student' || userRole === 'Teacher';
-      });
-      
       // Check again if component is still mounted before updating state
       if (!isMountedRef.current) return;
       
       if (isMountedRef.current) {
         setClasses(classList);
-        setUsers(filteredUsers);
+        setUsers(orgUsers);
         setLoading(false);
       }
     } catch (error) {

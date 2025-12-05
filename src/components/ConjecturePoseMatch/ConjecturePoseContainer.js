@@ -11,6 +11,7 @@ import {
   endSession,
   getCurrentOrgContext
 } from "../../firebase/database.js";
+import { getUserSettings } from "../../firebase/userSettings.js";
 
 const ConjecturePoseContainer = (props) => {
     const {
@@ -45,35 +46,47 @@ const ConjecturePoseContainer = (props) => {
         const isRecording = "true";
         
         if (isRecording === "true") {
-          // FRAMERATE CAN BE CHANGED HERE
-          const frameRate = 12;
-
           let autoFlushId;
+          let frameRate = 12; // Default value
+          
+          // Load FPS from user settings
+          const loadFrameRate = async () => {
+            try {
+              const settings = await getUserSettings();
+              if (settings && settings.fps) {
+                frameRate = Math.max(1, Math.min(30, parseInt(settings.fps, 10) || 12));
+              }
+            } catch (e) {
+              console.error("Failed to load FPS settings, using default:", e);
+            }
+            return frameRate;
+          };
           
           // Initialize session with static data once
-          const setupSession = async () => {
+          const setupSession = async (fps) => {
             const { orgId } = await getCurrentOrgContext();
-            await initializeSession(gameID, frameRate, UUID, orgId);
+            await initializeSession(gameID, fps, UUID, orgId);
             
             // Start auto-flush with hybrid strategy - now passes UUID and orgId
             autoFlushId = startSmartAutoFlush(gameID, UUID, orgId, {
               maxBufferSize: 100,      
               flushIntervalMs: 7500,  
               minBufferSize: 10,       
-              frameRate: frameRate    
+              frameRate: fps    
             });
           };
 
           // Initialize the session and wait for it to complete
           const initializeAndStart = async () => {
-            await setupSession();
+            const fps = await loadFrameRate();
+            await setupSession(fps);
             
             // Create interval to buffer pose data (much lighter than before)
             const intervalId = setInterval(async () => {
               // Buffer the pose data - now passes UUID, frameRate, and orgId
               const { orgId } = await getCurrentOrgContext();
-              bufferPoseDataWithAutoFlush(poseData, gameID, UUID, frameRate, orgId);
-            }, 1000 / frameRate);
+              bufferPoseDataWithAutoFlush(poseData, gameID, UUID, fps, orgId);
+            }, 1000 / fps);
             
             // Return cleanup function
             return async () => {
@@ -87,7 +100,7 @@ const ConjecturePoseContainer = (props) => {
               
               // End session - now passes UUID, frameRate, and orgId
               const { orgId } = await getCurrentOrgContext();
-              await endSession(gameID, UUID, frameRate, orgId);
+              await endSession(gameID, UUID, fps, orgId);
             };
           };
 
@@ -104,7 +117,7 @@ const ConjecturePoseContainer = (props) => {
             }
           };
         } 
-    }, [gameID, UUID]); // Added UUID to dependencies since it's used in setup
+    }, [gameID, UUID, poseData]); // Added poseData to dependencies
 
     // Use background and graphics to draw background and then initiate conjecturePoseMatch
     return (

@@ -33,6 +33,8 @@ const ExperimentalTask = (props) => {
     stageType, 
     height,
     width,
+    question,
+    correctAnswer,
   } = props;
 
   const isIntuition = stageType === "intuition";
@@ -117,8 +119,12 @@ const ExperimentalTask = (props) => {
           clearTimeout(hoverTimerRef.current);
           hoverTimerRef.current = null;
         }
+        // Record timeout as answer
+        if (gameID && isIntuition) {
+          writeToDatabaseTFAnswer('TIMEOUT', correctAnswer || null, gameID, question || '').catch(console.error);
+        }
         onCompleteRef.current();
-      }, 10000);
+      }, cursorTimer || 10000);
       
       return () => {
         if (autoTimerRef.current) {
@@ -126,7 +132,7 @@ const ExperimentalTask = (props) => {
           autoTimerRef.current = null;
         }
       };
-    }, []);
+    }, [cursorTimer, gameID, isIntuition, correctAnswer, question]);
   
     useEffect(() => {
       const rightTip = poseData?.rightHandLandmarks?.[8];
@@ -179,6 +185,12 @@ const ExperimentalTask = (props) => {
           clearTimeout(autoTimerRef.current);
           autoTimerRef.current = null;
         }
+        // Map hoveredBox to answer (TRUE/FALSE)
+        const selectedAnswer = hoveredBox === 'left' ? 'TRUE' : 'FALSE';
+        // Write answer to database
+        if (gameID && isIntuition) {
+          writeToDatabaseTFAnswer(selectedAnswer, correctAnswer || null, gameID, question || '').catch(console.error);
+        }
         onCompleteRef.current();
       }, 2000);
       
@@ -191,7 +203,7 @@ const ExperimentalTask = (props) => {
         hoverTimerRef.current = null;
         setHoverTime(0);
       };
-    }, [hoveredBox]);
+    }, [hoveredBox, gameID, isIntuition, correctAnswer, question]);
 
 
     return (

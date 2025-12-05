@@ -1,5 +1,5 @@
 import { useMachine } from '@xstate/react';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 
 import VideoRecorder from '../VideoRecorder';
 import Chapter from '../Chapter';
@@ -10,8 +10,16 @@ import Tween from '../Tween';
 import LevelPlayMachine from './LevelPlayMachine';
 import {
   getConjectureDataByUUIDWithCurrentOrg,
+  writeToDatabaseTweenStart,
+  writeToDatabaseTweenEnd,
+  writeToDatabasePoseMatchingStart,
+  writeToDatabasePoseMatchingEnd,
   writeToDatabaseIntuitionStart,
   writeToDatabaseIntuitionEnd,
+  writeToDatabaseMCQStart,
+  writeToDatabaseMCQEnd,
+  writeToDatabaseOutroStart,
+  writeToDatabaseOutroEnd,
 } from '../../firebase/database';
 import { getUserSettings } from '../../firebase/userSettings';
 import NewStage from '../NewStage';
@@ -50,6 +58,7 @@ export default function LevelPlay(props) {
   const [tolerances, setTolerances] = useState([]);
   const [expText, setExpText] = useState('');
   const [settings, setSettings] = useState(null);
+  const prevStateRef = React.useRef('introDialogue');
   const tweenDuration = 2000;
   const tweenLoopCount = 2;
 
@@ -82,14 +91,53 @@ export default function LevelPlay(props) {
       .catch(console.error);
   }, [UUID]);
 
+  /* ---------- phase event tracking ---------- */
+  useEffect(() => {
+    if (!gameID) return;
+
+    if (state.value === 'tween') {
+      writeToDatabaseTweenStart(gameID).catch(console.error);
+    } else if (state.value === 'poseMatching') {
+      writeToDatabasePoseMatchingStart(gameID).catch(console.error);
+    } else if (state.value === 'intuition' && conjectureData) {
+      const textBoxes = conjectureData[UUID]['Text Boxes'];
+      const desc = textBoxes['Intuition Description'] || textBoxes['Conjecture Description'] || '';
+      writeToDatabaseIntuitionStart(gameID, desc).catch(console.error);
+    } else if (state.value === 'mcq' && conjectureData) {
+      const question = conjectureData[UUID]['Text Boxes']['MCQ Question'] || '';
+      writeToDatabaseMCQStart(gameID, question).catch(console.error);
+    } else if (state.value === 'outroDialogue') {
+      writeToDatabaseOutroStart(gameID).catch(console.error);
+    }
+  }, [state.value, gameID, conjectureData, UUID]);
+
+  /* ---------- phase end event tracking ---------- */
+  useEffect(() => {
+    if (!gameID) return;
+
+    // Track previous state to detect transitions
+    if (prevStateRef.current === 'tween' && state.value !== 'tween') {
+      writeToDatabaseTweenEnd(gameID).catch(console.error);
+    } else if (prevStateRef.current === 'poseMatching' && state.value !== 'poseMatching') {
+      writeToDatabasePoseMatchingEnd(gameID).catch(console.error);
+    } else if (prevStateRef.current === 'mcq' && state.value !== 'mcq') {
+      writeToDatabaseMCQEnd(gameID).catch(console.error);
+    } else if (prevStateRef.current === 'outroDialogue' && state.value !== 'outroDialogue') {
+      writeToDatabaseOutroEnd(gameID).catch(console.error);
+    }
+
+    prevStateRef.current = state.value;
+  }, [state.value, gameID]);
+
   /* ---------- experimental prompt ---------- */
   useEffect(() => {
     if (!conjectureData) return;
-    const desc = conjectureData[UUID]['Text Boxes']['Conjecture Description'];
+    const textBoxes = conjectureData[UUID]['Text Boxes'];
+    // Use Intuition Description if available, fallback to Conjecture Description for backward compatibility
+    const desc = textBoxes['Intuition Description'] || textBoxes['Conjecture Description'] || '';
 
     if (state.value === 'intuition') {
-      setExpText(`Read aloud:\n\n${desc}\n\nSay aloud if it is TRUE or FALSE?`);
-      writeToDatabaseIntuitionStart(gameID).catch(console.error);
+      setExpText(`${desc}\nDo you think this is TRUE or FALSE?`);
     } else if (state.value === 'insight') {
       setExpText(`Now explain WHY you think:\n\n${desc}\n\n is TRUE or FALSE?`);
       writeToDatabaseIntuitionEnd(gameID).catch(console.error);
@@ -152,10 +200,31 @@ export default function LevelPlay(props) {
       }
       // If we're at the outro, finish the level immediately
       if (state.value === 'outroDialogue') {
+        // Скачать все видео перед завершением
+        if (videoRecorderRef.current?.downloadAllVideos) {
+          videoRecorderRef.current.downloadAllVideos();
+        }
         onLevelComplete?.();
       }
     }
   }, [settings, state.value, currentConjectureIdx, markIntroShown, send, onLevelComplete]);
+
+  // Скачивание видео при завершении уровня (outroDialogue)
+  useEffect(() => {
+    if (state.value === 'outroDialogue' && onLevelComplete) {
+      // Скачать все видео перед завершением
+      const downloadVideos = async () => {
+        if (videoRecorderRef.current?.downloadAllVideos) {
+          try {
+            await videoRecorderRef.current.downloadAllVideos();
+          } catch (error) {
+            console.error('Error downloading videos:', error);
+          }
+        }
+      };
+      downloadVideos();
+    }
+  }, [state.value, onLevelComplete]);
   
   // Only show story/dialogue content if settings.story is true
   return (
@@ -193,7 +262,12 @@ export default function LevelPlay(props) {
           VIDEO RECORDING IS ONLY RETAINED FOR THE STATES MENTIONED BELOW.
           SIMPLY ADD THE STATE NAME TO ENABLE RECORDING FOR THAT PHASE */}
       {(['tween','poseMatching', 'intuition', 'insight'].includes(state.value)) && (
-        <VideoRecorder phase={state.value} curricularID={UUID} gameID={gameID} />
+        <VideoRecorder 
+          ref={videoRecorderRef}
+          phase={state.value} 
+          curricularID={UUID} 
+          gameID={gameID} 
+        />
       )}
 
       
@@ -229,7 +303,7 @@ export default function LevelPlay(props) {
       )}
 
       {/* Intuition / Insight */}
-      {state.value === 'intuition' && (
+      {state.value === 'intuition' && conjectureData && (
         <ExperimentalTask
           width={width}
           height={height}
@@ -242,6 +316,15 @@ export default function LevelPlay(props) {
           cursorTimer={debugMode ? 1000 : 10000}
           gameID={gameID}
           stageType="intuition"
+          question={(() => {
+            const textBoxes = conjectureData[UUID]['Text Boxes'];
+            return textBoxes['Intuition Description'] || textBoxes['Conjecture Description'] || '';
+          })()}
+          correctAnswer={(() => {
+            const textBoxes = conjectureData[UUID]['Text Boxes'];
+            const answer = textBoxes['Intuition Correct Answer'];
+            return answer === 'TRUE' || answer === 'FALSE' ? answer : null;
+          })()}
         />
       )}
       {state.value === 'insight' && (
@@ -275,15 +358,22 @@ export default function LevelPlay(props) {
           gameID={gameID}
         />
       )} */}
-      {state.value === 'mcq' && (
-        <NewStage
+      {state.value === 'mcq' && conjectureData && (
+        <NewStage  
           width={width}
           height={height}
           onComplete={handleNext}
           gameID={gameID}
           poseData={poseData}
           columnDimensions={columnDimensions}
-          question="How many sides does a triangle have?"
+          question={conjectureData[UUID]['Text Boxes']['MCQ Question'] || 'What is the answer?'}
+          mcqChoices={{
+            A: conjectureData[UUID]['Text Boxes']['Multiple Choice 1'] || 'Choice A',
+            B: conjectureData[UUID]['Text Boxes']['Multiple Choice 2'] || 'Choice B',
+            C: conjectureData[UUID]['Text Boxes']['Multiple Choice 3'] || 'Choice C',
+            D: conjectureData[UUID]['Text Boxes']['Multiple Choice 4'] || 'Choice D',
+          }}
+          correctAnswer={conjectureData[UUID]['Text Boxes']['Correct Answer'] || 'A'}
         />
       )}
 
@@ -298,7 +388,15 @@ export default function LevelPlay(props) {
           height={height}
           chapterConjecture={conjectureData[UUID]}
           currentConjectureIdx={currentConjectureIdx}
-         nextChapterCallback={() => {
+         nextChapterCallback={async () => {
+          // Скачать все видео перед завершением уровня
+          if (videoRecorderRef.current?.downloadAllVideos) {
+            try {
+              await videoRecorderRef.current.downloadAllVideos();
+            } catch (error) {
+              console.error('Error downloading videos:', error);
+            }
+          }
           // tell parent to advance the level...
           onLevelComplete();
         }}          isOutro={true}

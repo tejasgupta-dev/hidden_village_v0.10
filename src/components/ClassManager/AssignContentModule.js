@@ -39,6 +39,7 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
   const [classCurrentPage, setClassCurrentPage] = useState(0);
   const [assignedGameSearchTerm, setAssignedGameSearchTerm] = useState('');
   const [assignedGameCurrentPage, setAssignedGameCurrentPage] = useState(0);
+  const [showPublic, setShowPublic] = useState(false);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -47,7 +48,7 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
     return () => {
       isMountedRef.current = false;
     };
-  }, []);
+  }, [showPublic]);
 
   const loadData = async () => {
     try {
@@ -97,18 +98,15 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
         classList = [];
       }
       
-      // Load user's games (only games created by current user)
-      const allGames = await getCurricularListWithCurrentOrg(false, true);
-      const userGames = allGames ? allGames.filter(game => {
-        return game.AuthorID === currentUser.uid;
-      }) : [];
+      // Load all games from organization (and public games from other orgs if showPublic is true)
+      const allGames = await getCurricularListWithCurrentOrg(false, showPublic);
       
       // Check again if component is still mounted before updating state
       if (!isMountedRef.current) return;
       
       if (isMountedRef.current) {
         setClasses(classList);
-        setGames(userGames);
+        setGames(allGames || []);
         setLoading(false);
       }
     } catch (error) {
@@ -152,9 +150,13 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
         assignedGameIds.forEach(gameId => allAssignedGameIds.add(gameId));
       }
       
+      // Load ALL games (including public from other orgs) to find assigned games
+      // This ensures all assigned games are shown regardless of showPublic filter
+      const allGames = await getCurricularListWithCurrentOrg(false, true);
+      
       // Convert Set to Array and get full game info
       const assignedGameIds = Array.from(allAssignedGameIds);
-      const assignedGamesList = games.filter(game => assignedGameIds.includes(game.UUID));
+      const assignedGamesList = (allGames || []).filter(game => assignedGameIds.includes(game.UUID));
       
       // console.log(`Found ${assignedGamesList.length} unique games across ${classIds.length} classes`); // Remove unnecessary log
       if (isMountedRef.current) {
@@ -213,6 +215,11 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
     const assignedGameIds = new Set(assignedGames.map(game => game.UUID));
     
     return games.filter(game => {
+      // Filter by public/private - if showPublic is false, hide public games from other orgs
+      if (!showPublic && game._isFromOtherOrg === true) {
+        return false;
+      }
+      
       // Exclude games already assigned to selected classes
       if (selectedClasses.length > 0 && assignedGameIds.has(game.UUID)) {
         return false;
@@ -341,9 +348,10 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
   const classesContainerX = width * 0.4;
   const assignedGamesContainerX = width * 0.7;
   const headerHeight = height * 0.04;
+  const filterButtonHeight = height * 0.04;
   const searchHeight = height * 0.03;
   const itemHeight = height * 0.037;
-  const availableHeight = containerHeight - headerHeight - searchHeight;
+  const availableHeight = containerHeight - headerHeight - filterButtonHeight - searchHeight - 15;
   const itemsPerContainer = Math.max(1, Math.floor(availableHeight / itemHeight));
 
   return (
@@ -403,6 +411,20 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
         })}
       />
       
+      {/* Public Filter Button */}
+      <RectButton
+        height={height * 0.04}
+        width={containerWidth * 0.85}
+        x={gamesContainerX + containerWidth * 0.05}
+        y={containerY + headerHeight + height * 0.04}
+        color={showPublic ? green : white}
+        fontSize={width * 0.007}
+        fontColor={showPublic ? white : black}
+        text={showPublic ? "SHOW PUBLIC: YES" : "SHOW PUBLIC: NO"}
+        fontWeight={600}
+        callback={() => setShowPublic(!showPublic)}
+      />
+      
       {/* Game Search */}
       <RectButton
         height={25}
@@ -430,7 +452,7 @@ const AssignContentModule = ({ width, height, firebaseApp, onBack }) => {
           height={itemHeight - 5}
           width={containerWidth * 0.9}
           x={gamesContainerX + containerWidth * 0.05}
-          y={containerY + headerHeight + searchHeight + 5 + (index * itemHeight)}
+          y={containerY + headerHeight + filterButtonHeight + searchHeight + 10 + (index * itemHeight)}
           color={selectedGames.includes(game.UUID) ? green : blue}
           fontSize={width * 0.009}
           fontColor={white}

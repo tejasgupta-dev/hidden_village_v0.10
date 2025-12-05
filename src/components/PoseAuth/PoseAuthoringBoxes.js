@@ -550,7 +550,7 @@ export const EndBox = (props) => {
         {localStorage.getItem('End Tolerance') !== null && (
           <Text
           text={localStorage.getItem('End Tolerance')}
-          x={props.width * 0.8}
+          x={props.width * 1.33}
           y={props.height * 0.955}
           style={
             new TextStyle({

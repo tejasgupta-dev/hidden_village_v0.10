@@ -3,6 +3,7 @@ import { Graphics, Text } from "@inlet/react-pixi";
 import { TextStyle } from "@pixi/text";
 import { yellow, blue, green, white, red, black } from "../../utils/colors";
 import InputBox from "../InputBox";
+import Button from "../Button";
 import { getEditLevel } from './ConjectureModule';
 import { sanitizeValue } from "../../utils/sanitize";
 
@@ -22,7 +23,9 @@ function createInputBox(charLimit, scaleFactor, widthMultiplier, xMultiplier, yM
     'Conjecture Name':       'Enter level name…',
     'Author Name':           'Author',
     'PIN':                   '4-digit PIN',
-    'Conjecture Description':'Add a short description…',
+    'Intuition Description':'Add description for intuition stage…',
+    'Intuition Correct Answer': 'Select TRUE or FALSE',
+    'MCQ Question':          'Add question for MCQ stage…',
     'Conjecture Keywords':   'keyword1, keyword2',
     'Multiple Choice 1':     'Choice A',
     'Multiple Choice 2':     'Choice B',
@@ -102,15 +105,22 @@ export const NameBox = (props) => {
       {createInputBox(220, 0.19, 1.595, 0.134, 0.84, 'Multiple Choice 4', width, height, handleBoxInput)}
       {createInputBox(60, 0.10, 0.54, 0.143+ 0.062, 0.136-.050, 'Conjecture Name', width, height, handleBoxInput)}
       {createInputBox(220, 0.10, .3, 0.46+ 0.062, 0.136-.050, 'Author Name', width, height, null, true, username)}
-      {createInputBox(220, 0.30, 1.595, 0.134, 0.175-.050, 'Conjecture Description', width, height, handleBoxInput)}
-      {createInputBox(220, 0.10, 1.268, 0.203 + 0.062, 0.295-.050, 'Conjecture Keywords', width, height, handleBoxInput)}
+      {/* KEYWORDS box: positioned right below NAME/AUTHOR/PIN boxes with small gap (0.5cm ≈ 0.018) */}
+      {createInputBox(220, 0.10, 1.268, 0.203 + 0.062, 0.158, 'Conjecture Keywords', width, height, handleBoxInput)}
+      {/* Intuition box: 1cm gap after keywords box (0.035) */}
+      {createInputBox(220, 0.15, 1.0, 0.134, 0.200, 'Intuition Description', width, height, handleBoxInput)}
+      {/* MCQ box: 1cm gap after intuition box (0.035) */}
+      {createInputBox(220, 0.15, 1.595, 0.134, 0.260, 'MCQ Question', width, height, handleBoxInput)}
+      {/* Intuition Correct Answer buttons - positioned to the right of Intuition Description */}
+      <IntuitionCorrectAnswerBox height={height} width={width} />
 
       {/* text, xMultiplier, yMultiplier, fontSizeMultiplier, totalWidth, totalHeight, color */}
-      {createTextElement("KEYWORDS:", 0.137+ 0.062, 0.315-0.05, 0.018, width, height)}
+      {/* KEYWORDS label: positioned above keywords box */}
+      {createTextElement("KEYWORDS:", 0.137+ 0.065, 0.184, 0.018, width, height)}
       {createTextElement("PIN:", 0.605+ 0.062, 0.155-0.05, 0.018, width, height)}
       {createTextElement("AUTHOR:", 0.41+ 0.062, 0.155-0.05, 0.018, width, height)}
-      {createTextElement("CURRENT M-CLIP:", 0.45, 0.305, 0.018, width, height)}
-      {createTextElement("MULTIPLE CHOICE", 0.45, 0.533, 0.018, width, height)}
+      {/* CURRENT M-CLIP moved down below MCQ box to avoid hitbox overlap */}
+      {createTextElement("CURRENT M-CLIP:", 0.45, 0.35, 0.018, width, height)}
       {createTextElement(titleText, 0.45, 0.05, 0.025, width, height)}
       {createTextElement("NAME:", 0.108+ 0.062, 0.155-0.05, 0.018, width, height)}
 
@@ -236,6 +246,67 @@ export const PublicCheckbox = (props) => {
         fontColor={isPublic ? white : black}
         fontWeight={600}
         callback={togglePublic}
+      />
+    </>
+  );
+}
+
+export const IntuitionCorrectAnswerBox = (props) => {
+  const { height, width } = props;
+  const [correctAnswer, setCorrectAnswer] = useState(
+    localStorage.getItem('Intuition Correct Answer') || null
+  );
+  const [, setRefresh] = useState(0);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('Intuition Correct Answer');
+    setCorrectAnswer(stored);
+  }, []);
+
+  function handleAnswerSelect(answer) {
+    if (!getEditLevel()) return;
+    
+    localStorage.setItem('Intuition Correct Answer', answer);
+    setCorrectAnswer(answer);
+    setRefresh((n) => n + 1);
+  }
+
+  return (
+    <>
+      <Text
+        x={width * 0.538}
+        y={height * 0.200}
+        text="CORRECT:"
+        style={new TextStyle({
+          fontFamily: 'Arial',
+          fontSize: width * 0.012,
+          fontWeight: 600,
+          fill: [black],
+        })}
+      />
+      <Button
+        height={height * 0.03}
+        width={width * 0.03}
+        x={width * 0.62}
+        y={height * 0.23}
+        color={correctAnswer === 'TRUE' ? green : blue}
+        fontSize={width * 0.007}
+        fontColor={correctAnswer === 'TRUE' ? black : white}
+        text={correctAnswer === 'TRUE' ? 'TRUE ✓' : 'TRUE'}
+        fontWeight={100}
+        callback={() => handleAnswerSelect('TRUE')}
+      />
+      <Button
+        height={height * 0.03}
+        width={width * 0.03}
+        x={width * 0.65}
+        y={height * 0.23}
+        color={correctAnswer === 'FALSE' ? green : blue}
+        fontSize={width * 0.007}
+        fontColor={correctAnswer === 'FALSE' ? black : white}
+        text={correctAnswer === 'FALSE' ? 'FALSE ✓' : 'FALSE'}
+        fontWeight={100}
+        callback={() => handleAnswerSelect('FALSE')}
       />
     </>
   );

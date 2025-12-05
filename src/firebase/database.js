@@ -85,7 +85,10 @@ export const keysToPush = [
   "Author Name",
   "PIN",
   "Conjecture Keywords",
-  "Conjecture Description",
+  "Intuition Description",
+  "Intuition Correct Answer",
+  "MCQ Question",
+  "Conjecture Description", // Kept for backward compatibility
   "Multiple Choice 1",
   "Multiple Choice 2",
   "Multiple Choice 3",
@@ -147,7 +150,6 @@ export const initializeSession = async (gameId, frameRate, UUID, orgId) => {
     frameRate,
     loginTime,
     sessionStartTime: timestampGMT,
-    sessionStartUnix: unixTimestamp,
   };
   
   // Store session metadata once
@@ -240,6 +242,13 @@ export const flushFrameBuffer = async (gameId, UUID, frameRate = 12, orgId, targ
 // Check for event type change and flush if needed
 const checkEventTypeChange = async (gameId, UUID, frameRate = 12, orgId) => {
   if (eventType !== lastEventType && frameBuffer.length > 0) {
+    // Check if session is initialized before flushing
+    const sessionKey = getSessionKey(userId, deviceSlug, loginTime, UUID);
+    if (!initializedSessions.has(sessionKey)) {
+      console.warn(`Cannot flush buffer: Session not initialized yet. Event type changed from ${lastEventType} to ${eventType}`);
+      return false;
+    }
+    
     console.log(`Event type changed from ${lastEventType} to ${eventType}, flushing buffer`);
     await flushFrameBuffer(gameId, UUID, frameRate, orgId);
     return true;
@@ -291,6 +300,13 @@ export const bufferPoseDataWithAutoFlush = async (poseData, gameId, UUID, frameR
   
   // Immediate flush if buffer is getting too big (uses MAX_BUFFER_SIZE)
   if (frameBuffer.length >= MAX_BUFFER_SIZE) {
+    // Check if session is initialized before flushing
+    const sessionKey = getSessionKey(userId, deviceSlug, loginTime, UUID);
+    if (!initializedSessions.has(sessionKey)) {
+      console.warn(`Cannot flush buffer: Session not initialized yet. Buffer size: ${frameBuffer.length}`);
+      return;
+    }
+    
     console.log('Buffer size limit reached, flushing immediately');
     await flushFrameBuffer(gameId, UUID, frameRate, orgId);
   }
@@ -1596,7 +1612,6 @@ export const writeToDatabaseNewSession = async (CurrId, CurrName, role) => {
     // TODO: Uncomment line below to also store ISO format timestamp
     // set(ref(db, `${sessionRoot}/GameStart`), timestamp),
     set(ref(db, `${sessionRoot}/GameStartGMT`), timestampGMT),
-    set(ref(db, `${sessionRoot}/GameStartUnix`), unixTimestamp),
     set(ref(db, `${sessionRoot}/GameMode`), gameMode),
     set(ref(db, `${sessionRoot}/DaRep`), 'null'),
     set(ref(db, `${sessionRoot}/Hints/HintEnabled`), "null"),
@@ -1655,8 +1670,84 @@ export const writeToDatabasePoseMatch = async (poseNumber, gameId) => {
   await Promise.all(promises);
 };
 
+// Write in the start of the pose matching phase
+export const writeToDatabasePoseMatchingStart = async (gameId) => {
+  // Create a new date object to get a timestamp
+  const dateObj = new Date();
+  const timestamp = dateObj.toISOString();
+  const timestampGMT = dateObj.toUTCString();
+
+  // UPDATED: include device layer
+  const userSession = `_GameData/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${conjectureId}`;
+
+  // Create an object to send to the database
+  const promises = [
+    set(ref(db, `${userSession}/Pose Matching Start GMT`), timestampGMT),
+  ];
+
+  // Return the promise that push() returns
+  await Promise.all(promises);
+};
+
+// Write in the end of the pose matching phase
+export const writeToDatabasePoseMatchingEnd = async (gameId) => {
+  // Create a new date object to get a timestamp
+  const dateObj = new Date();
+  const timestamp = dateObj.toISOString();
+  const timestampGMT = dateObj.toUTCString();
+
+  // UPDATED: include device layer
+  const userSession = `_GameData/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${conjectureId}`;
+
+  // Create an object to send to the database
+  const promises = [
+    set(ref(db, `${userSession}/Pose Matching End GMT`), timestampGMT),
+  ];
+
+  // Return the promise that push() returns
+  await Promise.all(promises);
+};
+
+// Write in the start of the tween phase
+export const writeToDatabaseTweenStart = async (gameId) => {
+  // Create a new date object to get a timestamp
+  const dateObj = new Date();
+  const timestamp = dateObj.toISOString();
+  const timestampGMT = dateObj.toUTCString();
+
+  // UPDATED: include device layer
+  const userSession = `_GameData/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${conjectureId}`;
+
+  // Create an object to send to the database
+  const promises = [
+    set(ref(db, `${userSession}/Tween Start GMT`), timestampGMT),
+  ];
+
+  // Return the promise that push() returns
+  await Promise.all(promises);
+};
+
+// Write in the end of the tween phase
+export const writeToDatabaseTweenEnd = async (gameId) => {
+  // Create a new date object to get a timestamp
+  const dateObj = new Date();
+  const timestamp = dateObj.toISOString();
+  const timestampGMT = dateObj.toUTCString();
+
+  // UPDATED: include device layer
+  const userSession = `_GameData/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${conjectureId}`;
+
+  // Create an object to send to the database
+  const promises = [
+    set(ref(db, `${userSession}/Tween End GMT`), timestampGMT),
+  ];
+
+  // Return the promise that push() returns
+  await Promise.all(promises);
+};
+
 // Write in the start of the truefalse phase
-export const writeToDatabaseIntuitionStart = async (gameId) => {
+export const writeToDatabaseIntuitionStart = async (gameId, question) => {
   // Create a new date object to get a timestamp
   const dateObj = new Date();
   const timestamp = dateObj.toISOString();
@@ -1696,6 +1787,7 @@ export const writeToDatabaseIntuitionStart = async (gameId) => {
     // TODO: Uncomment line below to also store ISO format timestamp
     // set(ref(db, `${userSession}/Intuition Start`), timestamp),
     set(ref(db, `${userSession}/Intuition Start GMT`), timestampGMT),
+    set(ref(db, `${userSession}/Intuition Question`), question || ''),
   ];
 
   // Return the promise that push() returns
@@ -1727,10 +1819,9 @@ export const writeToDatabaseIntuitionEnd = async (gameId) => {
 };
 
 // Write True/False answer to database
-export const writeToDatabaseTFAnswer = async (answer, correctAnswer, gameId) => {
+export const writeToDatabaseTFAnswer = async (answer, correctAnswer, gameId, question) => {
   const dateObj = new Date();
   const timestampGMT = dateObj.toUTCString();
-  const unixTimestamp = Date.now();
   
   const isCorrect = answer === correctAnswer;
   
@@ -1738,16 +1829,16 @@ export const writeToDatabaseTFAnswer = async (answer, correctAnswer, gameId) => 
   
   const promises = [
     set(ref(db, `${userSession}/TF Given Answer`), answer),
+    set(ref(db, `${userSession}/TF Question`), question || ''),
     set(ref(db, `${userSession}/TF Correct`), isCorrect),
     set(ref(db, `${userSession}/TF Answer Time GMT`), timestampGMT),
-    set(ref(db, `${userSession}/TF Answer Time Unix`), unixTimestamp),
   ];
   
   await Promise.all(promises);
 };
 
 // Write Multiple Choice answer to database
-export const writeToDatabaseMCAnswer = async (answer, correctAnswer, gameId) => {
+export const writeToDatabaseMCAnswer = async (answer, correctAnswer, gameId, question) => {
   const dateObj = new Date();
   const timestampGMT = dateObj.toUTCString();
   const unixTimestamp = Date.now();
@@ -1758,16 +1849,18 @@ export const writeToDatabaseMCAnswer = async (answer, correctAnswer, gameId) => 
   
   const promises = [
     set(ref(db, `${userSession}/MC Given Answer`), answer),
+    set(ref(db, `${userSession}/MC Question`), question || ''),
     set(ref(db, `${userSession}/MC Correct`), isCorrect),
     set(ref(db, `${userSession}/MC Answer Time GMT`), timestampGMT),
-    set(ref(db, `${userSession}/MC Answer Time Unix`), unixTimestamp),
   ];
   
   await Promise.all(promises);
 };
 
 // Write in the second part of the true false phase
-export const writeToDatabaseInsightStart = async (gameId = undefined) => {
+export const writeToDatabaseInsightStart = async (gameId) => {
+  if (!gameId) return;
+  
   // Create a new date object to get a timestamp
   const dateObj = new Date();
   const timestamp = dateObj.toISOString();
@@ -1788,7 +1881,9 @@ export const writeToDatabaseInsightStart = async (gameId = undefined) => {
 };
 
 // Write in the end of the second part of the true false phase
-export const writeToDatabaseInsightEnd = async (gameId = undefined) => {
+export const writeToDatabaseInsightEnd = async (gameId) => {
+  if (!gameId) return;
+  
   // Create a new date object to get a timestamp
   const dateObj = new Date();
   const timestamp = dateObj.toISOString();
@@ -1802,6 +1897,83 @@ export const writeToDatabaseInsightEnd = async (gameId = undefined) => {
     // TODO: Uncomment line below to also store ISO format timestamp
     // set(ref(db, `${userSession}/Insight End`), timestamp),
     set(ref(db, `${userSession}/Insight End GMT`), timestampGMT),
+  ];
+
+  // Return the promise that push() returns
+  await Promise.all(promises);
+};
+
+// Write in the start of the MCQ phase
+export const writeToDatabaseMCQStart = async (gameId, question) => {
+  // Create a new date object to get a timestamp
+  const dateObj = new Date();
+  const timestamp = dateObj.toISOString();
+  const timestampGMT = dateObj.toUTCString();
+
+  // UPDATED: include device layer
+  const userSession = `_GameData/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${conjectureId}`;
+
+  // Create an object to send to the database
+  const promises = [
+    set(ref(db, `${userSession}/MCQ Start GMT`), timestampGMT),
+    set(ref(db, `${userSession}/MCQ Question`), question || ''),
+  ];
+
+  // Return the promise that push() returns
+  await Promise.all(promises);
+};
+
+// Write in the end of the MCQ phase
+export const writeToDatabaseMCQEnd = async (gameId) => {
+  // Create a new date object to get a timestamp
+  const dateObj = new Date();
+  const timestamp = dateObj.toISOString();
+  const timestampGMT = dateObj.toUTCString();
+
+  // UPDATED: include device layer
+  const userSession = `_GameData/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${conjectureId}`;
+
+  // Create an object to send to the database
+  const promises = [
+    set(ref(db, `${userSession}/MCQ End GMT`), timestampGMT),
+  ];
+
+  // Return the promise that push() returns
+  await Promise.all(promises);
+};
+
+// Write in the start of the outro dialogue phase
+export const writeToDatabaseOutroStart = async (gameId) => {
+  // Create a new date object to get a timestamp
+  const dateObj = new Date();
+  const timestamp = dateObj.toISOString();
+  const timestampGMT = dateObj.toUTCString();
+
+  // UPDATED: include device layer
+  const userSession = `_GameData/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${conjectureId}`;
+
+  // Create an object to send to the database
+  const promises = [
+    set(ref(db, `${userSession}/Outro Start GMT`), timestampGMT),
+  ];
+
+  // Return the promise that push() returns
+  await Promise.all(promises);
+};
+
+// Write in the end of the outro dialogue phase
+export const writeToDatabaseOutroEnd = async (gameId) => {
+  // Create a new date object to get a timestamp
+  const dateObj = new Date();
+  const timestamp = dateObj.toISOString();
+  const timestampGMT = dateObj.toUTCString();
+
+  // UPDATED: include device layer
+  const userSession = `_GameData/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${conjectureId}`;
+
+  // Create an object to send to the database
+  const promises = [
+    set(ref(db, `${userSession}/Outro End GMT`), timestampGMT),
   ];
 
   // Return the promise that push() returns
