@@ -79,7 +79,8 @@ export const Curriculum = {
         console.log(`Curriculum: Loading conjecture ${i + 1}/${levelIds.length}:`, levelIds[i]);
         try {
           // Pass showPublic to control whether to load public levels from other orgs
-          const conjectureList = await getConjectureDataByUUIDWithCurrentOrg(levelIds[i], showPublic);
+          // Pass forceLoadPrivate=true to load private levels that are already in the game's level list
+          const conjectureList = await getConjectureDataByUUIDWithCurrentOrg(levelIds[i], showPublic, true);
           if (conjectureList && conjectureList[levelIds[i]]) {
             const conjecture = conjectureList[levelIds[i]];
             console.log(`Curriculum: Loaded conjecture ${i + 1}:`, conjecture);

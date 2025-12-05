@@ -4,18 +4,26 @@ import { TextStyle } from "@pixi/text";
 import { orange, black, white, darkGray, yellow, red, blue } from "../../utils/colors";
 import Button from "../Button";
 import RectButton from "../RectButton";
-import { getConjectureDataByUUIDWithCurrentOrg } from "../../firebase/database";
 import { useCallback } from "react";
 import React, { useState, useEffect } from 'react';
-import { Container } from "postcss";
-import { set } from "firebase/database";
-import PoseMatching from "../PoseMatching";
+import PoseMatchingSimplified from "../PoseMatching";
+import { 
+  initializeSession, 
+  bufferPoseDataWithAutoFlush, 
+  startSmartAutoFlush, 
+  stopAutoFlush, 
+  endSession,
+  getCurrentOrgContext
+} from "../../firebase/database.js";
 
 
 const PoseTestMatch = (props) => {
-  const { height, width, columnDimensions, conjectureCallback, poseData, gameID} = props;
+  const { height, width, columnDimensions, conjectureCallback, poseData, gameID, UUID} = props;
   const [poses, setPoses] = useState(null);
   const [tolerances, setTolerances] = useState([]);
+  
+  // Generate a test UUID if not provided (for pose testing mode)
+  const testUUID = UUID || 'pose-test-session';
 
   // Background for Pose Matching
   const drawModalBackground = useCallback((g) => {
@@ -46,6 +54,82 @@ const PoseTestMatch = (props) => {
     }
   }, []);
 
+  // Initialize pose data session when poses are loaded and gameID is available
+  useEffect(() => {
+    if (!poses || !gameID) return; // Wait for poses and gameID to be available
+    
+    const isRecording = "true";
+    
+    if (isRecording === "true") {
+      // FRAMERATE CAN BE CHANGED HERE
+      const frameRate = 12;
+
+      let autoFlushId;
+      
+      // Initialize session with static data once
+      const setupSession = async () => {
+        const { orgId } = await getCurrentOrgContext();
+        if (!orgId) {
+          console.warn('No orgId available, skipping pose data session initialization');
+          return;
+        }
+        await initializeSession(gameID, frameRate, testUUID, orgId);
+        
+        // Start auto-flush with hybrid strategy
+        autoFlushId = startSmartAutoFlush(gameID, testUUID, orgId, {
+          maxBufferSize: 100,      
+          flushIntervalMs: 7500,  
+          minBufferSize: 10,       
+          frameRate: frameRate    
+        });
+      };
+
+      // Initialize the session and wait for it to complete
+      const initializeAndStart = async () => {
+        await setupSession();
+        
+        // Create interval to buffer pose data
+        const intervalId = setInterval(async () => {
+          // Buffer the pose data
+          const { orgId } = await getCurrentOrgContext();
+          if (orgId && poseData) {
+            bufferPoseDataWithAutoFlush(poseData, gameID, testUUID, frameRate, orgId);
+          }
+        }, 1000 / frameRate);
+        
+        // Return cleanup function
+        return async () => {
+          // Stop the data collection interval
+          clearInterval(intervalId);
+          
+          // Stop auto-flush
+          if (autoFlushId) {
+            stopAutoFlush(autoFlushId);
+          }
+          
+          // End session
+          const { orgId } = await getCurrentOrgContext();
+          if (orgId) {
+            await endSession(gameID, testUUID, frameRate, orgId);
+          }
+        };
+      };
+
+      // Start the initialization and get cleanup function
+      let cleanupFunction;
+      initializeAndStart().then(cleanup => {
+        cleanupFunction = cleanup;
+      });
+      
+      // Return cleanup function for useEffect
+      return async () => {
+        if (cleanupFunction) {
+          await cleanupFunction();
+        }
+      };
+    }
+  }, [poses, gameID, testUUID, poseData]); // Dependencies: re-initialize if poses, gameID, or UUID changes
+
   // create grouped array: [pose1,pose1,pose1, pose2,pose2,pose2, ...]
   const posesToMatchGrouped = (poses || []).flatMap((p) => [p, p, p]);
 
@@ -61,6 +145,7 @@ return(
           columnDimensions={columnDimensions}
           onComplete={conjectureCallback}
           gameID={gameID}
+          UUID={testUUID}
           tolerances={tolerances}
           singleMatchPerPose={true}
         />

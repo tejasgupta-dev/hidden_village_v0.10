@@ -103,17 +103,31 @@ export const curricularTextBoxes = [
 
 // Frame buffer to store poses before batch writing
 let frameBuffer = [];
-let sessionInitialized = false;
+// Use Map to track initialized sessions per user/device/session combination
+const initializedSessions = new Map(); // Key: sessionKey (userId_deviceSlug_loginTime_UUID), Value: true
 let flushPromises = []; // Track batch write promises for promise checking
 let lastEventType = null; // Track last known event type for change detection
+let isFlushing = false; // Flag to prevent concurrent flush operations
 
 // Timing trackers for analytics
 let gameStartTime = null;
 let lastEventTime = null;
 
+// Helper function to generate unique session key
+const getSessionKey = (userId, deviceSlug, loginTime, UUID) => {
+  return `${userId}_${deviceSlug}_${loginTime}_${UUID}`;
+};
+
 // Initialize session with static data (call once per session)
 export const initializeSession = async (gameId, frameRate, UUID, orgId) => {
-  if (sessionInitialized) return; // Prevent duplicate initialization
+  // Generate unique session key for this user/device/session combination
+  const sessionKey = getSessionKey(userId, deviceSlug, loginTime, UUID);
+  
+  // Prevent duplicate initialization for this specific session
+  if (initializedSessions.has(sessionKey)) {
+    console.log('Session already initialized for this user/device/session');
+    return;
+  }
   
   const dateObj = new Date();
   const timestampGMT = dateObj.toUTCString();
@@ -121,38 +135,31 @@ export const initializeSession = async (gameId, frameRate, UUID, orgId) => {
   gameStartTime = unixTimestamp;
   lastEventTime = unixTimestamp;
   
-  if (eventType !== null) {
-    const sessionRef = ref(db, `_PoseData/${orgId}/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${UUID}`);
-    
-    // All static data
-    const sessionData = {
-      userId,
-      userName,
-      deviceId,
-      deviceNickname,
-      frameRate,
-      loginTime,
-      sessionStartTime: timestampGMT,
-      sessionStartUnix: unixTimestamp,
-    };
-    
-    // Store session metadata once
-    await set(sessionRef, sessionData);
-    sessionInitialized = true;
-    lastEventType = null; // Start with null so first event gets detected
-    console.log('Session initialized with static data');
-  }
+  // Initialize session regardless of eventType - eventType will be set when pose starts
+  const sessionRef = ref(db, `_PoseData/${orgId}/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${UUID}`);
+  
+  // All static data
+  const sessionData = {
+    userId,
+    userName,
+    deviceId,
+    deviceNickname,
+    frameRate,
+    loginTime,
+    sessionStartTime: timestampGMT,
+    sessionStartUnix: unixTimestamp,
+  };
+  
+  // Store session metadata once
+  await set(sessionRef, sessionData);
+  initializedSessions.set(sessionKey, true);
+  lastEventType = null; // Start with null so first event gets detected
+  console.log('Session initialized with static data for session:', sessionKey);
 };
 
 // Buffer frame data (called every frame)
 export const bufferPoseData = async (poseData, gameId, UUID, frameRate = 12, orgId) => {
   if (eventType === null) return;
-  
-  // Check for event type change and flush if needed
-  if (eventType !== lastEventType && frameBuffer.length > 0) {
-    console.log(`Event type changed from ${lastEventType} to ${eventType}, flushing buffer`);
-    await flushFrameBuffer(gameId, UUID, frameRate, orgId);
-  }
   
   const now = Date.now();
   const frameData = {
@@ -168,17 +175,29 @@ export const bufferPoseData = async (poseData, gameId, UUID, frameRate = 12, org
 };
 
 // Batch write all buffered frames (call periodically)
-export const flushFrameBuffer = async (gameId, UUID, frameRate = 12, orgId) => {
-  if (frameBuffer.length === 0 || eventType === null) return;
+export const flushFrameBuffer = async (gameId, UUID, frameRate = 12, orgId, targetEventType = null) => {
+  // Use targetEventType if provided, otherwise use current eventType
+  const eventTypeToUse = targetEventType !== null ? targetEventType : eventType;
+  
+  if (frameBuffer.length === 0 || eventTypeToUse === null) return;
+  
+  // Prevent concurrent flush operations
+  if (isFlushing) {
+    console.warn('Flush already in progress, skipping duplicate flush');
+    return;
+  }
   
   // Ensure session is initialized before writing frames
-  if (!sessionInitialized) {
+  const sessionKey = getSessionKey(userId, deviceSlug, loginTime, UUID);
+  if (!initializedSessions.has(sessionKey)) {
     console.warn('Session not initialized. Call initializeSession() first.');
     return;
   }
   
+  isFlushing = true;
+  
   try {
-    const framesRef = ref(db, `_PoseData/${orgId}/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${UUID}/frames/${eventType}`);
+    const framesRef = ref(db, `_PoseData/${orgId}/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${UUID}/frames/${eventTypeToUse}`);
     
     // Create batch update object
     const updates = {};
@@ -202,15 +221,18 @@ export const flushFrameBuffer = async (gameId, UUID, frameRate = 12, orgId) => {
     
     await flushPromise;
     
-    console.log(`Flushed ${frameBuffer.length} frames to database`);
+    console.log(`Flushed ${frameBuffer.length} frames to database for event type: ${eventTypeToUse}`);
     
     // Clear the buffer and update last known event type
+    // Use the eventTypeToUse for lastEventType to maintain correct state
     frameBuffer = [];
-    lastEventType = eventType;
+    lastEventType = eventTypeToUse;
     
+    isFlushing = false;
     return true;
   } catch (error) {
     console.error('Error flushing frame buffer:', error);
+    isFlushing = false;
     return false;
   }
 };
@@ -230,19 +252,29 @@ export const getBufferSize = () => frameBuffer.length;
 
 // Force flush and reset session (call on session end)
 export const endSession = async (gameId, UUID, frameRate = 12, orgId) => {
-  // Flush any remaining frames
-  await flushFrameBuffer(gameId, UUID, frameRate, orgId);
+  // Generate unique session key for this user/device/session combination
+  const sessionKey = getSessionKey(userId, deviceSlug, loginTime, UUID);
+  
+  // Save the event type before flushing - use lastEventType if available, otherwise current eventType
+  // This ensures we flush with the correct event type even if eventType has already changed
+  const eventTypeToFlush = lastEventType !== null ? lastEventType : eventType;
+  
+  // Flush any remaining frames with the saved event type
+  if (eventTypeToFlush !== null && frameBuffer.length > 0) {
+    await flushFrameBuffer(gameId, UUID, frameRate, orgId, eventTypeToFlush);
+  }
   
   // Wait for all pending flush promises to settle (like original implementation)
   await Promise.allSettled(flushPromises);
   
-  // Reset session state
-  sessionInitialized = false;
+  // Reset session state only for this specific session
+  initializedSessions.delete(sessionKey);
   frameBuffer = [];
   flushPromises = []; // Clear promise tracking
   lastEventType = null; // Reset event type tracking
+  isFlushing = false; // Reset flush flag
   
-  console.log('Session ended and cleaned up');
+  console.log('Session ended and cleaned up for session:', sessionKey);
 };
 
 // Hybrid flush strategy
@@ -255,7 +287,7 @@ export const bufferPoseDataWithAutoFlush = async (poseData, gameId, UUID, frameR
   await checkEventTypeChange(gameId, UUID, frameRate, orgId);
   
   // Add to buffer
-  bufferPoseData(poseData);
+  await bufferPoseData(poseData, gameId, UUID, frameRate, orgId);
   
   // Immediate flush if buffer is getting too big (uses MAX_BUFFER_SIZE)
   if (frameBuffer.length >= MAX_BUFFER_SIZE) {
@@ -272,7 +304,7 @@ export const bufferPoseDataWithEventCheck = async (poseData, gameId, UUID, frame
   const flushedDueToEventChange = await checkEventTypeChange(gameId, UUID, frameRate, orgId);
   
   // Add to buffer after potential flush
-  bufferPoseData(poseData);
+  await bufferPoseData(poseData, gameId, UUID, frameRate, orgId);
   
   return flushedDueToEventChange;
 };
@@ -617,8 +649,8 @@ export const saveNarrativeDraftToFirebaseWithCurrentOrg = async (UUID, dialogues
 };
 
 // Wrapper functions for data retrieval with current org
-export const getConjectureDataByUUIDWithCurrentOrg = async (conjectureID, includePublicFromOtherOrgs = true) => {
-  console.log('getConjectureDataByUUIDWithCurrentOrg: Called with conjectureID:', conjectureID, 'includePublicFromOtherOrgs:', includePublicFromOtherOrgs);
+export const getConjectureDataByUUIDWithCurrentOrg = async (conjectureID, includePublicFromOtherOrgs = true, forceLoadPrivate = false) => {
+  console.log('getConjectureDataByUUIDWithCurrentOrg: Called with conjectureID:', conjectureID, 'includePublicFromOtherOrgs:', includePublicFromOtherOrgs, 'forceLoadPrivate:', forceLoadPrivate);
   const { orgId } = await getCurrentOrgContext();
   console.log('getConjectureDataByUUIDWithCurrentOrg: Current orgId:', orgId);
   if (!orgId) {
@@ -651,9 +683,10 @@ export const getConjectureDataByUUIDWithCurrentOrg = async (conjectureID, includ
             const otherLevels = levelsSnapshot.val();
             for (const [levelId, levelData] of Object.entries(otherLevels)) {
               if (levelData.UUID === conjectureID) {
-                // Only include public levels from other organizations
-                if (levelData.isPublic === true) {
-                  console.log(`getConjectureDataByUUIDWithCurrentOrg: Found public level in organization ${otherOrgId}`);
+                // If forceLoadPrivate is true, load regardless of isPublic status
+                // Otherwise, only include public levels from other organizations
+                if (forceLoadPrivate || levelData.isPublic === true) {
+                  console.log(`getConjectureDataByUUIDWithCurrentOrg: Found level in organization ${otherOrgId} (forceLoadPrivate: ${forceLoadPrivate}, isPublic: ${levelData.isPublic})`);
                   // Return the level data with UUID as key to match expected format in LevelPlay.js
                   return { [conjectureID]: { ...levelData, _isFromOtherOrg: true, _sourceOrgId: otherOrgId } };
                 } else {
@@ -1629,6 +1662,29 @@ export const writeToDatabaseIntuitionStart = async (gameId) => {
   const timestamp = dateObj.toISOString();
   const timestampGMT = dateObj.toUTCString();
 
+  // Save the current event type before changing it
+  // Use lastEventType if available (more reliable), otherwise use current eventType
+  const eventTypeToFlush = lastEventType !== null ? lastEventType : eventType;
+  
+  // Flush any remaining frames for the previous event type before changing to Intuition
+  // This ensures data for the last pose (e.g., Pose 1-3) is saved before transition
+  const UUID = conjectureId;
+  if (UUID) {
+    const sessionKey = getSessionKey(userId, deviceSlug, loginTime, UUID);
+    if (eventTypeToFlush !== null && frameBuffer.length > 0 && initializedSessions.has(sessionKey)) {
+      try {
+        const { orgId } = await getCurrentOrgContext();
+        const frameRate = 12; // Default frame rate
+        if (orgId) {
+          await flushFrameBuffer(gameId, UUID, frameRate, orgId, eventTypeToFlush);
+          console.log(`Flushed buffer for ${eventTypeToFlush} before transitioning to Intuition`);
+        }
+      } catch (error) {
+        console.error('Error flushing buffer before Intuition start:', error);
+      }
+    }
+  }
+
   // event type for pose data
   eventType = "Intuition";
 
@@ -1753,30 +1809,522 @@ export const writeToDatabaseInsightEnd = async (gameId = undefined) => {
 };
 
 // Search functionality that downloads a set of child nodes from a game based on inputted dates
-export const getFromDatabaseByGame = async (selectedGame, gameId, selectedStart, selectedEnd ) => {
+export const getFromDatabaseByGame = async (selectedGame, gameId, selectedStart, selectedEnd, orgId, selectedUser = null) => {
   try {
+    console.log('[getFromDatabaseByGame] Starting download...', { selectedGame, gameId, selectedStart, selectedEnd, orgId, selectedUser });
+    
+    // Get orgId if not provided
+    if (!orgId) {
+      console.warn('[getFromDatabaseByGame] orgId is missing, trying to get from context...');
+      const context = await getCurrentOrgContext();
+      orgId = context?.orgId;
+      if (!orgId) {
+        throw new Error('orgId is required for pose data retrieval');
+      }
+      console.log('[getFromDatabaseByGame] Retrieved orgId from context:', orgId);
+    }
+    
     // Create reference to the realtime database
-    const posedbRef = ref(db, `_PoseData/${gameId}`);
+    const posedbRef = ref(db, `_PoseData/${orgId}/${gameId}`);
     const eventdbRef = ref(db, `_GameData/${gameId}`);
+    
+    console.log('[getFromDatabaseByGame] Query paths:', {
+      posePath: `_PoseData/${orgId}/${gameId}`,
+      eventPath: `_GameData/${gameId}`
+    });
 
-    // Query to find data
-    const poseq = query(posedbRef, orderByKey(), startAt(selectedStart), endAt(selectedEnd));
-    const eventq = query(eventdbRef, orderByKey(), startAt(selectedStart), endAt(selectedEnd));
-    // Execute the query
-    const poseQuerySnapshot = await get(poseq);
-    const eventQuerySnapshot = await get(eventq);
+    // Get all data first, then filter by date range in code
+    // This ensures we get ALL sessions, not just those matching the query filter
+    console.log('[getFromDatabaseByGame] Fetching all data...');
+    const poseSnapshot = await get(posedbRef);
+    const eventSnapshot = await get(eventdbRef);
+    
+    console.log('[getFromDatabaseByGame] Raw data fetched:', {
+      poseDataExists: poseSnapshot.exists(),
+      eventDataExists: eventSnapshot.exists(),
+    });
+
+    // Extract users from both pose and event data for comparison
+    const extractUsersFromData = (data, dataType) => {
+      if (!data) return { dates: {}, allUsers: new Set() };
+      
+      const result = { dates: {}, allUsers: new Set() };
+      for (const dateKey in data) {
+        if (data[dateKey] && typeof data[dateKey] === 'object') {
+          const users = Object.keys(data[dateKey]);
+          result.dates[dateKey] = users;
+          users.forEach(user => result.allUsers.add(user));
+        }
+      }
+      return result;
+    };
+
+    const poseUsers = poseSnapshot.exists() ? extractUsersFromData(poseSnapshot.val(), 'POSE') : { dates: {}, allUsers: new Set() };
+    const eventUsers = eventSnapshot.exists() ? extractUsersFromData(eventSnapshot.val(), 'EVENT') : { dates: {}, allUsers: new Set() };
+
+    console.log('[getFromDatabaseByGame] ========== USER COMPARISON: POSE DATA vs EVENT DATA ==========');
+    console.log('[getFromDatabaseByGame] POSE DATA users:', Array.from(poseUsers.allUsers).sort());
+    console.log('[getFromDatabaseByGame] EVENT DATA users:', Array.from(eventUsers.allUsers).sort());
+    
+    // Find users in event data but not in pose data
+    const missingInPose = Array.from(eventUsers.allUsers).filter(user => !poseUsers.allUsers.has(user));
+    const missingInEvent = Array.from(poseUsers.allUsers).filter(user => !eventUsers.allUsers.has(user));
+    
+    if (missingInPose.length > 0) {
+      console.warn('[getFromDatabaseByGame] WARNING: Users in EVENT DATA but NOT in POSE DATA:', missingInPose);
+      console.warn('[getFromDatabaseByGame] This may indicate Firebase security rules are blocking access to pose data for these users!');
+    }
+    if (missingInEvent.length > 0) {
+      console.warn('[getFromDatabaseByGame] WARNING: Users in POSE DATA but NOT in EVENT DATA:', missingInEvent);
+    }
+    
+    // Compare users for each date
+    const allDates = new Set([...Object.keys(poseUsers.dates), ...Object.keys(eventUsers.dates)]);
+    for (const dateKey of allDates) {
+      const poseDateUsers = poseUsers.dates[dateKey] || [];
+      const eventDateUsers = eventUsers.dates[dateKey] || [];
+      console.log(`[getFromDatabaseByGame] Date ${dateKey}:`);
+      console.log(`  POSE DATA: ${poseDateUsers.length} user(s):`, poseDateUsers);
+      console.log(`  EVENT DATA: ${eventDateUsers.length} user(s):`, eventDateUsers);
+      
+      if (poseDateUsers.length !== eventDateUsers.length) {
+        console.warn(`[getFromDatabaseByGame] MISMATCH on date ${dateKey}: POSE has ${poseDateUsers.length} users, EVENT has ${eventDateUsers.length} users`);
+        const missing = eventDateUsers.filter(u => !poseDateUsers.includes(u));
+        if (missing.length > 0) {
+          console.warn(`[getFromDatabaseByGame] Missing users in POSE DATA for date ${dateKey}:`, missing);
+        }
+      }
+    }
+    console.log('[getFromDatabaseByGame] ===============================================================');
+
+    // Log raw snapshot to see what Firebase actually returns
+    if (poseSnapshot.exists()) {
+      const rawVal = poseSnapshot.val();
+      const dates = Object.keys(rawVal);
+      console.log('[getFromDatabaseByGame] Raw POSE snapshot keys (top level - dates):', dates);
+      console.log('[getFromDatabaseByGame] Raw POSE snapshot structure summary:', {
+        datesCount: dates.length,
+        dates: dates
+      });
+      
+      // Log users for each date
+      for (const dateKey of dates) {
+        if (rawVal[dateKey] && typeof rawVal[dateKey] === 'object') {
+          const users = Object.keys(rawVal[dateKey]);
+          console.log(`[getFromDatabaseByGame] POSE Date ${dateKey}: ${users.length} user(s):`, users);
+        }
+      }
+      
+      // Check if there are any null values (which might indicate permission issues)
+      const checkForNulls = (obj, path = '') => {
+        for (const key in obj) {
+          const currentPath = path ? `${path}.${key}` : key;
+          if (obj[key] === null) {
+            console.warn(`[getFromDatabaseByGame] Found null value at path: ${currentPath} - This may indicate Firebase security rules are blocking access!`);
+          } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+            checkForNulls(obj[key], currentPath);
+          }
+        }
+      };
+      checkForNulls(rawVal);
+    } else {
+      console.warn('[getFromDatabaseByGame] Pose snapshot does not exist - check Firebase rules!');
+    }
+
+    // Try to get data for missing users directly - first in game's org, then in all other orgs
+    if (missingInPose.length > 0) {
+      console.log('[getFromDatabaseByGame] ========== ATTEMPTING DIRECT ACCESS TO MISSING USERS ==========');
+      
+      // Get all organizations
+      let allOrgIds = [orgId]; // Start with game's organization
+      try {
+        const orgsRef = ref(db, 'orgs');
+        const orgsSnapshot = await get(orgsRef);
+        if (orgsSnapshot.exists()) {
+          const orgs = orgsSnapshot.val();
+          const orgIdsList = Object.keys(orgs);
+          console.log(`[getFromDatabaseByGame] Found ${orgIdsList.length} organizations total`);
+          // Add all organizations, but keep game's org first
+          allOrgIds = [orgId, ...orgIdsList.filter(id => id !== orgId)];
+          console.log(`[getFromDatabaseByGame] Will check pose data in ${allOrgIds.length} organizations:`, allOrgIds);
+        }
+      } catch (error) {
+        console.warn('[getFromDatabaseByGame] Could not get list of organizations:', error.message);
+        console.warn('[getFromDatabaseByGame] Will only check in game organization:', orgId);
+      }
+      
+      for (const missingUser of missingInPose) {
+        for (const dateKey of Object.keys(eventUsers.dates)) {
+          if (eventUsers.dates[dateKey].includes(missingUser)) {
+            console.log(`[getFromDatabaseByGame] Searching for ${missingUser} on ${dateKey} in all organizations...`);
+            let foundInOrg = null;
+            
+            // Check in all organizations
+            for (const checkOrgId of allOrgIds) {
+              try {
+                const directPath = `_PoseData/${checkOrgId}/${gameId}/${dateKey}/${missingUser}`;
+                console.log(`[getFromDatabaseByGame] Checking org ${checkOrgId}: ${directPath}`);
+                const directRef = ref(db, directPath);
+                const directSnapshot = await get(directRef);
+                
+                if (directSnapshot.exists()) {
+                  console.log(`[getFromDatabaseByGame] SUCCESS: Found ${missingUser} on ${dateKey} in organization ${checkOrgId}!`);
+                  console.log(`[getFromDatabaseByGame] Direct access data keys:`, Object.keys(directSnapshot.val()));
+                  foundInOrg = checkOrgId;
+                  break; // Found it, no need to check other orgs
+                } else {
+                  console.log(`[getFromDatabaseByGame] No data for ${missingUser} in org ${checkOrgId}`);
+                }
+              } catch (error) {
+                console.warn(`[getFromDatabaseByGame] ERROR: Direct access to ${missingUser} on ${dateKey} in org ${checkOrgId} failed:`, error.message);
+                if (error.message.includes('permission') || error.message.includes('security')) {
+                  console.warn(`[getFromDatabaseByGame] This likely indicates Firebase security rules are blocking access!`);
+                }
+              }
+            }
+            
+            if (!foundInOrg) {
+              console.warn(`[getFromDatabaseByGame] Could not find data for ${missingUser} on ${dateKey} in any organization`);
+            }
+          }
+        }
+      }
+      console.log('[getFromDatabaseByGame] ===============================================================');
+    }
+
+    // Helper function to analyze data structure in detail
+    const analyzePoseDataStructure = (data, label) => {
+      if (!data) {
+        console.log(`[getFromDatabaseByGame] ${label}: No data`);
+        return;
+      }
+      
+      const dates = Object.keys(data);
+      console.log(`[getFromDatabaseByGame] ${label}: Found ${dates.length} date(s):`, dates);
+      
+      let totalSessions = 0;
+      let totalUsers = 0;
+      const sessionDetails = [];
+      
+      for (const dateKey of dates) {
+        const dateData = data[dateKey];
+        if (!dateData || typeof dateData !== 'object') {
+          console.warn(`[getFromDatabaseByGame] ${label}: Date ${dateKey} has invalid structure:`, dateData);
+          continue;
+        }
+        
+        const users = Object.keys(dateData);
+        totalUsers += users.length;
+        console.log(`[getFromDatabaseByGame] ${label} - Date ${dateKey}: ${users.length} user(s):`, users);
+        
+        for (const userKey of users) {
+          const userData = dateData[userKey];
+          if (!userData || typeof userData !== 'object') {
+            console.warn(`[getFromDatabaseByGame] ${label}: Date ${dateKey}, User ${userKey} has invalid structure:`, userData);
+            continue;
+          }
+          
+          const devices = Object.keys(userData);
+          console.log(`[getFromDatabaseByGame] ${label} - Date ${dateKey}, User ${userKey}: ${devices.length} device(s):`, devices);
+          
+          for (const deviceKey of devices) {
+            const deviceData = userData[deviceKey];
+            if (!deviceData || typeof deviceData !== 'object') {
+              console.warn(`[getFromDatabaseByGame] ${label}: Date ${dateKey}, User ${userKey}, Device ${deviceKey} has invalid structure:`, deviceData);
+              continue;
+            }
+            
+            const loginTimes = Object.keys(deviceData);
+            console.log(`[getFromDatabaseByGame] ${label} - Date ${dateKey}, User ${userKey}, Device ${deviceKey}: ${loginTimes.length} loginTime(s):`, loginTimes);
+            totalSessions += loginTimes.length;
+            
+            for (const loginTimeKey of loginTimes) {
+              const loginTimeData = deviceData[loginTimeKey];
+              if (!loginTimeData || typeof loginTimeData !== 'object') {
+                console.warn(`[getFromDatabaseByGame] ${label}: Date ${dateKey}, User ${userKey}, Device ${deviceKey}, LoginTime ${loginTimeKey} has invalid structure:`, loginTimeData);
+                continue;
+              }
+              
+              const uuids = Object.keys(loginTimeData);
+              console.log(`[getFromDatabaseByGame] ${label} - Date ${dateKey}, User ${userKey}, Device ${deviceKey}, LoginTime ${loginTimeKey}: ${uuids.length} UUID(s):`, uuids);
+              
+              for (const uuidKey of uuids) {
+                sessionDetails.push({
+                  date: dateKey,
+                  user: userKey,
+                  device: deviceKey,
+                  loginTime: loginTimeKey,
+                  uuid: uuidKey
+                });
+              }
+            }
+          }
+        }
+      }
+      
+      console.log(`[getFromDatabaseByGame] ${label} Summary: ${dates.length} dates, ${totalUsers} users, ${totalSessions} sessions, ${sessionDetails.length} UUIDs`);
+      console.log(`[getFromDatabaseByGame] ${label} Session details:`, sessionDetails);
+      return sessionDetails;
+    };
+
+    // Analyze raw pose data BEFORE filtering
+    if (poseSnapshot.exists()) {
+      const rawPoseData = poseSnapshot.val();
+      console.log('[getFromDatabaseByGame] ========== RAW POSE DATA STRUCTURE (BEFORE FILTERING) ==========');
+      const rawSessions = analyzePoseDataStructure(rawPoseData, 'RAW_POSE');
+      console.log('[getFromDatabaseByGame] ===============================================================');
+    }
+
+    // Helper function to filter data by date range
+    const filterByDateRange = (data, startDate, endDate) => {
+      if (!data) {
+        console.log('[getFromDatabaseByGame] filterByDateRange: No data to filter');
+        return null;
+      }
+      
+      console.log('[getFromDatabaseByGame] filterByDateRange: Filtering with range:', { startDate, endDate });
+      
+      const filtered = {};
+      const allDates = Object.keys(data);
+      console.log('[getFromDatabaseByGame] filterByDateRange: All dates in data:', allDates);
+      
+      for (const dateKey of allDates) {
+        const dateComparison = dateKey >= startDate && dateKey <= endDate;
+        console.log(`[getFromDatabaseByGame] filterByDateRange: Date ${dateKey} - ${dateComparison ? 'INCLUDED' : 'EXCLUDED'} (${dateKey} >= ${startDate} && ${dateKey} <= ${endDate})`);
+        
+        if (dateComparison) {
+          filtered[dateKey] = data[dateKey];
+        }
+      }
+      
+      const filteredDates = Object.keys(filtered);
+      console.log('[getFromDatabaseByGame] filterByDateRange: Filtered dates:', filteredDates);
+      console.log('[getFromDatabaseByGame] filterByDateRange: Result has', filteredDates.length, 'date(s)');
+      
+      return filteredDates.length > 0 ? filtered : null;
+    };
+
+    // Filter pose data by date range
+    let poseData = poseSnapshot.exists() ? filterByDateRange(poseSnapshot.val(), selectedStart, selectedEnd) : null;
+    let eventData = eventSnapshot.exists() ? filterByDateRange(eventSnapshot.val(), selectedStart, selectedEnd) : null;
+
+    // Compare users after date filtering
+    console.log('[getFromDatabaseByGame] ========== USER COMPARISON AFTER DATE FILTERING ==========');
+    if (poseData) {
+      const poseUsersAfterDateFilter = extractUsersFromData(poseData, 'POSE');
+      console.log('[getFromDatabaseByGame] POSE DATA users after date filter:', Array.from(poseUsersAfterDateFilter.allUsers).sort());
+    } else {
+      console.log('[getFromDatabaseByGame] POSE DATA: No data after date filtering');
+    }
+    if (eventData) {
+      const eventUsersAfterDateFilter = extractUsersFromData(eventData, 'EVENT');
+      console.log('[getFromDatabaseByGame] EVENT DATA users after date filter:', Array.from(eventUsersAfterDateFilter.allUsers).sort());
+    } else {
+      console.log('[getFromDatabaseByGame] EVENT DATA: No data after date filtering');
+    }
+    console.log('[getFromDatabaseByGame] ===========================================================');
+
+    // Check pose data in all organizations for missing users
+    if (eventData) {
+      const eventUsersAfterDateFilter = extractUsersFromData(eventData, 'EVENT');
+      const poseUsersAfterDateFilter = poseData ? extractUsersFromData(poseData, 'POSE') : { allUsers: new Set(), dates: {} };
+      const stillMissingInPose = Array.from(eventUsersAfterDateFilter.allUsers).filter(user => !poseUsersAfterDateFilter.allUsers.has(user));
+      
+      if (stillMissingInPose.length > 0) {
+        console.log('[getFromDatabaseByGame] ========== SEARCHING FOR MISSING USERS IN ALL ORGANIZATIONS ==========');
+        console.log('[getFromDatabaseByGame] Users still missing in pose data:', stillMissingInPose);
+        
+        // Get all organizations
+        let allOrgIds = [orgId];
+        try {
+          const orgsRef = ref(db, 'orgs');
+          const orgsSnapshot = await get(orgsRef);
+          if (orgsSnapshot.exists()) {
+            const orgs = orgsSnapshot.val();
+            const orgIdsList = Object.keys(orgs);
+            allOrgIds = [orgId, ...orgIdsList.filter(id => id !== orgId)];
+            console.log(`[getFromDatabaseByGame] Checking ${allOrgIds.length} organizations for missing users`);
+          }
+        } catch (error) {
+          console.warn('[getFromDatabaseByGame] Could not get list of organizations:', error.message);
+        }
+        
+        // Initialize poseData if it's null
+        if (!poseData) {
+          poseData = {};
+        }
+        
+        // For each missing user, check all organizations
+        for (const missingUser of stillMissingInPose) {
+          for (const dateKey of Object.keys(eventUsersAfterDateFilter.dates)) {
+            if (eventUsersAfterDateFilter.dates[dateKey].includes(missingUser)) {
+              console.log(`[getFromDatabaseByGame] Searching for ${missingUser} on ${dateKey} in all organizations...`);
+              
+              for (const checkOrgId of allOrgIds) {
+                try {
+                  const userPath = `_PoseData/${checkOrgId}/${gameId}/${dateKey}/${missingUser}`;
+                  const userRef = ref(db, userPath);
+                  const userSnapshot = await get(userRef);
+                  
+                  if (userSnapshot.exists() && userSnapshot.val() !== null) {
+                    console.log(`[getFromDatabaseByGame] FOUND: ${missingUser} on ${dateKey} in organization ${checkOrgId}!`);
+                    
+                    // Merge the data into poseData
+                    if (!poseData[dateKey]) {
+                      poseData[dateKey] = {};
+                    }
+                    poseData[dateKey][missingUser] = userSnapshot.val();
+                    console.log(`[getFromDatabaseByGame] Merged data for ${missingUser} from org ${checkOrgId} into pose data`);
+                    break; // Found it, no need to check other orgs for this user/date
+                  }
+                } catch (error) {
+                  console.warn(`[getFromDatabaseByGame] Error checking ${missingUser} in org ${checkOrgId}:`, error.message);
+                }
+              }
+            }
+          }
+        }
+        
+        // Log final users after merging
+        const finalPoseUsers = extractUsersFromData(poseData, 'POSE');
+        console.log('[getFromDatabaseByGame] POSE DATA users after merging from all orgs:', Array.from(finalPoseUsers.allUsers).sort());
+        console.log('[getFromDatabaseByGame] ===========================================================');
+      }
+    }
+
+    // Filter by user if selectedUser is specified
+    if (selectedUser && selectedUser !== 'ALL') {
+      console.log('[getFromDatabaseByGame] ========== FILTERING BY USER ==========');
+      console.log('[getFromDatabaseByGame] Selected user:', selectedUser);
+      
+      // Log users before filtering
+      const getUsersBeforeFilter = (data) => {
+        if (!data) return {};
+        const usersByDate = {};
+        for (const dateKey in data) {
+          if (data[dateKey] && typeof data[dateKey] === 'object') {
+            usersByDate[dateKey] = Object.keys(data[dateKey]);
+          }
+        }
+        return usersByDate;
+      };
+      
+      const poseUsersBefore = getUsersBeforeFilter(poseData);
+      const eventUsersBefore = getUsersBeforeFilter(eventData);
+      
+      console.log('[getFromDatabaseByGame] Users in POSE DATA before filter:', poseUsersBefore);
+      console.log('[getFromDatabaseByGame] Users in EVENT DATA before filter:', eventUsersBefore);
+      
+      // Check if selected user exists in data
+      let poseUserExists = false;
+      let eventUserExists = false;
+      for (const dateKey in poseUsersBefore) {
+        if (poseUsersBefore[dateKey].includes(selectedUser)) {
+          poseUserExists = true;
+          console.log(`[getFromDatabaseByGame] Selected user ${selectedUser} found in POSE DATA for date: ${dateKey}`);
+        }
+      }
+      for (const dateKey in eventUsersBefore) {
+        if (eventUsersBefore[dateKey].includes(selectedUser)) {
+          eventUserExists = true;
+          console.log(`[getFromDatabaseByGame] Selected user ${selectedUser} found in EVENT DATA for date: ${dateKey}`);
+        }
+      }
+      
+      if (!poseUserExists && eventUserExists) {
+        console.warn(`[getFromDatabaseByGame] WARNING: Selected user ${selectedUser} exists in EVENT DATA but NOT in POSE DATA!`);
+        console.warn(`[getFromDatabaseByGame] This indicates Firebase security rules may be blocking access to pose data for this user.`);
+      } else if (!poseUserExists && !eventUserExists) {
+        console.warn(`[getFromDatabaseByGame] WARNING: Selected user ${selectedUser} does not exist in either POSE or EVENT data!`);
+      }
+      
+      const filterByUser = (data, dataType) => {
+        if (!data) {
+          console.log(`[getFromDatabaseByGame] filterByUser (${dataType}): No data to filter`);
+          return null;
+        }
+        
+        const filtered = {};
+        const datesWithUser = [];
+        const datesWithoutUser = [];
+        
+        for (const dateKey in data) {
+          const dateData = data[dateKey];
+          if (dateData && typeof dateData === 'object' && dateData[selectedUser]) {
+            filtered[dateKey] = { [selectedUser]: dateData[selectedUser] };
+            datesWithUser.push(dateKey);
+          } else {
+            datesWithoutUser.push(dateKey);
+            if (dateData && typeof dateData === 'object') {
+              const availableUsers = Object.keys(dateData);
+              console.log(`[getFromDatabaseByGame] filterByUser (${dataType}): Date ${dateKey} does not have user ${selectedUser}. Available users:`, availableUsers);
+            }
+          }
+        }
+        
+        const filteredDates = Object.keys(filtered);
+        console.log(`[getFromDatabaseByGame] filterByUser (${dataType}): Dates with user:`, datesWithUser);
+        console.log(`[getFromDatabaseByGame] filterByUser (${dataType}): Dates without user:`, datesWithoutUser);
+        console.log(`[getFromDatabaseByGame] filterByUser (${dataType}): Result has ${filteredDates.length} date(s)`);
+        
+        return filteredDates.length > 0 ? filtered : null;
+      };
+      
+      const poseDataBeforeUserFilter = poseData ? Object.keys(poseData).length : 0;
+      const eventDataBeforeUserFilter = eventData ? Object.keys(eventData).length : 0;
+      
+      poseData = poseData ? filterByUser(poseData, 'POSE') : null;
+      eventData = eventData ? filterByUser(eventData, 'EVENT') : null;
+      
+      const poseDataAfterUserFilter = poseData ? Object.keys(poseData).length : 0;
+      const eventDataAfterUserFilter = eventData ? Object.keys(eventData).length : 0;
+      
+      console.log('[getFromDatabaseByGame] User filter results:', {
+        selectedUser: selectedUser,
+        poseDataBefore: poseDataBeforeUserFilter,
+        poseDataAfter: poseDataAfterUserFilter,
+        poseDataLost: poseDataBeforeUserFilter - poseDataAfterUserFilter,
+        eventDataBefore: eventDataBeforeUserFilter,
+        eventDataAfter: eventDataAfterUserFilter,
+        eventDataLost: eventDataBeforeUserFilter - eventDataAfterUserFilter
+      });
+      
+      if (poseDataAfterUserFilter === 0 && eventDataAfterUserFilter > 0) {
+        console.error(`[getFromDatabaseByGame] ERROR: User ${selectedUser} has EVENT data but NO POSE data after filtering!`);
+        console.error(`[getFromDatabaseByGame] This strongly suggests Firebase security rules are blocking pose data access.`);
+      }
+      
+      console.log('[getFromDatabaseByGame] =========================================');
+    } else {
+      console.log('[getFromDatabaseByGame] No user filter applied (selectedUser:', selectedUser, ')');
+    }
+
+    // Analyze filtered pose data AFTER filtering
+    if (poseData) {
+      console.log('[getFromDatabaseByGame] ========== FILTERED POSE DATA STRUCTURE (AFTER FILTERING) ==========');
+      const filteredSessions = analyzePoseDataStructure(poseData, 'FILTERED_POSE');
+      console.log('[getFromDatabaseByGame] ===============================================================');
+    }
+
+    console.log('[getFromDatabaseByGame] Filtered data:', {
+      selectedUser: selectedUser || 'ALL',
+      poseDataExists: poseData !== null,
+      eventDataExists: eventData !== null,
+      poseDataSize: poseData ? JSON.stringify(poseData).length : 0,
+      eventDataSize: eventData ? JSON.stringify(eventData).length : 0
+    });
 
     const formattedStart = selectedStart.replace(/[^a-zA-Z0-9]/g, '_');
     const formattedEnd = selectedEnd.replace(/[^a-zA-Z0-9]/g, '_');
     const formattedGame = selectedGame.replace(/[^a-zA-Z0-9]/g, '_');
 
-    // Check if data in snapshot exists
-    if (poseQuerySnapshot.exists() && eventQuerySnapshot.exists()) {
-      const poseData = poseQuerySnapshot.val();
-      const eventData = eventQuerySnapshot.val();
+    // Check if any data exists
+    if (poseData || eventData) {
+      console.log('[getFromDatabaseByGame] Data found, preparing downloads...');
 
-      // Determine device label for filenames (single device => that slug; else MULTI_DEVICE)
+      // Determine device label for filenames (use event data if available, otherwise pose data)
       const collectDeviceLabel = (tree) => {
+        if (!tree) return "MULTI_DEVICE";
         const setD = new Set();
         for (const day in (tree || {})) {
           const users = tree[day] || {};
@@ -1787,30 +2335,94 @@ export const getFromDatabaseByGame = async (selectedGame, gameId, selectedStart,
         }
         return setD.size === 1 ? [...setD][0] : "MULTI_DEVICE";
       };
-      const deviceLabel = sanitize(collectDeviceLabel(eventData));
+      
+      // Use event data for device label if available, otherwise use pose data
+      const deviceLabel = sanitize(collectDeviceLabel(eventData || poseData));
+      console.log('[getFromDatabaseByGame] Device label:', deviceLabel);
 
-      // Convert event log to JSON and download
-      const eventjsonStr = JSON.stringify(eventData, null, 2);
-      const eventDownload = document.createElement('a');
-      eventDownload.setAttribute('href', 'data:text/json;charset=utf-8,' + encodeURIComponent(eventjsonStr));
-      eventDownload.setAttribute('download', `${formattedGame}__${deviceLabel}__event_log_${formattedStart}_to_${formattedEnd}.json`);
-      document.body.appendChild(eventDownload);
-      eventDownload.click();
-      document.body.removeChild(eventDownload);
+      // Download event data if it exists
+      if (eventData) {
+        console.log('[getFromDatabaseByGame] Creating event log download...');
+        const eventjsonStr = JSON.stringify(eventData, null, 2);
+        const eventFilename = `${formattedGame}__${deviceLabel}__event_log_${formattedStart}_to_${formattedEnd}.json`;
+        console.log('[getFromDatabaseByGame] Event log filename:', eventFilename);
+        
+        const eventDownload = document.createElement('a');
+        eventDownload.setAttribute('href', 'data:text/json;charset=utf-8,' + encodeURIComponent(eventjsonStr));
+        eventDownload.setAttribute('download', eventFilename);
+        document.body.appendChild(eventDownload);
+        console.log('[getFromDatabaseByGame] Clicking event download link...');
+        eventDownload.click();
+        document.body.removeChild(eventDownload);
+        console.log('[getFromDatabaseByGame] Event log download initiated');
+      } else {
+        console.log('[getFromDatabaseByGame] Event data not available, skipping event log download');
+      }
 
-      // Convert pose data to JSON and download (takes longer)
-      const posejsonStr = JSON.stringify(poseData, null, 2);
-      const poseDownload = document.createElement('a');
-      poseDownload.setAttribute('href', 'data:text/json;charset=utf-8,' + encodeURIComponent(posejsonStr));
-      poseDownload.setAttribute('download', `${formattedGame}__${deviceLabel}__pose_data_${formattedStart}_to_${formattedEnd}.json`);
-      document.body.appendChild(poseDownload);
-      poseDownload.click();
-      document.body.removeChild(poseDownload);
+      // Download pose data if it exists
+      if (poseData) {
+        console.log('[getFromDatabaseByGame] Creating pose data download...');
+        
+        // Log final pose data structure before stringifying
+        console.log('[getFromDatabaseByGame] ========== FINAL POSE DATA BEFORE JSON STRINGIFY ==========');
+        const finalDates = Object.keys(poseData);
+        console.log('[getFromDatabaseByGame] Final dates count:', finalDates.length);
+        console.log('[getFromDatabaseByGame] Final dates:', finalDates);
+        
+        for (const dateKey of finalDates) {
+          const users = Object.keys(poseData[dateKey]);
+          console.log(`[getFromDatabaseByGame] Final - Date ${dateKey}: ${users.length} user(s)`, users);
+          for (const userKey of users) {
+            const devices = Object.keys(poseData[dateKey][userKey]);
+            console.log(`[getFromDatabaseByGame] Final - Date ${dateKey}, User ${userKey}: ${devices.length} device(s)`, devices);
+            for (const deviceKey of devices) {
+              const loginTimes = Object.keys(poseData[dateKey][userKey][deviceKey]);
+              console.log(`[getFromDatabaseByGame] Final - Date ${dateKey}, User ${userKey}, Device ${deviceKey}: ${loginTimes.length} loginTime(s)`, loginTimes);
+              for (const loginTimeKey of loginTimes) {
+                const uuids = Object.keys(poseData[dateKey][userKey][deviceKey][loginTimeKey]);
+                console.log(`[getFromDatabaseByGame] Final - Date ${dateKey}, User ${userKey}, Device ${deviceKey}, LoginTime ${loginTimeKey}: ${uuids.length} UUID(s)`, uuids);
+              }
+            }
+          }
+        }
+        console.log('[getFromDatabaseByGame] ============================================================');
+        
+        const posejsonStr = JSON.stringify(poseData, null, 2);
+        const poseFilename = `${formattedGame}__${deviceLabel}__pose_data_${formattedStart}_to_${formattedEnd}.json`;
+        console.log('[getFromDatabaseByGame] Pose data filename:', poseFilename);
+        console.log('[getFromDatabaseByGame] Pose data JSON size:', posejsonStr.length, 'bytes');
+        console.log('[getFromDatabaseByGame] Pose data JSON size (MB):', (posejsonStr.length / 1024 / 1024).toFixed(2));
+        
+        // Check if JSON stringification lost any data
+        const parsedBack = JSON.parse(posejsonStr);
+        const parsedDates = Object.keys(parsedBack);
+        console.log('[getFromDatabaseByGame] After JSON parse: dates count:', parsedDates.length);
+        console.log('[getFromDatabaseByGame] After JSON parse: dates:', parsedDates);
+        
+        const poseDownload = document.createElement('a');
+        poseDownload.setAttribute('href', 'data:text/json;charset=utf-8,' + encodeURIComponent(posejsonStr));
+        poseDownload.setAttribute('download', poseFilename);
+        document.body.appendChild(poseDownload);
+        console.log('[getFromDatabaseByGame] Clicking pose download link...');
+        poseDownload.click();
+        document.body.removeChild(poseDownload);
+        console.log('[getFromDatabaseByGame] Pose data download initiated');
+      } else {
+        console.log('[getFromDatabaseByGame] Pose data not available, skipping pose data download');
+      }
+      
+      console.log('[getFromDatabaseByGame] Downloads completed');
       
     } else {
-      return null; // This will happen if data not found
+      console.warn('[getFromDatabaseByGame] No data found for the specified criteria');
+      console.warn('[getFromDatabaseByGame] Pose data exists:', poseData !== null);
+      console.warn('[getFromDatabaseByGame] Event data exists:', eventData !== null);
+      alert('No data found for the specified game and date range.');
+      return null;
     }
   } catch (error) {
+    console.error('[getFromDatabaseByGame] Error:', error);
+    alert('Error downloading data: ' + error.message);
     throw error; 
   }
 };
@@ -2138,9 +2750,10 @@ export const convertDateFormat = (dateStr) => {
     const separator = dateStr.includes('/') ? '/' : '-';
   
     // Split the date string into parts
-    const [day, month, year] = dateStr.split(separator);
+    // Input format is mm/dd/yyyy, so first element is month, second is day
+    const [month, day, year] = dateStr.split(separator);
     
-    // Return the date string in the format 'yyyy-dd-mm'
+    // Return the date string in the format 'yyyy-mm-dd' (matching database format)
     return `${year}-${month}-${day}`;
 };
 
@@ -2166,6 +2779,90 @@ export const findGameIdByName = async (name, orgId) => {
     return null;
   } catch (error) {
     console.error('Error finding gameId by name:', error);
+    return null;
+  }
+};
+
+export const findGameIdByNameAcrossOrgs = async (name, currentOrgId) => {
+  try {
+    console.log('[findGameIdByNameAcrossOrgs] Starting search for:', name, 'in org:', currentOrgId);
+    
+    if (!name) {
+      console.warn('[findGameIdByNameAcrossOrgs] name is missing');
+      return null;
+    }
+    if (!currentOrgId) {
+      console.warn('[findGameIdByNameAcrossOrgs] currentOrgId is missing');
+      return null;
+    }
+    
+    // 1. Сначала ищем в текущей организации
+    console.log('[findGameIdByNameAcrossOrgs] Searching in current org:', currentOrgId);
+    const currentOrgGamesRef = ref(db, `orgs/${currentOrgId}/games`);
+    const currentOrgSnapshot = await get(currentOrgGamesRef);
+    
+    if (currentOrgSnapshot.exists()) {
+      const games = currentOrgSnapshot.val();
+      console.log('[findGameIdByNameAcrossOrgs] Found', Object.keys(games).length, 'games in current org');
+      
+      for (const gameKey in games) {
+        const game = games[gameKey];
+        console.log('[findGameIdByNameAcrossOrgs] Checking game:', game.name, 'UUID:', game.UUID);
+        
+        if (game.name && (game.name === name || game.name.includes(name))) {
+          console.log('[findGameIdByNameAcrossOrgs] Match found in current org!', { gameId: game.UUID, orgId: currentOrgId });
+          return { gameId: game.UUID, orgId: currentOrgId };
+        }
+      }
+      console.log('[findGameIdByNameAcrossOrgs] No match in current org');
+    } else {
+      console.log('[findGameIdByNameAcrossOrgs] No games found in current org');
+    }
+    
+    // 2. Если не найдено, ищем в публичных играх других организаций
+    console.log('[findGameIdByNameAcrossOrgs] Searching in other orgs for public games...');
+    const orgsRef = ref(db, 'orgs');
+    const orgsSnapshot = await get(orgsRef);
+    
+    if (orgsSnapshot.exists()) {
+      const orgs = orgsSnapshot.val();
+      const orgIds = Object.keys(orgs);
+      console.log('[findGameIdByNameAcrossOrgs] Found', orgIds.length, 'organizations');
+      
+      for (const [otherOrgId, orgData] of Object.entries(orgs)) {
+        if (otherOrgId === currentOrgId) {
+          console.log('[findGameIdByNameAcrossOrgs] Skipping current org:', otherOrgId);
+          continue; // Пропускаем текущую организацию
+        }
+        
+        console.log('[findGameIdByNameAcrossOrgs] Checking org:', otherOrgId);
+        const gamesRef = ref(db, `orgs/${otherOrgId}/games`);
+        const gamesSnapshot = await get(gamesRef);
+        
+        if (gamesSnapshot.exists()) {
+          const games = gamesSnapshot.val();
+          console.log('[findGameIdByNameAcrossOrgs] Found', Object.keys(games).length, 'games in org:', otherOrgId);
+          
+          for (const [gameKey, gameData] of Object.entries(games)) {
+            // Ищем только публичные игры
+            if (gameData && gameData.isPublic === true && gameData.name && 
+                (gameData.name === name || gameData.name.includes(name))) {
+              console.log('[findGameIdByNameAcrossOrgs] Match found in other org!', { gameId: gameData.UUID, orgId: otherOrgId });
+              return { gameId: gameData.UUID, orgId: otherOrgId };
+            }
+          }
+        } else {
+          console.log('[findGameIdByNameAcrossOrgs] No games in org:', otherOrgId);
+        }
+      }
+    } else {
+      console.log('[findGameIdByNameAcrossOrgs] No organizations found');
+    }
+    
+    console.log('[findGameIdByNameAcrossOrgs] No match found anywhere');
+    return null;
+  } catch (error) {
+    console.error('[findGameIdByNameAcrossOrgs] Error:', error);
     return null;
   }
 };

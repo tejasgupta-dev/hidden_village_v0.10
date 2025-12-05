@@ -3,8 +3,8 @@ import { useMachine } from "@xstate/react";
 import LevelPlayMachine from "./LevelPlayModule/LevelPlayMachine";
 import { getUserNameFromDatabase } from '../firebase/userDatabase';
 import { getGameNameByUUID, getLevelNameByUUID, getGameNameByLevelUUID, getCurricularDataByUUID, getCurrentOrgContext } from '../firebase/database';
-import { storage } from '../firebase/init';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage, app } from '../firebase/init';
+import { ref, uploadBytes, getDownloadURL, getStorage } from 'firebase/storage';
 
 const VideoRecorder = ({ phase, curricularID, gameID }) => {
   const [currentPhase, setCurrentPhase] = useState(null);
@@ -161,14 +161,21 @@ const VideoRecorder = ({ phase, curricularID, gameID }) => {
   const uploadVideo = async (blob, filename, recordingPhase) => {
     try {
       console.log(`Uploading video for phase: ${recordingPhase}, filename: ${filename}`);
-      const videoRef = ref(storage, `videos/${filename}`);
+      
+      // Убедиться, что storage инициализирован
+      const storageInstance = storage || getStorage(app);
+      if (!storageInstance) {
+        throw new Error('Storage is not initialized');
+      }
+      
+      const videoRef = ref(storageInstance, `videos/${filename}`);
       await uploadBytes(videoRef, blob);
       const downloadURL = await getDownloadURL(videoRef);
       console.log('Video uploaded successfully:', downloadURL);
       return downloadURL;
     } catch (error) {
       console.error('Error uploading video:', error);
-      return null;
+      throw error; // Пробросить ошибку дальше для лучшей диагностики
     }
   };
 

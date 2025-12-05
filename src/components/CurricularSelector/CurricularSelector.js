@@ -151,9 +151,14 @@ const CurricularSelectModule = (props) => {
             if (!isMounted) return;
             
             // Filter: organization games (without _isFromOtherOrg) + public games (with isPublic === true or _isFromOtherOrg === true)
+            // In play mode, only show published games (isFinal === true)
             let availableGames = [];
             if (allGames) {
               availableGames = allGames.filter(game => {
+                // Only show published games in play mode
+                if (game.isFinal !== true) {
+                  return false;
+                }
                 // Games from current organization (not from other orgs)
                 if (!game._isFromOtherOrg) {
                   return true;
@@ -186,12 +191,17 @@ const CurricularSelectModule = (props) => {
           if (!isMounted) return;
           
           // Filter games: show games assigned to class OR public games from other orgs (if showPublic is true)
+          // In play mode, only show published games (isFinal === true)
           const classGames = allGames ? allGames.filter(game => {
-            // Always show games assigned to the class
+            // Only show published games in play mode
+            if (game.isFinal !== true) {
+              return false;
+            }
+            // Always show games assigned to the class (if published)
             if (assignedGameIds.includes(game.UUID)) {
               return true;
             }
-            // Show public games from other organizations if showPublic is true
+            // Show public games from other organizations if showPublic is true (if published)
             if (showPublic && game._isFromOtherOrg && game.isPublic === true) {
               return true;
             }
@@ -285,9 +295,14 @@ const CurricularSelectModule = (props) => {
               if (!isMounted) return;
               
               // Filter: organization games (without _isFromOtherOrg) + public games (with isPublic === true or _isFromOtherOrg === true)
+              // In play mode, only show published games (isFinal === true)
               let availableGames = [];
               if (allGames) {
                 availableGames = allGames.filter(game => {
+                  // Only show published games in play mode
+                  if (game.isFinal !== true) {
+                    return false;
+                  }
                   // Games from current organization (not from other orgs)
                   if (!game._isFromOtherOrg) {
                     return true;
@@ -319,8 +334,16 @@ const CurricularSelectModule = (props) => {
             
             if (!isMounted) return;
             
-            // Filter only games assigned to current class
-            const classGames = allGames ? allGames.filter(game => assignedGameIds.includes(game.UUID)) : [];
+            // Filter only published games assigned to current class
+            // In play mode, only show published games (isFinal === true)
+            const classGames = allGames ? allGames.filter(game => {
+              // Only show published games in play mode
+              if (game.isFinal !== true) {
+                return false;
+              }
+              // Show games assigned to the class (if published)
+              return assignedGameIds.includes(game.UUID);
+            }) : [];
             
             console.log('CurricularSelector: Updated filtered games for class:', classGames.length, 'out of', allGames.length);
             if (isMounted) {

@@ -7,8 +7,8 @@ import { TextStyle } from "@pixi/text";
 import InputBox from "../InputBox";
 import { Input } from 'postcss';
 import { useEffect, useRef, useState, } from 'react';
-import { getUserEmailFromDatabase, getCurrentUserContext } from "../../firebase/userDatabase"
-import { getFromDatabaseByGame, convertDateFormat, checkDateFormat, checkGameAuthorization, getAuthorizedGameList, findGameIdByName, getFromDatabaseByGameCSV} from "../../firebase/database"
+import { getUserEmailFromDatabase, getCurrentUserContext, getUsersByOrganizationFromDatabase } from "../../firebase/userDatabase"
+import { getFromDatabaseByGame, convertDateFormat, checkDateFormat, checkGameAuthorization, getAuthorizedGameList, findGameIdByNameAcrossOrgs} from "../../firebase/database"
 import { app } from "../../firebase/init"
 import { getStorage, ref, listAll, getDownloadURL } from "firebase/storage";
 import { getDatabase, ref as dbRef, get } from "firebase/database";
@@ -26,7 +26,6 @@ const DataMenu = (props) => {
   } = props;
 
   const [all_data, setAllData] = useState(false);
-  const [save_csv, setSaveCSV] = useState(false);
   const [save_json, setSaveJSON] = useState(false);
   const [game_name, setGameName] = useState('');
   const [start_date, setStartDate] = useState('');
@@ -39,6 +38,7 @@ const DataMenu = (props) => {
   const [userEmail, setUserEmail] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedUser, setSelectedUser] = useState('ALL');
 
   const innerRectWidth = menuWidth * 0.94;
   const innerRectHeight = menuHeight * 0.8; 
@@ -279,11 +279,79 @@ const DataMenu = (props) => {
         width={(innerRectWidth - distanceFromFieldTextToField - fieldTextMarginsFromInnerRect * 2) / 0.4}
         x={x + innerRectMargins + fieldTextMarginsFromInnerRect + distanceFromFieldTextToField}
         y={y + menuHeight - innerRectMargins - innerRectHeight + fieldTextMarginsFromInnerRect}
-        color={lightGray}
+        color={white}
         fontSize={inputBoxTextSize}  //  Dynamically modify font size based on screen width
         fontColor={black}
-        text={isLoading ? 'Loading...' : error ? 'Error loading email' : userEmail}
+        text={selectedUser}
         fontWeight={600}
+        callback={async () => {
+          try {
+            // Get orgId from user context
+            const userContext = await getCurrentUserContext(app);
+            const orgId = userContext?.orgId;
+            
+            if (!orgId) {
+              alert('Ошибка: не удалось получить ID организации.');
+              return;
+            }
+            
+            // Get list of users from organization
+            const orgUsers = await getUsersByOrganizationFromDatabase(orgId, app);
+            
+            // Also try to get users from event data if game is selected
+            let eventUsers = [];
+            if (game_name) {
+              try {
+                const gameInfo = await findGameIdByNameAcrossOrgs(game_name, orgId);
+                if (gameInfo && gameInfo.gameId) {
+                  const eventdbRef = dbRef(getDatabase(), `_GameData/${gameInfo.gameId}`);
+                  const eventSnapshot = await get(eventdbRef);
+                  if (eventSnapshot.exists()) {
+                    const eventData = eventSnapshot.val();
+                    // Extract unique users from event data
+                    const userSet = new Set();
+                    for (const dateKey in eventData) {
+                      if (eventData[dateKey] && typeof eventData[dateKey] === 'object') {
+                        const users = Object.keys(eventData[dateKey]);
+                        users.forEach(user => userSet.add(user));
+                      }
+                    }
+                    eventUsers = Array.from(userSet);
+                  }
+                }
+              } catch (err) {
+                console.warn('[DataMenu] Could not get users from event data:', err);
+              }
+            }
+            
+            // Combine users from org and event data, remove duplicates
+            const allUsers = new Set();
+            orgUsers.forEach(user => {
+              const userName = user.userEmail?.split('@')[0] || user.userName;
+              if (userName) allUsers.add(userName);
+            });
+            eventUsers.forEach(user => allUsers.add(user));
+            
+            // Create options list
+            const userOptions = ['ALL', ...Array.from(allUsers).sort()];
+            const userOptionsText = userOptions.join('\n');
+            
+            // Show prompt for user selection
+            const promptVal = prompt(`Выберите пользователя:\n\n${userOptionsText}\n\n`, selectedUser);
+            
+            if (promptVal !== null) {
+              // Validate selection
+              if (userOptions.includes(promptVal)) {
+                setSelectedUser(promptVal);
+              } else {
+                alert(`Неверный выбор. Пожалуйста, выберите из списка:\n${userOptionsText}`);
+              }
+            }
+          } catch (error) {
+            console.error('[DataMenu] Error getting user list:', error);
+            alert('Ошибка при получении списка пользователей. Проверьте консоль для подробностей.');
+          }
+        }}
       />
       <Text
         text={"GAME NAME"}                             
@@ -427,33 +495,6 @@ const DataMenu = (props) => {
         callback = {() => { setAllData(!all_data) } }
       />
 
-      <InputBox //Check box for downloading as CSV
-        height={checkButtonWidth}
-        width={checkButtonWidth}
-        x={x + innerRectMargins + fieldTextMarginsFromInnerRect}
-        y={y + menuHeight - innerRectMargins - innerRectHeight + fieldTextMarginsFromInnerRect + fieldTextMarginsFromEachOther * 5}
-        color={white}
-        fontSize={checkButtonFont}
-        fontColor={black}
-        fontWeight={600}
-        text={save_csv ? "X" : ""}
-        callback = {() => { setSaveCSV(!save_csv) } }
-      />
-
-      <Text
-        text={"CSV \n(broken)"}              
-        style={new TextStyle({
-          align: "left",
-          fontFamily: "Arial",
-          fontSize: fieldHeight * 0.9,
-          fontWeight: 1000,
-          fill: [black],
-        })}
-        x={x + innerRectMargins + fieldTextMarginsFromInnerRect + checkButtonWidth * 0.8} 
-        y={y + menuHeight - innerRectMargins - innerRectHeight + fieldTextMarginsFromInnerRect + fieldTextMarginsFromEachOther * 5}
-        anchor={0}
-      />
-
       <InputBox //Check box for downloading as JSON
         height={checkButtonWidth}
         width={checkButtonWidth}
@@ -526,60 +567,91 @@ const DataMenu = (props) => {
         width={menuWidth * 0.4}
         x={x + innerRectMargins + innerRectWidth - menuWidth * 0.2 - fieldTextMarginsFromInnerRect}
         y={y + menuHeight - innerRectMargins - innerRectHeight + fieldTextMarginsFromInnerRect + fieldTextMarginsFromEachOther * 4}
-        color={(save_csv || save_json || save_videos) ? royalBlue : lightGray}
+        color={(save_json || save_videos) ? royalBlue : lightGray}
         text={"SAVE"}
         fontSize={menuWidth * 0.02}
         fontColor={white}
         fontWeight={600}
-        callback={() => {
+        callback={async () => {
+          console.log('[DataMenu] SAVE button clicked');
+          console.log('[DataMenu] Current state:', { game_name, all_data, start_date, end_date, save_json, save_videos });
+          
           if (!game_name) {
+            console.log('[DataMenu] Validation failed: game_name is empty');
             alert('Please enter a game name.');
             return;
           }
 
           if (!all_data && (!start_date || !end_date)) {
+            console.log('[DataMenu] Validation failed: dates missing');
             alert('Please enter a start and end date.');
             return;
           }
 
-          findGameIdByName(game_name).then((gameId) => {
-            if (!gameId) {
-              alert(`Game ID not found for "${game_name}".`);
-              return;
+          console.log('[DataMenu] Starting to get user context...');
+          // Получить orgId из контекста пользователя
+          const userContext = await getCurrentUserContext(app);
+          console.log('[DataMenu] User context received:', userContext);
+          const orgId = userContext?.orgId;
+          console.log('[DataMenu] Extracted orgId:', orgId);
+          
+          if (!orgId) {
+            console.error('[DataMenu] Error: orgId is missing');
+            alert('Ошибка: не удалось получить ID организации.');
+            return;
+          }
+
+          console.log('[DataMenu] Searching for game:', game_name, 'in org:', orgId);
+          // Искать игру во всех доступных организациях
+          const gameInfo = await findGameIdByNameAcrossOrgs(game_name, orgId);
+          console.log('[DataMenu] Game search result:', gameInfo);
+          
+          if (!gameInfo || !gameInfo.gameId) {
+            console.warn('[DataMenu] Game not found for:', game_name);
+            alert(`Game ID not found for "${game_name}".`);
+            return;
+          }
+
+          const { gameId, orgId: gameOrgId } = gameInfo;
+          console.log('[DataMenu] Using gameId:', gameId, 'orgId:', gameOrgId, 'for game:', game_name);
+
+          // Handle JSON downloads
+          if (save_json) {
+            console.log('[DataMenu] Starting JSON download...');
+            console.log('[DataMenu] Selected user:', selectedUser);
+            const userToFilter = selectedUser === 'ALL' ? null : selectedUser;
+            if (all_data) {
+              console.log('[DataMenu] JSON: All data, date range: 2000-01-01 to', new Date().toISOString().split('T')[0]);
+              getFromDatabaseByGame(game_name, gameId, '2000-01-01', new Date().toISOString().split('T')[0], gameOrgId, userToFilter);
+            } else {
+              const startFormatted = convertDateFormat(start_date);
+              const endFormatted = convertDateFormat(end_date);
+              console.log('[DataMenu] JSON: Date range:', startFormatted, 'to', endFormatted);
+              getFromDatabaseByGame(game_name, gameId, startFormatted, endFormatted, gameOrgId, userToFilter);
             }
+          } else {
+            console.log('[DataMenu] JSON download not selected');
+          }
 
-            // Handle JSON downloads
-            if (save_json) {
-              if (all_data) {
-                getFromDatabaseByGame(game_name, gameId, '2000-01-01', new Date().toISOString().split('T')[0]);
-              } else {
-                getFromDatabaseByGame(game_name, gameId, convertDateFormat(start_date), convertDateFormat(end_date));
-              }
-            }
+          // Handle video downloads
+          if (save_videos) {
+            console.log('[DataMenu] Starting video download...');
+            const parseDate = (dateStr) => {
+              if (!dateStr) return null;
+              const [month, day, year] = dateStr.split('/');
+              return new Date(Date.UTC(+year, +month - 1, +day));
+            };
 
-            // Handle CSV downloads
-            if (save_csv) {
-              if (all_data) {
-                getFromDatabaseByGameCSV(game_name, gameId, '2000-01-01', new Date().toISOString().split('T')[0]);
-              } else {
-                getFromDatabaseByGameCSV(game_name, gameId, convertDateFormat(start_date), convertDateFormat(end_date));
-              }
-            }
+            const start = all_data ? new Date(Date.UTC(2000, 0, 1)) : parseDate(start_date);
+            const end = all_data ? new Date() : parseDate(end_date);
+            console.log('[DataMenu] Video: Date range:', start, 'to', end);
 
-            // Handle video downloads
-            if (save_videos) {
-              const parseDate = (dateStr) => {
-                if (!dateStr) return null;
-                const [month, day, year] = dateStr.split('/');
-                return new Date(Date.UTC(+year, +month - 1, +day));
-              };
-
-              const start = all_data ? new Date(Date.UTC(2000, 0, 1)) : parseDate(start_date);
-              const end = all_data ? new Date() : parseDate(end_date);
-
-              downloadVideos(game_name, start, end);
-            }
-          });
+            downloadVideos(game_name, start, end);
+          } else {
+            console.log('[DataMenu] Video download not selected');
+          }
+          
+          console.log('[DataMenu] SAVE operation completed');
         }}
       />
 
