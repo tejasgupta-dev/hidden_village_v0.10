@@ -137,7 +137,7 @@ const PlayGame = (props) => {
           color={red}
           fontSize={width * 0.02}
           fontColor={white}
-          text={"Back"}
+          text={"BACK"}
           fontWeight={800}
           callback={backCallback}
         />

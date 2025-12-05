@@ -15,13 +15,12 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
   const [cursorPos, setCursorPos] = useState({ x: -100, y: -100 });
   const [showQuestion, setShowQuestion] = useState(true);
   const [questionOpacity, setQuestionOpacity] = useState(1.0);
-  const [isHoveringButton, setIsHoveringButton] = useState(false);
   const hoverTimerRef = useRef(null);
   const onCompleteRef = useRef(onComplete);
   const mainTimerRef = useRef(null);
   const fadeIntervalRef = useRef(null);
   const questionTimerRef = useRef(null);
-  const hideQuestionTimerRef = useRef(null);
+  const buttonPressRef = useRef(false);
 
   // Visual spacing for clearer MCQ boxes
   const H_PAD = 24;   
@@ -120,15 +119,6 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
     setQuestionOpacity(0);
   }, [clearQuestionTimers]);
 
-  // Handle main timer completion - record timeout as answer
-  const handleMainTimerComplete = useCallback(() => {
-    // If timer expires without selection, record timeout
-    if (gameID) {
-      writeToDatabaseMCAnswer('TIMEOUT', correctAnswer, gameID, question).catch(console.error);
-    }
-    onCompleteRef.current();
-  }, [gameID, correctAnswer, question]);
-
   const restartMainTimer = useCallback(() => {
     if (mainTimerRef.current) {
       clearTimeout(mainTimerRef.current);
@@ -136,9 +126,18 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
 
     mainTimerRef.current = setTimeout(() => {
       console.log("NewStage: Calling onComplete from main timer");
-      handleMainTimerComplete();
+      onCompleteRef.current();
     }, 50000);
-  }, [handleMainTimerComplete]);
+  }, []);
+
+  const handleQuestionButtonToggle = useCallback(() => {
+    if (showQuestion) {
+      hideQuestionOverlay();
+    } else {
+      startQuestionOverlay();
+    }
+    restartMainTimer();
+  }, [hideQuestionOverlay, restartMainTimer, showQuestion, startQuestionOverlay]);
 
   // Keep onComplete ref up to date
   useEffect(() => {
@@ -218,33 +217,18 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
     const overButton = rectsOverlap(cursorArea, buttonRect);
 
     if (overButton) {
-      // Курсор на кнопке - показываем вопрос
-      if (!isHoveringButton) {
-        setIsHoveringButton(true);
-        // Очистить таймер скрытия
-        if (hideQuestionTimerRef.current) {
-          clearTimeout(hideQuestionTimerRef.current);
-          hideQuestionTimerRef.current = null;
-        }
-        // Очистить все таймеры вопроса
-        clearQuestionTimers();
-        // Показать вопрос сразу
-        setShowQuestion(true);
-        setQuestionOpacity(1.0);
-        // Обновить главный таймер
-        restartMainTimer();
+      if (!buttonPressRef.current) {
+        buttonPressRef.current = true;
+        handleQuestionButtonToggle();
       }
       setHoveredBox(null);
       return;
     } else {
-      // Курсор не на кнопке
-      if (isHoveringButton) {
-        setIsHoveringButton(false);
-      }
+      buttonPressRef.current = false;
     }
 
-    // Don't detect hover during question display phase (когда показывается вопрос, но не из-за кнопки)
-    if (showQuestion && !isHoveringButton) {
+    // Don't detect hover during question display phase
+    if (showQuestion) {
       setHoveredBox(null);
       return;
     }
@@ -269,7 +253,7 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
       setHoveredBox(next);
       setHoverTime(0);
     }
-  }, [poseData, columnDimensions, hoveredBox, questionButtonRect, showQuestion, isHoveringButton, clearQuestionTimers, restartMainTimer]);
+  }, [poseData, columnDimensions, handleQuestionButtonToggle, hoveredBox, questionButtonRect, showQuestion]);
   
   // Timer for hiding question after cursor leaves button
   useEffect(() => {
@@ -308,25 +292,10 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
         clearTimeout(mainTimerRef.current);
         mainTimerRef.current = null;
       }
-      
-      // Map hoveredBox to answer letter (A, B, C, D)
-      const answerMap = {
-        'leftTop': 'A',
-        'leftBottom': 'B',
-        'rightTop': 'C',
-        'rightBottom': 'D'
-      };
-      const selectedAnswer = answerMap[hoveredBox] || 'A';
-      
-      // Write answer to database
-      if (gameID) {
-        writeToDatabaseMCAnswer(selectedAnswer, correctAnswer, gameID, question).catch(console.error);
-      }
-      
       onCompleteRef.current();   
     }, 2000);
   
-    // if you'd like to show countdown as user hovers over a box, uncomment the following code
+    // show countdown as user hovers
     // const tick = setInterval(() => setHoverTime((t) => Math.min(5, t + 0.1)), 100);
     // return () => {
     //   clearTimeout(hoverTimerRef.current);
@@ -334,7 +303,7 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
     //   hoverTimerRef.current = null;
     //   setHoverTime(0);
     // };
-  }, [hoveredBox, gameID, correctAnswer, question]);
+  }, [hoveredBox]);
 
   const col2 = columnDimensions(2);
 
@@ -373,7 +342,7 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
         />
         {hoveredBox === 'leftTop' && (
           <Text
-            text={`${Math.ceil(2 - hoverTime)}s`}
+            text={`${Math.ceil(5 - hoverTime)}s`}
             x={L.top.x + L.top.width / 2}
             y={L.top.y + L.top.height / 2 + 30}
             anchor={0.5}

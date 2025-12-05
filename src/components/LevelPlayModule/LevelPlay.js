@@ -6,7 +6,6 @@ import Chapter from '../Chapter';
 import ConjecturePoseContainter from '../ConjecturePoseMatch/ConjecturePoseContainer';
 import ExperimentalTask from '../ExperimentalTask';
 import Tween from '../Tween';
-
 import LevelPlayMachine from './LevelPlayMachine';
 import {
   getConjectureDataByUUIDWithCurrentOrg,
@@ -23,6 +22,7 @@ import {
 } from '../../firebase/database';
 import { getUserSettings } from '../../firebase/userSettings';
 import NewStage from '../NewStage';
+import { getUserSettings } from '../../firebase/userSettings';
 
 export default function LevelPlay(props) {
   const {
@@ -58,8 +58,11 @@ export default function LevelPlay(props) {
   const [tolerances, setTolerances] = useState([]);
   const [expText, setExpText] = useState('');
   const [settings, setSettings] = useState(null);
-  const prevStateRef = React.useRef('introDialogue');
-  const videoRecorderRef = useRef(null);
+  const [repetitionCountFromDB, setRepetitionCountFromDB] = useState(null);
+  // default repetitions fallback
+  const repetitionCount = (repetitionCountFromDB && Number.isInteger(repetitionCountFromDB))
+    ? Math.max(1, repetitionCountFromDB)
+    : (settings && Number.isInteger(settings.repetitions) ? Math.max(1, settings.repetitions) : 3);
   const tweenDuration = 2000;
   const tweenLoopCount = settings?.repetitions ?? 2;
 
@@ -73,15 +76,29 @@ export default function LevelPlay(props) {
     getConjectureDataByUUIDWithCurrentOrg(UUID)
       .then((d) => {
         setConjectureData(d);
-
+        // Read repetitions from the database record if present
+        try {
+          const raw = d?.[UUID]?.Repetitions ?? d?.[UUID]?.repetitions;
+          if (raw != null) {
+            const parsed = parseInt(String(raw), 10);
+            if (!Number.isNaN(parsed) && parsed >= 1) {
+              setRepetitionCountFromDB(parsed);
+            } else {
+              setRepetitionCountFromDB(null);
+            }
+          } else {
+            setRepetitionCountFromDB(null);
+          }
+        } catch (e) {
+          console.warn("Failed to parse Repetitions from DB:", e);
+          setRepetitionCountFromDB(null);
+        }
         const { ['Start Pose']: s, ['Intermediate Pose']: i, ['End Pose']: e } = d[UUID];
-
         setPoses([
           JSON.parse(s.poseData),
           JSON.parse(i.poseData),
           JSON.parse(e.poseData),
         ]);
-
         const tolArray = [s, i, e].map((pose) =>
           typeof pose.tolerance === 'string' || typeof pose.tolerance === 'number'
             ? parseInt(pose.tolerance)
@@ -139,6 +156,7 @@ export default function LevelPlay(props) {
 
     if (state.value === 'intuition') {
       setExpText(`${desc}\nDo you think this is TRUE or FALSE?`);
+      writeToDatabaseIntuitionStart(gameID).catch(console.error);
     } else if (state.value === 'insight') {
       setExpText(`Now explain WHY you think:\n\n${desc}\n\n is TRUE or FALSE?`);
       writeToDatabaseIntuitionEnd(gameID).catch(console.error);
@@ -189,8 +207,9 @@ export default function LevelPlay(props) {
   // If story is disabled, skip intro/outro so the game continues
   useEffect(() => {
     if (!settings) return;
+
+    // Skip story intro/outro when story setting is disabled
     if (settings.story === false) {
-      // If we're stuck at the intro, mark it shown and advance
       if (state.value === 'introDialogue') {
         try {
           markIntroShown(currentConjectureIdx);
@@ -199,7 +218,6 @@ export default function LevelPlay(props) {
         }
         send('NEXT');
       }
-      // If we're at the outro, finish the level immediately
       if (state.value === 'outroDialogue') {
         // Обработать оставшиеся видео перед завершением
         if (videoRecorderRef.current?.downloadAllVideos) {
@@ -209,6 +227,32 @@ export default function LevelPlay(props) {
         }
         onLevelComplete?.();
       }
+    }
+
+    // Skip the tween animation when the tween setting is disabled
+    // (advance to the next state immediately)
+    if (settings.tween === false && state.value === 'tween') {
+      send('NEXT');
+    }
+
+    // Skip the pose-matching module when the poseMatching setting is disabled
+    if (settings.poseMatching === false && state.value === 'poseMatching') {
+      send('NEXT');
+    }
+
+    // Skip the intuition module when the intuition setting is disabled
+    if (settings.intuition === false && state.value === 'intuition') {
+      send('NEXT');
+    }
+
+    // Skip the insight module when the insight setting is disabled
+    if (settings.insight === false && state.value === 'insight') {
+      send('NEXT');
+    }
+
+    // Skip the multiple choice module when the multipleChoice setting is disabled
+    if (settings.multipleChoice === false && state.value === 'mcq') {
+      send('NEXT');
     }
   }, [settings, state.value, currentConjectureIdx, markIntroShown, send, onLevelComplete]);
 
@@ -312,6 +356,9 @@ export default function LevelPlay(props) {
           tolerances={tolerances}
           onCompleteCallback={handleNext}
           gameID={gameID}
+          // NEW: enable single-match-per-logical-pose behavior and pass repetitions
+          singleMatchPerPose={true}
+          repetitions={repetitionCount}
         />
       )}
 
@@ -371,7 +418,7 @@ export default function LevelPlay(props) {
           gameID={gameID}
         />
       )} */}
-      {state.value === 'mcq' && conjectureData && settings?.multipleChoice !== false && (
+      {state.value === 'mcq' && (
         <NewStage  
           width={width}
           height={height}
@@ -379,14 +426,7 @@ export default function LevelPlay(props) {
           gameID={gameID}
           poseData={poseData}
           columnDimensions={columnDimensions}
-          question={conjectureData[UUID]['Text Boxes']['MCQ Question'] || 'What is the answer?'}
-          mcqChoices={{
-            A: conjectureData[UUID]['Text Boxes']['Multiple Choice 1'] || 'Choice A',
-            B: conjectureData[UUID]['Text Boxes']['Multiple Choice 2'] || 'Choice B',
-            C: conjectureData[UUID]['Text Boxes']['Multiple Choice 3'] || 'Choice C',
-            D: conjectureData[UUID]['Text Boxes']['Multiple Choice 4'] || 'Choice D',
-          }}
-          correctAnswer={conjectureData[UUID]['Text Boxes']['Correct Answer'] || 'A'}
+          question="How many sides does a triangle have??"
         />
       )}
 

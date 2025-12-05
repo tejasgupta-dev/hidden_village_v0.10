@@ -71,96 +71,8 @@ const PoseTestMatch = (props) => {
     }
   }, []);
 
-  // Initialize pose data session when poses are loaded and gameID is available
-  useEffect(() => {
-    if (!poses || !gameID) return; // Wait for poses and gameID to be available
-    
-    const isRecording = "true";
-    
-    if (isRecording === "true") {
-      let autoFlushId;
-      let frameRate = 12; // Default value
-      
-      // Load FPS from user settings
-      const loadFrameRate = async () => {
-        try {
-          const settings = await getUserSettings();
-          if (settings && settings.fps) {
-            frameRate = Math.max(1, Math.min(30, parseInt(settings.fps, 10) || 12));
-          }
-        } catch (e) {
-          console.error("Failed to load FPS settings, using default:", e);
-        }
-        return frameRate;
-      };
-      
-      // Initialize session with static data once
-      const setupSession = async (fps) => {
-        const { orgId } = await getCurrentOrgContext();
-        if (!orgId) {
-          console.warn('No orgId available, skipping pose data session initialization');
-          return;
-        }
-        await initializeSession(gameID, fps, testUUID, orgId);
-        
-        // Start auto-flush with hybrid strategy
-        autoFlushId = startSmartAutoFlush(gameID, testUUID, orgId, {
-          maxBufferSize: 100,      
-          flushIntervalMs: 7500,  
-          minBufferSize: 10,       
-          frameRate: fps    
-        });
-      };
-
-      // Initialize the session and wait for it to complete
-      const initializeAndStart = async () => {
-        const fps = await loadFrameRate();
-        await setupSession(fps);
-        
-        // Create interval to buffer pose data
-        const intervalId = setInterval(async () => {
-          // Buffer the pose data
-          const { orgId } = await getCurrentOrgContext();
-          if (orgId && poseData) {
-            bufferPoseDataWithAutoFlush(poseData, gameID, testUUID, fps, orgId);
-          }
-        }, 1000 / fps);
-        
-        // Return cleanup function
-        return async () => {
-          // Stop the data collection interval
-          clearInterval(intervalId);
-          
-          // Stop auto-flush
-          if (autoFlushId) {
-            stopAutoFlush(autoFlushId);
-          }
-          
-          // End session
-          const { orgId } = await getCurrentOrgContext();
-          if (orgId) {
-            await endSession(gameID, testUUID, fps, orgId);
-          }
-        };
-      };
-
-      // Start the initialization and get cleanup function
-      let cleanupFunction;
-      initializeAndStart().then(cleanup => {
-        cleanupFunction = cleanup;
-      });
-      
-      // Return cleanup function for useEffect
-      return async () => {
-        if (cleanupFunction) {
-          await cleanupFunction();
-        }
-      };
-    }
-  }, [poses, gameID, testUUID, poseData]); // Dependencies: re-initialize if poses, gameID, or UUID changes
-
-  // create grouped array: [pose1,pose1,pose1, pose2,pose2,pose2, ...] using repetitions setting
-  const posesToMatchGrouped = (poses || []).flatMap((p) => Array(repetitions).fill(p));
+  // create grouped array: [pose1,pose1,pose1, pose2,pose2,pose2, ...]
+  const posesToMatchGrouped = poses || [];
 
 return(
   <> 
@@ -168,7 +80,7 @@ return(
       {poses != null && (
         <Graphics draw={drawModalBackground} >
         <>
-        <PoseMatchingSimplified
+        <PoseMatching
           poseData={poseData}
           posesToMatch={posesToMatchGrouped}
           columnDimensions={columnDimensions}
@@ -177,6 +89,7 @@ return(
           UUID={testUUID}
           tolerances={tolerances}
           singleMatchPerPose={true}
+          
         />
         {/* Back Button */}
         <RectButton

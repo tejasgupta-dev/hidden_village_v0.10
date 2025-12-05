@@ -149,15 +149,11 @@ const Settings = ({ width, height, x, y, onClose }) => {
     repetitions: 3, // number of pose match repetitions
     audioRecording: true,
     videoRecording: true,
+    motionRecording: true,
+    eventRecording: true,
     fps: 30,
     research: true,
     teaching: false,
-    closedCaptions: true,
-    visualAssist: false,
-    textToSpeech: true,
-    pip: false,
-    NumberOfhints: 4,
-    language: "English",
   });
 
   // Load saved settings on mount
@@ -333,39 +329,54 @@ const Settings = ({ width, height, x, y, onClose }) => {
         onToggle={() => toggleSetting("tween")}
       />
 
-      {/* Repetitions with +/- buttons */}
+      {/* Repetitions: incremental selector */}
       <Container position={[leftColX, firstRowY + rowSpacing * 6.5]}>
-        <Text text="Repetitions:" style={LABEL_STYLE} y={0} />
-        <RectButton
-          width={40}
-          height={32}
-          x={200}
-          y={-2}
-          text="-"
-          color="#9ca3af"
-          fontColor="white"
-          callback={() => updateRepetitions(-1)}
-        />
+        <Text text="Repetitions:" style={{
+                  fontFamily: "Arial",
+                  fontSize: 16,
+                  fontWeight: "600",
+                  fill: 0x1f2937,      // slate-800
+                  letterSpacing: 0.5,
+                }} 
+                y={0} />
         <Text
           text={`${settings.repetitions}`}
           style={LABEL_STYLE}
-          x={250}
+          x={278}
           y={0}
         />
+
         <RectButton
-          width={40}
-          height={32}
-          x={300}
-          y={-2}
-          text="+"
-          color="#2563eb"
+          width={36}
+          height={28}
+          x={260}
+          y={4}
+          text={"-"}
+          color={"#9ca3af"}
           fontColor="white"
-          callback={() => updateRepetitions(1)}
+          callback={() =>
+            setSettings((prev) => ({
+              ...prev,
+              repetitions: Math.max(1, (prev.repetitions || 1) - 1),
+            }))
+          }
+        />
+        <RectButton
+          width={36}
+          height={28}
+          x={296}
+          y={4}
+          text={"+"}
+          color={"#10b981"}
+          fontColor="white"
+          callback={() =>
+            setSettings((prev) => ({
+              ...prev,
+              repetitions: (prev.repetitions || 1) + 1,
+            }))
+          }
         />
       </Container>
-
-      
-      
 
       {/* RIGHT COLUMN */}
       {/* Data */}
@@ -389,16 +400,49 @@ const Settings = ({ width, height, x, y, onClose }) => {
         y={firstRowY + rowSpacing * 1}
         onToggle={() => toggleSetting("videoRecording")}
       />
-      {/* FPS with input field */}
-      <Container position={[rightColX, firstRowY + rowSpacing * 2]}>
-        <Text text="FPS:" style={LABEL_STYLE} y={0} />
-        <FpsInput
-          x={120}
+      <SettingRow
+        label="Motion Recording:"
+        value={settings.motionRecording}
+        x={rightColX}
+        y={firstRowY + rowSpacing * 2}
+        onToggle={() => toggleSetting("motionRecording")}
+      />
+      <SettingRow
+        label="Event Recording:"
+        value={settings.eventRecording}
+        x={rightColX}
+        y={firstRowY + rowSpacing * 3}
+        onToggle={() => toggleSetting("eventRecording")}
+      />
+      {/* FPS: editable textbox (uses prompt for simple text entry) */}
+      <Container position={[rightColX, firstRowY + rowSpacing * 4]}>
+        <Text text="FPS:" style={{
+          fontFamily: "Arial",
+          fontSize: 16,
+          fontWeight: "600",
+          fill: 0x1f2937,      // slate-800
+          letterSpacing: 0.5,
+        }}
+         y={0} />
+        <RectButton
+          width={96}
+          height={32}
+          x={260}
           y={0}
-          value={settings.fps}
-          onChange={updateFps}
-          parentX={x + rightColX}
-          parentY={y + firstRowY + rowSpacing * 2}
+          text={`${settings.fps}`}
+          color={"#ffffff"}
+          fontColor={"#ffffff"}
+          callback={() => {
+            const input = window.prompt("Enter FPS (integer):", String(settings.fps));
+            if (input === null) return;
+            const n = parseInt(input, 10);
+            if (!Number.isNaN(n) && n > 0) {
+              setSettings((prev) => ({ ...prev, fps: n }));
+            } else {
+              // keep short — use alert to inform user
+              alert("Please enter a positive integer for FPS.");
+            }
+          }}
         />
       </Container>
 
@@ -407,51 +451,24 @@ const Settings = ({ width, height, x, y, onClose }) => {
         text="MODE"
         style={SECTION_STYLE}
         x={rightColX}
-        y={firstRowY + rowSpacing * 3 - 24}
+        y={firstRowY + rowSpacing * 5.5 - 24}
       />
       <SettingRow
         label="Research:"
         value={settings.research}
         x={rightColX}
-        y={firstRowY + rowSpacing * 3}
+        y={firstRowY + rowSpacing * 5.5}
         onToggle={() => toggleSetting("research")}
       />
       <SettingRow
         label="Teaching:"
         value={settings.teaching}
         x={rightColX}
-        y={firstRowY + rowSpacing * 4}
+        y={firstRowY + rowSpacing * 6.5}
         onToggle={() => toggleSetting("teaching")}
       />
 
-      {/* Accessibility */}
-      <Text
-        text="ACCESSIBILITY"
-        style={SECTION_STYLE}
-        x={rightColX}
-        y={firstRowY + rowSpacing * 5 - 24}
-      />
-      <SettingRow
-        label="Closed Captions:"
-        value={settings.closedCaptions}
-        x={rightColX}
-        y={firstRowY + rowSpacing * 5}
-        onToggle={() => toggleSetting("closedCaptions")}
-      />
-      <SettingRow
-        label="Visual Assist:"
-        value={settings.visualAssist}
-        x={rightColX}
-        y={firstRowY + rowSpacing * 6}
-        onToggle={() => toggleSetting("visualAssist")}
-      />
-      <SettingRow
-        label="Text to Speech:"
-        value={settings.textToSpeech}
-        x={rightColX}
-        y={firstRowY + rowSpacing * 7}
-        onToggle={() => toggleSetting("textToSpeech")}
-      />
+      
 
       {/* Number of Hints with +/- buttons */}
       <Container position={[rightColX, firstRowY + rowSpacing * 8]}>

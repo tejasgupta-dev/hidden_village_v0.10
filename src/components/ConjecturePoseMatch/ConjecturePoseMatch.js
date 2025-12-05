@@ -10,27 +10,39 @@ import React, { useState, useEffect } from 'react';
 import { set } from "firebase/database";
 import PoseMatchingSimplified from "../PoseMatching";
 
+
 const ConjecturePoseMatch = (props) => {
-  const { poses, tolerances, width, columnDimensions, onCompleteCallback, poseData, UUID, gameID} = props;
+  const {
+    poses,
+    tolerances,
+    width,
+    columnDimensions,
+    onCompleteCallback,
+    poseData,
+    UUID,
+    gameID,
+    singleMatchPerPose = true,
+    repetitions = 1
+  } = props;
 
-
-return(
-  <>
+  return (
+    <>
       {poses != null && (
         <>
         <PoseMatchingSimplified
           poseData={poseData}
           tolerances={tolerances}
-          UUID = {UUID}
+          UUID={UUID}
           posesToMatch={poses}
           columnDimensions={columnDimensions}
           onComplete={onCompleteCallback}
           gameID={gameID}
-          singleMatchPerPose={false}
+          singleMatchPerPose={singleMatchPerPose}
+          repetitions={repetitions}
         />
         </>
       )}
-  </>
+    </>
   );
 };
 

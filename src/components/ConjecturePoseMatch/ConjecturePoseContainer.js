@@ -11,7 +11,9 @@ import {
   endSession,
   getCurrentOrgContext
 } from "../../firebase/database.js";
-import { getUserSettings } from "../../firebase/userSettings.js";
+import { getUserSettings } from '../../firebase/userSettings';
+import { settings } from 'pixi.js';
+
 
 const ConjecturePoseContainer = (props) => {
     const {
@@ -27,7 +29,8 @@ const ConjecturePoseContainer = (props) => {
         poseData,
         UUID,
         onCompleteCallback,
-        gameID
+        gameID,
+        repetitions, // forwardable prop
     } = props;
 
     const [repetitions, setRepetitions] = useState(3); // Default value
@@ -59,10 +62,22 @@ const ConjecturePoseContainer = (props) => {
         g.endFill();
     }, [columnDimensions, width, height]);
 
+    // **Need to test this still**
+    // Load settings when component mounts
+      // useEffect(() => {
+      //   const loadSettings = async () => {
+      //     const userSettings = await getUserSettings();
+      //   };
+      //   loadSettings();
+      // }, []);
+
     useEffect(() => {
         const isRecording = "true";
         
         if (isRecording === "true") {
+          // FRAMERATE CAN BE CHANGED HERE
+          const frameRate = 12; // Default to 30 if settings or fps is undefined
+
           let autoFlushId;
           let frameRate = 12; // Default value
           
@@ -158,6 +173,7 @@ const ConjecturePoseContainer = (props) => {
                 onCompleteCallback={onCompleteCallback}
                 needBack={needBack}
                 gameID={gameID}
+                repetitions={repetitions}
             />
         </>
     );
