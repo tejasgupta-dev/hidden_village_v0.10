@@ -30,6 +30,23 @@ const ConjecturePoseContainer = (props) => {
         gameID
     } = props;
 
+    const [repetitions, setRepetitions] = useState(3); // Default value
+
+    // Load repetitions from user settings
+    useEffect(() => {
+        const loadRepetitions = async () => {
+            try {
+                const settings = await getUserSettings();
+                if (settings && settings.repetitions) {
+                    setRepetitions(Math.max(1, parseInt(settings.repetitions, 10) || 3));
+                }
+            } catch (e) {
+                console.error("Failed to load repetitions settings, using default:", e);
+            }
+        };
+        loadRepetitions();
+    }, []);
+
     const drawModalBackground = useCallback((g) => {
         g.beginFill(darkGray, 0.9);
         g.drawRect(0, 0, width, height);
@@ -119,13 +136,16 @@ const ConjecturePoseContainer = (props) => {
         } 
     }, [gameID, UUID, poseData]); // Added poseData to dependencies
 
+    // Group poses according to repetitions setting: [pose1,pose1,pose1, pose2,pose2,pose2, ...]
+    const posesGrouped = poses ? poses.flatMap((p) => Array(repetitions).fill(p)) : null;
+
     // Use background and graphics to draw background and then initiate conjecturePoseMatch
     return (
         <>
             <Background height={height * 1.1} width={width} />
             <Graphics draw={drawModalBackground} />
             <ConjecturePoseMatch
-                poses={poses}
+                poses={posesGrouped}
                 tolerances={tolerances}
                 height={height}
                 width={width}

@@ -263,6 +263,19 @@ const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
     }
   };
 
+  // Функция для немедленной обработки видео (загрузка или скачивание)
+  const processVideoImmediately = async (blob, filename, phase) => {
+    try {
+      await uploadVideo(blob, filename, phase);
+      // Если обработка успешна, возвращаем true
+      return true;
+    } catch (error) {
+      // Если обработка не удалась, возвращаем false
+      console.error(`Failed to process video ${filename}:`, error);
+      return false;
+    }
+  };
+
   const startRecording = async (recordingPhase) => {
     // Проверяем настройки перед записью
     const settings = await getUserSettings();
@@ -367,36 +380,59 @@ const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
           console.log('Generated filename:', filename);
           console.log('Using event type:', eventType, 'from recording phase:', recordingPhaseValue);
           
-          // Сохраняем видео в массив для последующего скачивания
+          // Создаем запись с метаданными (blob будет добавлен только при ошибке)
           const videoData = {
-            blob,
             filename,
             phase: recordingPhaseValue,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            processed: false,
+            blob: null // blob будет добавлен только если обработка не удалась
           };
-          recordedVideosRef.current.push(videoData);
           
-          // Загружаем или скачиваем видео (uploadVideo сам решит, что делать)
-          await uploadVideo(blob, filename, recordingPhaseValue);
+          // Обрабатываем видео сразу
+          const processed = await processVideoImmediately(blob, filename, recordingPhaseValue);
+          
+          if (processed) {
+            // Обработка успешна - сохраняем только метаданные, blob не нужен
+            videoData.processed = true;
+            console.log(`Video processed successfully: ${filename}`);
+          } else {
+            // Обработка не удалась - сохраняем blob для повторной попытки
+            videoData.blob = blob;
+            videoData.processed = false;
+            console.warn(`Video processing failed, blob saved for retry: ${filename}`);
+          }
+          
+          // Сохраняем запись (с blob только если обработка не удалась)
+          recordedVideosRef.current.push(videoData);
           
         } catch (error) {
           console.error('Error generating filename or uploading video:', error);
           const fallbackFilename = `video_${new Date().getTime()}_${recordingPhaseValue || 'unknown'}.mp4`;
           
-          // Сохраняем с fallback именем
+          // Создаем запись с fallback именем
           const videoData = {
-            blob,
             filename: fallbackFilename,
-            phase: recordingPhaseValue,
-            timestamp: Date.now()
+            phase: recordingPhaseValue || 'unknown',
+            timestamp: Date.now(),
+            processed: false,
+            blob: null
           };
-          recordedVideosRef.current.push(videoData);
           
-          try {
-            await uploadVideo(blob, fallbackFilename, recordingPhaseValue || 'unknown');
-          } catch (fallbackError) {
-            console.error('Fallback upload also failed:', fallbackError);
+          // Пробуем обработать с fallback именем
+          const processed = await processVideoImmediately(blob, fallbackFilename, recordingPhaseValue || 'unknown');
+          
+          if (processed) {
+            videoData.processed = true;
+            console.log(`Video processed with fallback filename: ${fallbackFilename}`);
+          } else {
+            // Сохраняем blob для повторной попытки
+            videoData.blob = blob;
+            videoData.processed = false;
+            console.warn(`Fallback processing also failed, blob saved: ${fallbackFilename}`);
           }
+          
+          recordedVideosRef.current.push(videoData);
         }
       };
       
@@ -407,36 +443,56 @@ const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
     }
   };
 
-  // Функция для скачивания всех записанных видео
-  const downloadAllRecordedVideos = async () => {
+  // Функция для обработки оставшихся необработанных видео
+  const checkAndProcessRemainingVideos = async () => {
     if (!isMountedRef.current) {
-      console.warn('Component unmounted, cannot download videos');
+      console.warn('Component unmounted, cannot process videos');
       return;
     }
 
     const videos = recordedVideosRef.current;
     if (videos.length === 0) {
-      console.log('No videos recorded to download');
+      console.log('No videos recorded');
       return;
     }
 
-    console.log(`Downloading ${videos.length} recorded video(s)...`);
-    const isStorageAvailable = checkStorageAvailability();
+    // Фильтруем только необработанные видео (где есть blob)
+    const unprocessedVideos = videos.filter(v => !v.processed && v.blob !== null);
     
-    for (const video of videos) {
-      if (isStorageAvailable) {
-        try {
-          await uploadVideo(video.blob, video.filename, video.phase);
-        } catch (error) {
-          console.error(`Failed to upload ${video.filename}, downloading locally:`, error);
-          downloadVideoToComputer(video.blob, video.filename);
+    if (unprocessedVideos.length === 0) {
+      console.log(`All ${videos.length} video(s) already processed`);
+      return;
+    }
+
+    console.log(`Processing ${unprocessedVideos.length} unprocessed video(s) out of ${videos.length} total...`);
+    
+    for (const video of unprocessedVideos) {
+      if (!video.blob) {
+        console.warn(`Video ${video.filename} has no blob, skipping`);
+        continue;
+      }
+
+      try {
+        const processed = await processVideoImmediately(video.blob, video.filename, video.phase);
+        if (processed) {
+          video.processed = true;
+          video.blob = null; // Освобождаем память
+          console.log(`Successfully processed: ${video.filename}`);
+        } else {
+          console.warn(`Failed to process: ${video.filename}, will retry later`);
         }
-      } else {
-        downloadVideoToComputer(video.blob, video.filename);
+      } catch (error) {
+        console.error(`Error processing ${video.filename}:`, error);
       }
     }
     
-    console.log('All videos processed');
+    const stillUnprocessed = videos.filter(v => !v.processed && v.blob !== null).length;
+    console.log(`Processing complete. ${stillUnprocessed} video(s) still need processing.`);
+  };
+
+  // Функция для скачивания всех записанных видео (обрабатывает только необработанные)
+  const downloadAllRecordedVideos = async () => {
+    await checkAndProcessRemainingVideos();
   };
 
   // Экспортируем методы через ref
@@ -445,15 +501,26 @@ const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
     getRecordedVideos: () => recordedVideosRef.current
   }));
 
-  // Cleanup при размонтировании - скачиваем все видео
+  // Cleanup при размонтировании - обрабатываем оставшиеся видео
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
       
-      // Скачиваем все видео при размонтировании
-      if (recordedVideosRef.current.length > 0) {
-        console.log('Component unmounting, downloading all recorded videos...');
-        downloadAllRecordedVideos();
+      // Обрабатываем оставшиеся необработанные видео при размонтировании
+      const videos = recordedVideosRef.current;
+      if (videos.length > 0) {
+        const unprocessed = videos.filter(v => !v.processed && v.blob !== null);
+        const processed = videos.filter(v => v.processed).length;
+        
+        console.log(`Component unmounting. Videos: ${videos.length} total, ${processed} processed, ${unprocessed.length} unprocessed`);
+        
+        if (unprocessed.length > 0) {
+          console.log('Processing remaining unprocessed videos...');
+          // Используем синхронную версию для cleanup
+          checkAndProcessRemainingVideos().catch(error => {
+            console.error('Error processing remaining videos on unmount:', error);
+          });
+        }
       }
       
       // Останавливаем запись

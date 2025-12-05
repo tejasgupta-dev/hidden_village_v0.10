@@ -59,8 +59,9 @@ export default function LevelPlay(props) {
   const [expText, setExpText] = useState('');
   const [settings, setSettings] = useState(null);
   const prevStateRef = React.useRef('introDialogue');
+  const videoRecorderRef = useRef(null);
   const tweenDuration = 2000;
-  const tweenLoopCount = 2;
+  const tweenLoopCount = settings?.repetitions ?? 2;
 
   // Memoize onComplete callback to prevent timer resets in child components
   const handleNext = useCallback(() => {
@@ -200,31 +201,43 @@ export default function LevelPlay(props) {
       }
       // If we're at the outro, finish the level immediately
       if (state.value === 'outroDialogue') {
-        // Скачать все видео перед завершением
+        // Обработать оставшиеся видео перед завершением
         if (videoRecorderRef.current?.downloadAllVideos) {
-          videoRecorderRef.current.downloadAllVideos();
+          videoRecorderRef.current.downloadAllVideos().catch(error => {
+            console.error('Error processing videos:', error);
+          });
         }
         onLevelComplete?.();
       }
     }
   }, [settings, state.value, currentConjectureIdx, markIntroShown, send, onLevelComplete]);
 
-  // Скачивание видео при завершении уровня (outroDialogue)
+  // Skip disabled game modules automatically
   useEffect(() => {
-    if (state.value === 'outroDialogue' && onLevelComplete) {
-      // Скачать все видео перед завершением
-      const downloadVideos = async () => {
-        if (videoRecorderRef.current?.downloadAllVideos) {
-          try {
-            await videoRecorderRef.current.downloadAllVideos();
-          } catch (error) {
-            console.error('Error downloading videos:', error);
-          }
-        }
-      };
-      downloadVideos();
+    if (!settings) return;
+    
+    // Skip tween if disabled
+    if (settings.tween === false && state.value === 'tween') {
+      send('NEXT');
     }
-  }, [state.value, onLevelComplete]);
+    // Skip poseMatching if disabled
+    else if (settings.poseMatching === false && state.value === 'poseMatching') {
+      send('NEXT');
+    }
+    // Skip intuition if disabled
+    else if (settings.intuition === false && state.value === 'intuition') {
+      send('NEXT');
+    }
+    // Skip insight if disabled
+    else if (settings.insight === false && state.value === 'insight') {
+      send('NEXT');
+    }
+    // Skip multipleChoice if disabled
+    else if (settings.multipleChoice === false && state.value === 'mcq') {
+      send('NEXT');
+    }
+  }, [settings, state.value, send]);
+
   
   // Only show story/dialogue content if settings.story is true
   return (
@@ -273,7 +286,7 @@ export default function LevelPlay(props) {
       
 
       {/* Tween animation */}
-      {state.value === 'tween' && poses.length > 0 && (
+      {state.value === 'tween' && poses.length > 0 && settings?.tween !== false && (
         <Tween
           poses={poses}
           duration={tweenDuration}
@@ -286,7 +299,7 @@ export default function LevelPlay(props) {
       )}
 
       {/* Pose-matching */}
-      {state.value === 'poseMatching' && poses.length > 0 && (
+      {state.value === 'poseMatching' && poses.length > 0 && settings?.poseMatching !== false && (
         <ConjecturePoseContainter
           width={width}
           height={height}
@@ -303,7 +316,7 @@ export default function LevelPlay(props) {
       )}
 
       {/* Intuition / Insight */}
-      {state.value === 'intuition' && conjectureData && (
+      {state.value === 'intuition' && conjectureData && settings?.intuition !== false && (
         <ExperimentalTask
           width={width}
           height={height}
@@ -327,7 +340,7 @@ export default function LevelPlay(props) {
           })()}
         />
       )}
-      {state.value === 'insight' && (
+      {state.value === 'insight' && settings?.insight !== false && (
         <ExperimentalTask
           width={width}
           height={height}
@@ -358,7 +371,7 @@ export default function LevelPlay(props) {
           gameID={gameID}
         />
       )} */}
-      {state.value === 'mcq' && conjectureData && (
+      {state.value === 'mcq' && conjectureData && settings?.multipleChoice !== false && (
         <NewStage  
           width={width}
           height={height}

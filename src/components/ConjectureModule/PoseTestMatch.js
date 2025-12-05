@@ -22,6 +22,7 @@ const PoseTestMatch = (props) => {
   const { height, width, columnDimensions, conjectureCallback, poseData, gameID, UUID} = props;
   const [poses, setPoses] = useState(null);
   const [tolerances, setTolerances] = useState([]);
+  const [repetitions, setRepetitions] = useState(3); // Default value
   
   // Generate a test UUID if not provided (for pose testing mode)
   const testUUID = UUID || 'pose-test-session';
@@ -38,6 +39,21 @@ const PoseTestMatch = (props) => {
     g.drawRect(col3.x, col3.y, col3.width, col3.height);
     g.endFill();
   }, [width, height, columnDimensions]);
+
+  // Load repetitions from user settings
+  useEffect(() => {
+    const loadRepetitions = async () => {
+      try {
+        const settings = await getUserSettings();
+        if (settings && settings.repetitions) {
+          setRepetitions(Math.max(1, parseInt(settings.repetitions, 10) || 3));
+        }
+      } catch (e) {
+        console.error("Failed to load repetitions settings, using default:", e);
+      }
+    };
+    loadRepetitions();
+  }, []);
 
   // Get pose data from local storage
   useEffect(() => {
@@ -143,8 +159,8 @@ const PoseTestMatch = (props) => {
     }
   }, [poses, gameID, testUUID, poseData]); // Dependencies: re-initialize if poses, gameID, or UUID changes
 
-  // create grouped array: [pose1,pose1,pose1, pose2,pose2,pose2, ...]
-  const posesToMatchGrouped = (poses || []).flatMap((p) => [p, p, p]);
+  // create grouped array: [pose1,pose1,pose1, pose2,pose2,pose2, ...] using repetitions setting
+  const posesToMatchGrouped = (poses || []).flatMap((p) => Array(repetitions).fill(p));
 
 return(
   <> 
