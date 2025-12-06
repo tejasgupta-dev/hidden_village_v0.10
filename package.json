@@ -7,6 +7,8 @@
     "format": "prettier --write \"src/**/*.{js,jsx}\"",
     "lint": "eslint \"src/**/*.{js,jsx}\" --quiet",
     "dev": "parcel src/index.html",
+    "build": "parcel build src/index.html --public-url ./",
+    "deploy": "npm run build && firebase deploy",
     "docs": "jsdoc -c jsdoc.conf.json"
   },
   "author": "Ariel Fogel",
@@ -30,7 +32,8 @@
     "prettier": "^2.4.1",
     "process": "^0.11.10",
     "punycode": "^1.4.1",
-    "tailwindcss": "^2.2.16"
+    "tailwindcss": "^2.2.16",
+    "firebase-tools": "^13.0.0"
   },
   "dependencies": {
     "@ffmpeg/core": "^0.12.10",
