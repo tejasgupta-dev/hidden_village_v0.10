@@ -1,6 +1,6 @@
 // Firebase Init
 import firebase from "firebase/compat/app";
-import "firebase/compat/storage"; // Добавляем compat storage
+import "firebase/compat/storage"; // Add compat storage
 
 import { getAuth, setPersistence, browserSessionPersistence } from 'firebase/auth';
 import { getStorage } from "firebase/storage";
@@ -20,14 +20,14 @@ const firebaseConfig = {
 const app = firebase.initializeApp(firebaseConfig);
 const auth = getAuth(app);
 
-// Инициализируем storage - пробуем modular API, если не работает, используем compat
+// Initialize storage - try modular API, if it doesn't work, use compat
 let storage;
 try {
   storage = getStorage(app);
   console.log('Storage initialized with modular API');
 } catch (error) {
   console.warn('Modular storage failed, trying compat:', error);
-  // Fallback на compat storage если modular не работает
+  // Fallback to compat storage if modular doesn't work
   storage = firebase.storage();
 }
 

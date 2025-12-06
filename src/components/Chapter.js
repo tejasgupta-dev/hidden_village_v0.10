@@ -3,7 +3,7 @@ import Background from "./Background.js";
 import Character from "./Character.js";
 import TextBox from "./TextBox.js";
 import Pose from "./Pose/index.js";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useMachine, useSelector, assign } from "@xstate/react";
 import chapterMachine from "../machines/chapterMachine.js";
 import { Sprite } from "@inlet/react-pixi";
@@ -127,7 +127,25 @@ const Chapter = (props) => {
   const [hasRun, setHasRun] = useState(false);
   const [previousChapter, setPreviousChapter] = useState(null);
 
-  // Initialize context
+  // Use refs to store current values so callbacks always use latest values
+  const nextChapterCallbackRef = useRef(nextChapterCallback);
+  const hasRunRef = useRef(hasRun);
+  const dialogueDataRef = useRef(dialogueData);
+
+  // Update refs when values change
+  useEffect(() => {
+    nextChapterCallbackRef.current = nextChapterCallback;
+  }, [nextChapterCallback]);
+
+  useEffect(() => {
+    hasRunRef.current = hasRun;
+  }, [hasRun]);
+
+  useEffect(() => {
+    dialogueDataRef.current = dialogueData;
+  }, [dialogueData]);
+
+  // Initialize context with functions that use refs for current values
   const context = {
     introText: dialogueData.intro || [],
     outroText: dialogueData.outro || [],
@@ -138,22 +156,49 @@ const Chapter = (props) => {
     lastText: [],
     cursorMode: true,
     onIntroComplete: () => {
-      if (!hasRun) {
+      console.log('[Chapter] onIntroComplete called', {
+        hasRun: hasRunRef.current,
+        dialogueDataLength: dialogueDataRef.current.intro?.length
+      });
+      if (!hasRunRef.current) {
         setHasRun(true);
+        hasRunRef.current = true;
         // Clear dialogues immediately before GameMachine updates
         setDialogueData({ intro: [], outro: [], scene: [] });
-        nextChapterCallback();
+        dialogueDataRef.current = { intro: [], outro: [], scene: [] };
+        console.log('[Chapter] Calling nextChapterCallback');
+        nextChapterCallbackRef.current();
+      } else {
+        console.log('[Chapter] onIntroComplete skipped - hasRun is true');
       }
     },
     onOutroComplete: () => {
-      if (!hasRun) {
+      console.log('[Chapter] onOutroComplete called', {
+        hasRun: hasRunRef.current,
+        dialogueDataLength: dialogueDataRef.current.outro?.length
+      });
+      if (!hasRunRef.current) {
         setHasRun(true);
+        hasRunRef.current = true;
         // Clear dialogues immediately before GameMachine updates
         setDialogueData({ intro: [], outro: [], scene: [] });
-        nextChapterCallback();
+        dialogueDataRef.current = { intro: [], outro: [], scene: [] };
+        console.log('[Chapter] Calling nextChapterCallback');
+        nextChapterCallbackRef.current();
+      } else {
+        console.log('[Chapter] onOutroComplete skipped - hasRun is true');
       }
     },
   };
+
+  const [state, send, service] = useMachine(chapterMachine, {
+    context,
+    initialState: isOutro ? "outro" : "intro",
+  }, (state) => {
+    if (state.matches("done") && !hasRun) {
+      setHasRun(true);
+    }
+  });
 
   // Reset state when chapter changes
   useEffect(() => {
@@ -166,29 +211,27 @@ const Chapter = (props) => {
       setHasRun(false);
       // Clear any existing dialogues
       setDialogueData({ intro: [], outro: [], scene: [] });
-      // Reset state machine
-      send({
-        type: "RESET_CONTEXT",
-        introText: [],
-        outroText: [],
-        scene: [],
-        currentText: null,
-        lastText: [],
-        cursorMode: true,
-        isOutro: isOutro,
-      });
+      // Reset state machine - check that machine is not stopped yet
+      if (service && service.status !== 'stopped') {
+        send({
+          type: "RESET_CONTEXT",
+          introText: [],
+          outroText: [],
+          scene: [],
+          currentText: null,
+          lastText: [],
+          cursorMode: true,
+          isOutro: isOutro,
+          // Pass the callback functions that use refs
+          onIntroComplete: context.onIntroComplete,
+          onOutroComplete: context.onOutroComplete,
+        });
+      } else {
+        console.warn('Cannot send RESET_CONTEXT: state machine is already stopped or not initialized');
+      }
       setPreviousChapter(currentConjectureIdx);
     }
-  }, [currentConjectureIdx, isOutro]);
-
-  const [state, send, service] = useMachine(chapterMachine, {
-    context,
-    initialState: isOutro ? "outro" : "intro",
-  }, (state) => {
-    if (state.matches("done") && !hasRun) {
-      setHasRun(true);
-    }
-  });
+  }, [currentConjectureIdx, isOutro, service, send]);
 
   const currentText = useSelector(service, selectCurrentText);
   const cursorMode = useSelector(service, selectCursorMode);
@@ -287,17 +330,25 @@ const Chapter = (props) => {
             scene: scene
           });
 
-          console.log('Sending RESET_CONTEXT to state machine');
-          send({
-            type: "RESET_CONTEXT",
-            introText: intros,
-            outroText: outros,
-            scene: scene,
-            currentText: isOutro ? outros[0] : intros[0],
-            lastText: [],
-            cursorMode: true,
-            isOutro: isOutro,
-          });
+          // Check that machine is not stopped before sending event
+          if (service && service.status !== 'stopped') {
+            console.log('Sending RESET_CONTEXT to state machine');
+            send({
+              type: "RESET_CONTEXT",
+              introText: intros,
+              outroText: outros,
+              scene: scene,
+              currentText: isOutro ? outros[0] : intros[0],
+              lastText: [],
+              cursorMode: true,
+              isOutro: isOutro,
+              // Pass the callback functions that use refs
+              onIntroComplete: context.onIntroComplete,
+              onOutroComplete: context.onOutroComplete,
+            });
+          } else {
+            console.warn('Cannot send RESET_CONTEXT: state machine is already stopped or not initialized');
+          }
         } catch (error) {
           console.error("Error loading dialogues:", error);
         } finally {

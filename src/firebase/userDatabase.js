@@ -352,11 +352,9 @@ export const getCurrentUserContext = async (firebaseApp) => {
         
         if (userSnapshot.exists()) {
             const userData = userSnapshot.val();
-            console.log('User data:', userData);
             
             // If user has a primary organization set, use it
             if (userData.primaryOrgId) {
-                console.log('Using primaryOrgId:', userData.primaryOrgId);
                 const role = await getUserRoleInOrg(user.uid, userData.primaryOrgId, firebaseApp);
                 // Get organization name
                 const orgRef = ref(db, `orgs/${userData.primaryOrgId}/name`);

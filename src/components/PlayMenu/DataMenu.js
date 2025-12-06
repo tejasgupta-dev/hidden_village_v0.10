@@ -39,6 +39,8 @@ const DataMenu = (props) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedUser, setSelectedUser] = useState('ALL');
+  const [isLoadingGame, setIsLoadingGame] = useState(false);
+  const [isLoadingUser, setIsLoadingUser] = useState(false);
 
   const innerRectWidth = menuWidth * 0.94;
   const innerRectHeight = menuHeight * 0.8; 
@@ -268,116 +270,35 @@ const DataMenu = (props) => {
       />
       
       <Text
-        text={"USER ID"}
-        style={fieldText}
-        x={x + innerRectMargins + fieldTextMarginsFromInnerRect} 
-        y={y + menuHeight - innerRectMargins - innerRectHeight + fieldTextMarginsFromInnerRect}
-        anchor={0}
-      />
-      <InputBox //Box for user ID
-        height={inputBoxHeight}
-        width={(innerRectWidth - distanceFromFieldTextToField - fieldTextMarginsFromInnerRect * 2) / 0.4}
-        x={x + innerRectMargins + fieldTextMarginsFromInnerRect + distanceFromFieldTextToField}
-        y={y + menuHeight - innerRectMargins - innerRectHeight + fieldTextMarginsFromInnerRect}
-        color={white}
-        fontSize={inputBoxTextSize}  //  Dynamically modify font size based on screen width
-        fontColor={black}
-        text={selectedUser}
-        fontWeight={600}
-        callback={async () => {
-          try {
-            // Get orgId from user context
-            const userContext = await getCurrentUserContext(app);
-            const orgId = userContext?.orgId;
-            
-            if (!orgId) {
-              alert('Ошибка: не удалось получить ID организации.');
-              return;
-            }
-            
-            // Get list of users from organization
-            const orgUsers = await getUsersByOrganizationFromDatabase(orgId, app);
-            
-            // Also try to get users from event data if game is selected
-            let eventUsers = [];
-            if (game_name) {
-              try {
-                const gameInfo = await findGameIdByNameAcrossOrgs(game_name, orgId);
-                if (gameInfo && gameInfo.gameId) {
-                  const eventdbRef = dbRef(getDatabase(), `_GameData/${gameInfo.gameId}`);
-                  const eventSnapshot = await get(eventdbRef);
-                  if (eventSnapshot.exists()) {
-                    const eventData = eventSnapshot.val();
-                    // Extract unique users from event data
-                    const userSet = new Set();
-                    for (const dateKey in eventData) {
-                      if (eventData[dateKey] && typeof eventData[dateKey] === 'object') {
-                        const users = Object.keys(eventData[dateKey]);
-                        users.forEach(user => userSet.add(user));
-                      }
-                    }
-                    eventUsers = Array.from(userSet);
-                  }
-                }
-              } catch (err) {
-                console.warn('[DataMenu] Could not get users from event data:', err);
-              }
-            }
-            
-            // Combine users from org and event data, remove duplicates
-            const allUsers = new Set();
-            orgUsers.forEach(user => {
-              const userName = user.userEmail?.split('@')[0] || user.userName;
-              if (userName) allUsers.add(userName);
-            });
-            eventUsers.forEach(user => allUsers.add(user));
-            
-            // Create options list
-            const userOptions = ['ALL', ...Array.from(allUsers).sort()];
-            const userOptionsText = userOptions.join('\n');
-            
-            // Show prompt for user selection
-            const promptVal = prompt(`Выберите пользователя:\n\n${userOptionsText}\n\n`, selectedUser);
-            
-            if (promptVal !== null) {
-              // Validate selection
-              if (userOptions.includes(promptVal)) {
-                setSelectedUser(promptVal);
-              } else {
-                alert(`Неверный выбор. Пожалуйста, выберите из списка:\n${userOptionsText}`);
-              }
-            }
-          } catch (error) {
-            console.error('[DataMenu] Error getting user list:', error);
-            alert('Ошибка при получении списка пользователей. Проверьте консоль для подробностей.');
-          }
-        }}
-      />
-      <Text
         text={"GAME NAME"}                             
         style={fieldText}
         x={x + innerRectMargins + fieldTextMarginsFromInnerRect} 
-        y={y + menuHeight - innerRectMargins - innerRectHeight + fieldTextMarginsFromInnerRect + fieldTextMarginsFromEachOther}
+        y={y + menuHeight - innerRectMargins - innerRectHeight + fieldTextMarginsFromInnerRect}
         anchor={0}
       />
       <InputBox //Box for game name
         height={inputBoxHeight}
         width={(innerRectWidth - distanceFromFieldTextToField - fieldTextMarginsFromInnerRect * 2) / 0.4}
         x={x + innerRectMargins + fieldTextMarginsFromInnerRect + distanceFromFieldTextToField}
-        y={y + menuHeight - innerRectMargins - innerRectHeight + fieldTextMarginsFromInnerRect + fieldTextMarginsFromEachOther}
+        y={y + menuHeight - innerRectMargins - innerRectHeight + fieldTextMarginsFromInnerRect}
         color={white}
         fontSize={inputBoxTextSize}  //  Dynamically modify font size based on screen width
         fontColor={black}
-        text={game_name} // change this out to game_name after testing
+        text={isLoadingGame ? 'Loading...' : game_name} // change this out to game_name after testing
         fontWeight={600}
         callback={async () => {
+          // Prevent multiple clicks
+          if (isLoadingGame) return;
+          
           try {
-            // Получаем orgId из контекста пользователя
+            setIsLoadingGame(true);
+            
+            // Get orgId from user context
             const userContext = await getCurrentUserContext(app);
             const orgId = userContext?.orgId;
             
             if (!orgId) {
-              alert('Ошибка: не удалось получить ID организации. Убедитесь, что вы авторизованы и состоите в организации.');
+              alert('Error: failed to get organization ID. Make sure you are authorized and belong to an organization.');
               return;
             }
             
@@ -399,11 +320,149 @@ const DataMenu = (props) => {
               //console.log(gameValid);
             }
             if (promptVal != null) {
-              setGameName(promptVal)
+              const previousGame = game_name;
+              setGameName(promptVal);
+              // Reset user if game changed
+              if (previousGame !== promptVal) {
+                setSelectedUser('ALL');
+              }
             }
           } catch (error) {
-            console.error('Ошибка при получении списка игр:', error);
-            alert('Ошибка при загрузке списка игр. Проверьте консоль для подробностей.');
+            console.error('Error getting game list:', error);
+            alert('Error loading game list. Check console for details.');
+          } finally {
+            setIsLoadingGame(false);
+          }
+        }}
+      />
+      <Text
+        text={"USER ID"}
+        style={fieldText}
+        x={x + innerRectMargins + fieldTextMarginsFromInnerRect} 
+        y={y + menuHeight - innerRectMargins - innerRectHeight + fieldTextMarginsFromInnerRect + fieldTextMarginsFromEachOther}
+        anchor={0}
+      />
+      <InputBox //Box for user ID
+        height={inputBoxHeight}
+        width={(innerRectWidth - distanceFromFieldTextToField - fieldTextMarginsFromInnerRect * 2) / 0.4}
+        x={x + innerRectMargins + fieldTextMarginsFromInnerRect + distanceFromFieldTextToField}
+        y={y + menuHeight - innerRectMargins - innerRectHeight + fieldTextMarginsFromInnerRect + fieldTextMarginsFromEachOther}
+        color={white}
+        fontSize={inputBoxTextSize}  //  Dynamically modify font size based on screen width
+        fontColor={black}
+        text={isLoadingUser ? 'Loading...' : selectedUser}
+        fontWeight={600}
+        callback={async () => {
+          // Prevent multiple clicks
+          if (isLoadingUser) return;
+          
+          try {
+            setIsLoadingUser(true);
+            
+            // Check: if game not selected, show warning
+            if (!game_name) {
+              alert('Please select a game (GAME NAME) first to see the list of users with data for this game.');
+              return;
+            }
+            
+            // Get orgId from user context
+            const userContext = await getCurrentUserContext(app);
+            const orgId = userContext?.orgId;
+            
+            if (!orgId) {
+              alert('Error: failed to get organization ID.');
+              return;
+            }
+            
+            // Get list of users from organization
+            const orgUsers = await getUsersByOrganizationFromDatabase(orgId, app);
+            
+            // Extract users from game data if game is selected
+            let eventUsers = [];
+            let poseUsers = [];
+            if (game_name) {
+              try {
+                const gameInfo = await findGameIdByNameAcrossOrgs(game_name, orgId);
+                if (gameInfo && gameInfo.gameId) {
+                  const gameId = gameInfo.gameId;
+                  const gameOrgId = gameInfo.orgId || orgId;
+                  
+                  // Extract users from _GameData
+                  try {
+                    const eventdbRef = dbRef(getDatabase(), `_GameData/${gameId}`);
+                    const eventSnapshot = await get(eventdbRef);
+                    if (eventSnapshot.exists()) {
+                      const eventData = eventSnapshot.val();
+                      // Extract unique users from event data
+                      const userSet = new Set();
+                      for (const dateKey in eventData) {
+                        if (eventData[dateKey] && typeof eventData[dateKey] === 'object') {
+                          const users = Object.keys(eventData[dateKey]);
+                          users.forEach(user => userSet.add(user));
+                        }
+                      }
+                      eventUsers = Array.from(userSet);
+                      console.log('[DataMenu] Users from _GameData:', eventUsers);
+                    }
+                  } catch (err) {
+                    console.warn('[DataMenu] Could not get users from _GameData:', err);
+                  }
+                  
+                  // Extract users from _PoseData
+                  try {
+                    const posedbRef = dbRef(getDatabase(), `_PoseData/${gameOrgId}/${gameId}`);
+                    const poseSnapshot = await get(posedbRef);
+                    if (poseSnapshot.exists()) {
+                      const poseData = poseSnapshot.val();
+                      // Extract unique users from pose data
+                      const userSet = new Set();
+                      for (const dateKey in poseData) {
+                        if (poseData[dateKey] && typeof poseData[dateKey] === 'object') {
+                          const users = Object.keys(poseData[dateKey]);
+                          users.forEach(user => userSet.add(user));
+                        }
+                      }
+                      poseUsers = Array.from(userSet);
+                      console.log('[DataMenu] Users from _PoseData:', poseUsers);
+                    }
+                  } catch (err) {
+                    console.warn('[DataMenu] Could not get users from _PoseData:', err);
+                  }
+                }
+              } catch (err) {
+                console.warn('[DataMenu] Could not get game info:', err);
+              }
+            }
+            
+            // Combine users from org, event data, and pose data, remove duplicates
+            const allUsers = new Set();
+            orgUsers.forEach(user => {
+              const userName = user.userEmail?.split('@')[0] || user.userName;
+              if (userName) allUsers.add(userName);
+            });
+            eventUsers.forEach(user => allUsers.add(user));
+            poseUsers.forEach(user => allUsers.add(user));
+            
+            // Create options list
+            const userOptions = ['ALL', ...Array.from(allUsers).sort()];
+            const userOptionsText = userOptions.join('\n');
+            
+            // Show prompt for user selection
+            const promptVal = prompt(`Select user:\n\n${userOptionsText}\n\n`, selectedUser);
+            
+            if (promptVal !== null) {
+              // Validate selection
+              if (userOptions.includes(promptVal)) {
+                setSelectedUser(promptVal);
+              } else {
+                alert(`Invalid selection. Please choose from the list:\n${userOptionsText}`);
+              }
+            }
+          } catch (error) {
+            console.error('[DataMenu] Error getting user list:', error);
+            alert('Error getting user list. Check console for details.');
+          } finally {
+            setIsLoadingUser(false);
           }
         }}
       />
@@ -527,12 +586,12 @@ const DataMenu = (props) => {
         width={checkButtonWidth}
         x={x + innerRectMargins + fieldTextMarginsFromInnerRect + checkButtonWidth * 6}
         y={y + menuHeight - innerRectMargins - innerRectHeight + fieldTextMarginsFromInnerRect + fieldTextMarginsFromEachOther * 5}
-        color={white}
+        color={lightGray}
         fontSize={checkButtonFont}
         fontColor={black}
         fontWeight={600}
         text={save_videos ? "X" : ""}
-        callback = {() => { setSaveVideos(!save_videos) } }
+        callback = {() => { } }
       />
 
       <Text
@@ -542,7 +601,7 @@ const DataMenu = (props) => {
           fontFamily: "Arial",
           fontSize: fieldHeight * 0.9,
           fontWeight: 1000,
-          fill: [black],
+          fill: [darkGray],
         })}
         x={x + innerRectMargins + fieldTextMarginsFromInnerRect + + checkButtonWidth * 6 + checkButtonWidth * 0.8} 
         y={y + menuHeight - innerRectMargins - innerRectHeight + fieldTextMarginsFromInnerRect + fieldTextMarginsFromEachOther * 5}
@@ -589,7 +648,7 @@ const DataMenu = (props) => {
           }
 
           console.log('[DataMenu] Starting to get user context...');
-          // Получить orgId из контекста пользователя
+          // Get orgId from user context
           const userContext = await getCurrentUserContext(app);
           console.log('[DataMenu] User context received:', userContext);
           const orgId = userContext?.orgId;
@@ -597,12 +656,12 @@ const DataMenu = (props) => {
           
           if (!orgId) {
             console.error('[DataMenu] Error: orgId is missing');
-            alert('Ошибка: не удалось получить ID организации.');
+            alert('Error: failed to get organization ID.');
             return;
           }
 
           console.log('[DataMenu] Searching for game:', game_name, 'in org:', orgId);
-          // Искать игру во всех доступных организациях
+          // Search for game in all available organizations
           const gameInfo = await findGameIdByNameAcrossOrgs(game_name, orgId);
           console.log('[DataMenu] Game search result:', gameInfo);
           

@@ -25,23 +25,47 @@ const ConjecturePoseMatch = (props) => {
     repetitions = 1
   } = props;
 
+  // Debug logging (only in development)
+  if (process.env.NODE_ENV === 'development') {
+    console.debug('[ConjecturePoseMatch] Component rendered with props:', {
+      'poses': poses ? `Array(${poses.length})` : poses,
+      'poses.length': poses?.length,
+      'tolerances': tolerances,
+      'UUID': UUID,
+      'gameID': gameID,
+      'singleMatchPerPose': singleMatchPerPose,
+      'repetitions': repetitions
+    });
+  }
+
+  // Only render if poses is not null/undefined and has length > 0
+  if (!poses || poses.length === 0) {
+    console.warn('[ConjecturePoseMatch] Returning null - poses check failed:', {
+      'poses is null/undefined': !poses,
+      'poses.length': poses?.length,
+      'poses value': poses
+    });
+    return null;
+  }
+  
+  // Debug logging (only in development)
+  if (process.env.NODE_ENV === 'development') {
+    console.debug('[ConjecturePoseMatch] Rendering PoseMatchingSimplified with', poses.length, 'poses');
+  }
+
   return (
     <>
-      {poses != null && (
-        <>
-        <PoseMatchingSimplified
-          poseData={poseData}
-          tolerances={tolerances}
-          UUID={UUID}
-          posesToMatch={poses}
-          columnDimensions={columnDimensions}
-          onComplete={onCompleteCallback}
-          gameID={gameID}
-          singleMatchPerPose={singleMatchPerPose}
-          repetitions={repetitions}
-        />
-        </>
-      )}
+      <PoseMatchingSimplified
+        poseData={poseData}
+        tolerances={tolerances}
+        UUID={UUID}
+        posesToMatch={poses}
+        columnDimensions={columnDimensions}
+        onComplete={onCompleteCallback}
+        gameID={gameID}
+        singleMatchPerPose={singleMatchPerPose}
+        repetitions={repetitions}
+      />
     </>
   );
 };

@@ -22,7 +22,10 @@ import {
 } from '../../firebase/database';
 import { getUserSettings } from '../../firebase/userSettings';
 import NewStage from '../NewStage';
-import { getUserSettings } from '../../firebase/userSettings';
+import Button from '../Button';
+import { red, white } from '../../utils/colors';
+import { Text, Container } from '@inlet/react-pixi';
+import PixiLoader from '../utilities/PixiLoader';
 
 export default function LevelPlay(props) {
   const {
@@ -50,15 +53,34 @@ export default function LevelPlay(props) {
   }
 
   const [state, send] = useMachine(LevelPlayMachine);
-  React.useEffect(() => {
-    send("RESET_CONTEXT");
-  }, [currentConjectureIdx, send]);
   const [conjectureData, setConjectureData] = useState(null);
   const [poses, setPoses] = useState([]);
   const [tolerances, setTolerances] = useState([]);
   const [expText, setExpText] = useState('');
   const [settings, setSettings] = useState(null);
+  
+  // Log state transitions
+  useEffect(() => {
+    console.log('[LevelPlay] State transition:', {
+      state: state.value,
+      settings: settings ? {
+        story: settings.story,
+        tween: settings.tween,
+        poseMatching: settings.poseMatching,
+        intuition: settings.intuition,
+        insight: settings.insight,
+        multipleChoice: settings.multipleChoice
+      } : 'not loaded',
+      conjectureData: !!conjectureData,
+      posesLoaded: poses.length > 0
+    });
+  }, [state.value, settings, conjectureData, poses.length]);
+  
+  React.useEffect(() => {
+    send("RESET_CONTEXT");
+  }, [currentConjectureIdx, send]);
   const [repetitionCountFromDB, setRepetitionCountFromDB] = useState(null);
+  const [isLoadingPoses, setIsLoadingPoses] = useState(true);
   // default repetitions fallback
   const repetitionCount = (repetitionCountFromDB && Number.isInteger(repetitionCountFromDB))
     ? Math.max(1, repetitionCountFromDB)
@@ -66,15 +88,28 @@ export default function LevelPlay(props) {
   const tweenDuration = 2000;
   const tweenLoopCount = settings?.repetitions ?? 2;
 
+  // Refs for tracking previous state and video recorder
+  const prevStateRef = useRef(null);
+  const videoRecorderRef = useRef(null);
+
   // Memoize onComplete callback to prevent timer resets in child components
   const handleNext = useCallback(() => {
+    console.log('[LevelPlay] handleNext called, current state:', state.value);
     send('NEXT');
-  }, [send]);
+  }, [send, state.value]);
 
   /* ---------- load conjecture data ---------- */
   useEffect(() => {
+    console.log('[LevelPlay] Starting to load conjecture data for UUID:', UUID);
+    setIsLoadingPoses(true);
     getConjectureDataByUUIDWithCurrentOrg(UUID)
       .then((d) => {
+        console.log('[LevelPlay] Data loaded from database:', {
+          'UUID': UUID,
+          'data keys': d ? Object.keys(d) : null,
+          'data structure': d ? Object.keys(d[UUID] || {}) : null,
+          'full data': d
+        });
         setConjectureData(d);
         // Read repetitions from the database record if present
         try {
@@ -93,20 +128,75 @@ export default function LevelPlay(props) {
           console.warn("Failed to parse Repetitions from DB:", e);
           setRepetitionCountFromDB(null);
         }
+        
+        // Check if poses exist in data
+        if (!d || !d[UUID]) {
+          console.error('[LevelPlay] No data found for UUID:', UUID);
+          setIsLoadingPoses(false);
+          return;
+        }
+        
+        const hasStartPose = d[UUID]['Start Pose'];
+        const hasIntermediatePose = d[UUID]['Intermediate Pose'];
+        const hasEndPose = d[UUID]['End Pose'];
+        
+        console.log('[LevelPlay] Pose data check:', {
+          'hasStartPose': !!hasStartPose,
+          'hasIntermediatePose': !!hasIntermediatePose,
+          'hasEndPose': !!hasEndPose,
+          'startPose structure': hasStartPose ? Object.keys(hasStartPose) : null,
+          'startPose has poseData': hasStartPose ? !!hasStartPose.poseData : null
+        });
+        
+        if (!hasStartPose || !hasIntermediatePose || !hasEndPose) {
+          console.error('[LevelPlay] Missing pose data:', {
+            'Start Pose': !!hasStartPose,
+            'Intermediate Pose': !!hasIntermediatePose,
+            'End Pose': !!hasEndPose
+          });
+          setIsLoadingPoses(false);
+          return;
+        }
+        
         const { ['Start Pose']: s, ['Intermediate Pose']: i, ['End Pose']: e } = d[UUID];
-        setPoses([
-          JSON.parse(s.poseData),
-          JSON.parse(i.poseData),
-          JSON.parse(e.poseData),
-        ]);
+        
+        console.log('[LevelPlay] Parsing pose data:', {
+          'startPoseData length': s.poseData ? s.poseData.length : 0,
+          'intermediatePoseData length': i.poseData ? i.poseData.length : 0,
+          'endPoseData length': e.poseData ? e.poseData.length : 0
+        });
+        
+        try {
+          const parsedPoses = [
+            JSON.parse(s.poseData),
+            JSON.parse(i.poseData),
+            JSON.parse(e.poseData),
+          ];
+          console.log('[LevelPlay] Poses parsed successfully:', {
+            'poses count': parsedPoses.length,
+            'first pose keys': parsedPoses[0] ? Object.keys(parsedPoses[0]) : null
+          });
+          setPoses(parsedPoses);
+        } catch (parseError) {
+          console.error('[LevelPlay] Error parsing pose data:', parseError);
+          setIsLoadingPoses(false);
+          return;
+        }
+        
         const tolArray = [s, i, e].map((pose) =>
           typeof pose.tolerance === 'string' || typeof pose.tolerance === 'number'
             ? parseInt(pose.tolerance)
             : null
         );
+        console.log('[LevelPlay] Tolerances set:', tolArray);
         setTolerances(tolArray);
+        setIsLoadingPoses(false);
+        console.log('[LevelPlay] Data loading completed successfully');
       })
-      .catch(console.error);
+      .catch((error) => {
+        console.error("[LevelPlay] Error loading conjecture data:", error);
+        setIsLoadingPoses(false);
+      });
   }, [UUID]);
 
   /* ---------- phase event tracking ---------- */
@@ -114,7 +204,7 @@ export default function LevelPlay(props) {
     if (!gameID) return;
 
     if (state.value === 'tween') {
-      writeToDatabaseTweenStart(gameID).catch(console.error);
+      writeToDatabaseTweenStart(gameID, UUID).catch(console.error);
     } else if (state.value === 'poseMatching') {
       writeToDatabasePoseMatchingStart(gameID).catch(console.error);
     } else if (state.value === 'intuition' && conjectureData) {
@@ -135,7 +225,7 @@ export default function LevelPlay(props) {
 
     // Track previous state to detect transitions
     if (prevStateRef.current === 'tween' && state.value !== 'tween') {
-      writeToDatabaseTweenEnd(gameID).catch(console.error);
+      writeToDatabaseTweenEnd(gameID, UUID).catch(console.error);
     } else if (prevStateRef.current === 'poseMatching' && state.value !== 'poseMatching') {
       writeToDatabasePoseMatchingEnd(gameID).catch(console.error);
     } else if (prevStateRef.current === 'mcq' && state.value !== 'mcq') {
@@ -156,7 +246,7 @@ export default function LevelPlay(props) {
 
     if (state.value === 'intuition') {
       setExpText(`${desc}\nDo you think this is TRUE or FALSE?`);
-      writeToDatabaseIntuitionStart(gameID).catch(console.error);
+      writeToDatabaseIntuitionStart(gameID, desc).catch(console.error);
     } else if (state.value === 'insight') {
       setExpText(`Now explain WHY you think:\n\n${desc}\n\n is TRUE or FALSE?`);
       writeToDatabaseIntuitionEnd(gameID).catch(console.error);
@@ -197,11 +287,17 @@ export default function LevelPlay(props) {
 
   // Load settings when component mounts
   useEffect(() => {
+    let isMounted = true;
     const loadSettings = async () => {
       const userSettings = await getUserSettings();
-      setSettings(userSettings);
+      if (isMounted) {
+        setSettings(userSettings);
+      }
     };
     loadSettings();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // If story is disabled, skip intro/outro so the game continues
@@ -211,6 +307,13 @@ export default function LevelPlay(props) {
     // Skip story intro/outro when story setting is disabled
     if (settings.story === false) {
       if (state.value === 'introDialogue') {
+        // Ensure data is loaded before transitioning
+        if (!conjectureData) {
+          console.log('[LevelPlay] Skipping introDialogue transition - waiting for data to load');
+          return;
+        }
+        
+        console.log('[LevelPlay] Skipping introDialogue (story disabled), transitioning to tween');
         try {
           markIntroShown(currentConjectureIdx);
         } catch (e) {
@@ -219,68 +322,270 @@ export default function LevelPlay(props) {
         send('NEXT');
       }
       if (state.value === 'outroDialogue') {
-        // Обработать оставшиеся видео перед завершением
+        // Process remaining videos before completion (asynchronously, non-blocking)
         if (videoRecorderRef.current?.downloadAllVideos) {
           videoRecorderRef.current.downloadAllVideos().catch(error => {
             console.error('Error processing videos:', error);
           });
         }
+        // Call onLevelComplete synchronously so PlayGame can properly handle completion
         onLevelComplete?.();
       }
     }
 
     // Skip the tween animation when the tween setting is disabled
     // (advance to the next state immediately)
-    if (settings.tween === false && state.value === 'tween') {
-      send('NEXT');
+    if (state.value === 'tween') {
+      if (settings.tween === false) {
+        console.log('[LevelPlay] Skipping tween (disabled), transitioning to next state');
+        send('NEXT');
+      } else {
+        // Module is enabled, check if data is ready
+        if (poses.length === 0 && isLoadingPoses) {
+          console.log('[LevelPlay] Tween enabled but poses not loaded yet, waiting...', {
+            posesLength: poses.length,
+            isLoadingPoses: isLoadingPoses
+          });
+          // Don't skip, wait for poses to load
+        } else if (poses.length === 0 && !isLoadingPoses) {
+          console.log('[LevelPlay] Tween enabled but poses failed to load, skipping...', {
+            posesLength: poses.length,
+            isLoadingPoses: isLoadingPoses
+          });
+          send('NEXT');
+        }
+        // If poses.length > 0, component should render, don't skip
+      }
     }
 
     // Skip the pose-matching module when the poseMatching setting is disabled
-    if (settings.poseMatching === false && state.value === 'poseMatching') {
-      send('NEXT');
+    if (state.value === 'poseMatching') {
+      if (settings.poseMatching === false) {
+        console.log('[LevelPlay] Skipping poseMatching (disabled), transitioning to next state', {
+          settingsPoseMatching: settings.poseMatching,
+          posesLength: poses.length,
+          isLoadingPoses: isLoadingPoses
+        });
+        send('NEXT');
+      } else {
+        // Module is enabled, check if data is ready
+        if (poses.length === 0 && isLoadingPoses) {
+          console.log('[LevelPlay] PoseMatching enabled but poses not loaded yet, waiting...', {
+            posesLength: poses.length,
+            isLoadingPoses: isLoadingPoses
+          });
+          // Don't skip, wait for poses to load
+        } else if (poses.length === 0 && !isLoadingPoses) {
+          console.log('[LevelPlay] PoseMatching enabled but poses failed to load, skipping...', {
+            posesLength: poses.length,
+            isLoadingPoses: isLoadingPoses
+          });
+          send('NEXT');
+        }
+        // If poses.length > 0 and !isLoadingPoses, component should render, don't skip
+      }
     }
 
     // Skip the intuition module when the intuition setting is disabled
     if (settings.intuition === false && state.value === 'intuition') {
+      console.log('[LevelPlay] Skipping intuition (disabled), transitioning to next state');
       send('NEXT');
     }
 
     // Skip the insight module when the insight setting is disabled
-    if (settings.insight === false && state.value === 'insight') {
-      send('NEXT');
+    if (state.value === 'insight') {
+      if (settings.insight === false) {
+        console.log('[LevelPlay] Skipping insight (disabled), transitioning to next state', {
+          settingsInsight: settings.insight
+        });
+        send('NEXT');
+      }
+      // If enabled, component should render, don't skip
     }
 
     // Skip the multiple choice module when the multipleChoice setting is disabled
-    if (settings.multipleChoice === false && state.value === 'mcq') {
-      send('NEXT');
+    if (state.value === 'mcq') {
+      if (settings.multipleChoice === false) {
+        console.log('[LevelPlay] Skipping mcq (disabled), transitioning to next state', {
+          settingsMultipleChoice: settings.multipleChoice
+        });
+        send('NEXT');
+      }
+      // If enabled, component should render, don't skip
     }
-  }, [settings, state.value, currentConjectureIdx, markIntroShown, send, onLevelComplete]);
+  }, [settings, state.value, currentConjectureIdx, markIntroShown, send, onLevelComplete, conjectureData, poses.length, isLoadingPoses]);
 
-  // Skip disabled game modules automatically
+  // Skip disabled game modules automatically (duplicate logic removed - handled in main useEffect above)
+  // This useEffect is kept for backward compatibility but logic is now in the main useEffect
+
+  // Log render conditions for introDialogue
   useEffect(() => {
-    if (!settings) return;
+    if (state.value === 'introDialogue') {
+      const shouldRender = !hasShownIntro(currentConjectureIdx) &&
+        conjectureData && 
+        settings?.story;
+      
+      console.log('[LevelPlay] IntroDialogue render check:', {
+        'state.value': state.value,
+        'hasShownIntro': hasShownIntro(currentConjectureIdx),
+        'conjectureData exists': !!conjectureData,
+        'settings?.story': settings?.story,
+        'shouldRender Chapter': shouldRender
+      });
+    }
+  }, [state.value, hasShownIntro, currentConjectureIdx, conjectureData, settings]);
+
+  // Log render conditions for poseMatching
+  useEffect(() => {
+    if (state.value === 'poseMatching') {
+      const shouldRender = !isLoadingPoses && poses.length > 0 && settings?.poseMatching !== false;
+      console.log('[LevelPlay] PoseMatching render check:', {
+        'state.value': state.value,
+        'isLoadingPoses': isLoadingPoses,
+        'poses.length': poses.length,
+        'settings?.poseMatching': settings?.poseMatching,
+        'shouldRender': shouldRender,
+        'poses sample': poses.length > 0 ? poses[0] : null
+      });
+    }
+  }, [state.value, isLoadingPoses, poses, settings]);
+
+  // Auto-transition from introDialogue to tween when Chapter should not render
+  useEffect(() => {
+    if (state.value !== 'introDialogue') return;
+    if (!settings || !conjectureData) return; // Wait for data to load
     
-    // Skip tween if disabled
-    if (settings.tween === false && state.value === 'tween') {
+    // Check if Chapter should render
+    const shouldRenderChapter = !hasShownIntro(currentConjectureIdx) && 
+                                 conjectureData && 
+                                 settings?.story === true;
+    
+    // If Chapter should not render, automatically transition to tween
+    if (!shouldRenderChapter) {
+      console.log('[LevelPlay] Auto-transitioning from introDialogue to tween:', {
+        'hasShownIntro': hasShownIntro(currentConjectureIdx),
+        'conjectureData exists': !!conjectureData,
+        'settings.story': settings?.story,
+        'shouldRenderChapter': shouldRenderChapter
+      });
+      
+      // Mark intro as shown if it hasn't been marked yet
+      if (!hasShownIntro(currentConjectureIdx)) {
+        try {
+          markIntroShown(currentConjectureIdx);
+        } catch (e) {
+          // no-op if markIntroShown isn't available
+        }
+      }
+      
       send('NEXT');
     }
-    // Skip poseMatching if disabled
-    else if (settings.poseMatching === false && state.value === 'poseMatching') {
-      send('NEXT');
+  }, [state.value, settings, conjectureData, currentConjectureIdx, hasShownIntro, markIntroShown, send]);
+
+  // Handle completion when all modules are skipped after poseMatching
+  useEffect(() => {
+    if (!settings || state.value === 'levelEnd') return;
+    
+    // Check if we're in a state where all subsequent modules are disabled
+    const isOutroDialogue = state.value === 'outroDialogue';
+    const isIntuition = state.value === 'intuition';
+    const isInsight = state.value === 'insight';
+    const isMcq = state.value === 'mcq';
+    
+    // If we're in outroDialogue and story is disabled, complete the level
+    if (isOutroDialogue && settings.story === false) {
+      console.log('[LevelPlay] All modules completed, outroDialogue disabled, completing level');
+      // Process remaining videos before completion (asynchronously, non-blocking)
+      if (videoRecorderRef.current?.downloadAllVideos) {
+        videoRecorderRef.current.downloadAllVideos().catch(error => {
+          console.error('Error processing videos:', error);
+        });
+      }
+      // Call onLevelComplete synchronously so PlayGame can properly handle completion
+      onLevelComplete?.();
+      return;
     }
-    // Skip intuition if disabled
-    else if (settings.intuition === false && state.value === 'intuition') {
-      send('NEXT');
+    
+    // Check if current state has no component to render (all modules disabled)
+    const tweenCheck = state.value === 'tween' && settings.tween !== false && poses.length > 0;
+    const poseMatchingCheck = state.value === 'poseMatching' && settings.poseMatching !== false && poses.length > 0 && !isLoadingPoses;
+    const intuitionCheck = state.value === 'intuition' && settings.intuition !== false && conjectureData;
+    const insightCheck = state.value === 'insight' && settings.insight !== false;
+    const mcqCheck = state.value === 'mcq' && settings.multipleChoice !== false;
+    const introDialogueCheck = state.value === 'introDialogue' && !hasShownIntro(currentConjectureIdx) && conjectureData && settings.story === true;
+    const outroDialogueCheck = state.value === 'outroDialogue' && conjectureData && settings.story === true;
+    
+    const hasComponentToRender = tweenCheck || poseMatchingCheck || intuitionCheck || insightCheck || mcqCheck || introDialogueCheck || outroDialogueCheck;
+    
+    // Log detailed check results
+    if (isIntuition || isInsight || isMcq || isOutroDialogue || state.value === 'tween') {
+      console.log('[LevelPlay] Component render checks for state:', state.value, {
+        tweenCheck: state.value === 'tween' ? { result: tweenCheck, posesLength: poses.length, settingsTween: settings.tween } : 'N/A',
+        poseMatchingCheck: state.value === 'poseMatching' ? { result: poseMatchingCheck, posesLength: poses.length, isLoadingPoses, settingsPoseMatching: settings.poseMatching } : 'N/A',
+        intuitionCheck: state.value === 'intuition' ? { result: intuitionCheck, hasConjectureData: !!conjectureData, settingsIntuition: settings.intuition } : 'N/A',
+        insightCheck: state.value === 'insight' ? { result: insightCheck, settingsInsight: settings.insight } : 'N/A',
+        mcqCheck: state.value === 'mcq' ? { result: mcqCheck, settingsMultipleChoice: settings.multipleChoice } : 'N/A',
+        introDialogueCheck: state.value === 'introDialogue' ? { result: introDialogueCheck, hasShownIntro: hasShownIntro(currentConjectureIdx), hasConjectureData: !!conjectureData, settingsStory: settings.story } : 'N/A',
+        outroDialogueCheck: state.value === 'outroDialogue' ? { result: outroDialogueCheck, hasConjectureData: !!conjectureData, settingsStory: settings.story } : 'N/A',
+        hasComponentToRender: hasComponentToRender
+      });
     }
-    // Skip insight if disabled
-    else if (settings.insight === false && state.value === 'insight') {
-      send('NEXT');
+    
+    // If no component to render, check if all subsequent modules are also disabled before completing
+    if (!hasComponentToRender && (isIntuition || isInsight || isMcq || isOutroDialogue)) {
+      let shouldCompleteLevel = false;
+      
+      if (isIntuition) {
+        // If intuition is disabled, check if insight and mcq are also disabled
+        const insightDisabled = settings.insight === false;
+        const mcqDisabled = settings.multipleChoice === false;
+        shouldCompleteLevel = insightDisabled && mcqDisabled;
+        console.log('[LevelPlay] Intuition disabled, checking subsequent modules:', {
+          insightDisabled,
+          mcqDisabled,
+          shouldCompleteLevel
+        });
+      } else if (isInsight) {
+        // If insight is disabled, check if mcq is also disabled
+        const mcqDisabled = settings.multipleChoice === false;
+        shouldCompleteLevel = mcqDisabled;
+        console.log('[LevelPlay] Insight disabled, checking subsequent modules:', {
+          mcqDisabled,
+          shouldCompleteLevel
+        });
+      } else if (isMcq) {
+        // MCQ is the last module before outroDialogue, so if it's disabled, complete the level
+        shouldCompleteLevel = true;
+        console.log('[LevelPlay] MCQ disabled, completing level');
+      } else if (isOutroDialogue) {
+        // OutroDialogue is the last module, so if it's disabled, complete the level
+        shouldCompleteLevel = true;
+        console.log('[LevelPlay] OutroDialogue disabled, completing level');
+      }
+      
+      if (shouldCompleteLevel) {
+        console.log('[LevelPlay] No component to render in state:', state.value, 'all subsequent modules disabled, completing level');
+        // Process remaining videos before completion (synchronously with await)
+        if (videoRecorderRef.current?.downloadAllVideos) {
+          videoRecorderRef.current.downloadAllVideos()
+            .then(() => {
+              console.log('[LevelPlay] Videos processed, completing level');
+              onLevelComplete?.();
+            })
+            .catch(error => {
+              console.error('Error processing videos:', error);
+              // Complete level even if video processing fails
+              onLevelComplete?.();
+            });
+        } else {
+          // No videos to process, complete immediately
+          onLevelComplete?.();
+        }
+      } else {
+        console.log('[LevelPlay] No component to render in state:', state.value, 'but subsequent modules are enabled, allowing transition');
+      }
     }
-    // Skip multipleChoice if disabled
-    else if (settings.multipleChoice === false && state.value === 'mcq') {
-      send('NEXT');
-    }
-  }, [settings, state.value, send]);
+  }, [state.value, settings, conjectureData, poses.length, isLoadingPoses, currentConjectureIdx, hasShownIntro, onLevelComplete]);
 
   
   // Only show story/dialogue content if settings.story is true
@@ -318,7 +623,13 @@ export default function LevelPlay(props) {
       {/* NOTE: TO OPTIMIZE DATABASE STORAGE AND NOT INCUR ADDITIONAL COSTS, 
           VIDEO RECORDING IS ONLY RETAINED FOR THE STATES MENTIONED BELOW.
           SIMPLY ADD THE STATE NAME TO ENABLE RECORDING FOR THAT PHASE */}
-      {(['tween','poseMatching', 'intuition', 'insight'].includes(state.value)) && (
+      {(['tween','poseMatching', 'intuition', 'insight', 'mcq'].includes(state.value)) && 
+       settings?.videoRecording !== false &&
+       ((state.value === 'tween' && settings?.tween !== false) ||
+        (state.value === 'poseMatching' && settings?.poseMatching !== false) ||
+        (state.value === 'intuition' && settings?.intuition !== false) ||
+        (state.value === 'insight' && settings?.insight !== false) ||
+        (state.value === 'mcq' && settings?.multipleChoice !== false)) && (
         <VideoRecorder 
           ref={videoRecorderRef}
           phase={state.value} 
@@ -330,20 +641,70 @@ export default function LevelPlay(props) {
       
 
       {/* Tween animation */}
-      {state.value === 'tween' && poses.length > 0 && settings?.tween !== false && (
-        <Tween
-          poses={poses}
-          duration={tweenDuration}
-          width={width}
-          height={height}
-          loop={tweenLoopCount}
-          ease={true}    
-          onComplete={handleNext}
-        />
-      )}
+      {(() => {
+        if (state.value === 'tween') {
+          // Check if module is enabled
+          const isEnabled = settings?.tween !== false;
+          // Check if poses are loaded or loading
+          const hasPoses = poses.length > 0;
+          const isLoading = isLoadingPoses;
+          // Should render if enabled and (poses loaded OR still loading)
+          const shouldRender = isEnabled && (hasPoses || isLoading);
+          
+          console.log('[LevelPlay] Tween render check:', {
+            state: state.value,
+            posesLength: poses.length,
+            isLoadingPoses: isLoadingPoses,
+            settingsTween: settings?.tween,
+            isEnabled: isEnabled,
+            hasPoses: hasPoses,
+            isLoading: isLoading,
+            shouldRender: shouldRender
+          });
+          
+          if (shouldRender) {
+            // If poses are still loading, show loading state
+            if (isLoading && !hasPoses) {
+              return (
+                <Container>
+                  <PixiLoader width={width} height={height} />
+                  <Text
+                    text="Loading poses..."
+                    x={width / 2}
+                    y={height / 2 + 100}
+                    anchor={0.5}
+                    style={{
+                      fill: 0xffffff,
+                      fontSize: 24,
+                      fontWeight: "bold",
+                      fontFamily: "Arial",
+                      align: "center",
+                    }}
+                  />
+                </Container>
+              );
+            }
+            // If poses are loaded, render Tween component
+            if (hasPoses) {
+              return (
+                <Tween
+                  poses={poses}
+                  duration={tweenDuration}
+                  width={width}
+                  height={height}
+                  loop={tweenLoopCount}
+                  ease={true}    
+                  onComplete={handleNext}
+                />
+              );
+            }
+          }
+        }
+        return null;
+      })()}
 
       {/* Pose-matching */}
-      {state.value === 'poseMatching' && poses.length > 0 && settings?.poseMatching !== false && (
+      {state.value === 'poseMatching' && !isLoadingPoses && poses.length > 0 && settings?.poseMatching !== false && (
         <ConjecturePoseContainter
           width={width}
           height={height}
@@ -363,30 +724,44 @@ export default function LevelPlay(props) {
       )}
 
       {/* Intuition / Insight */}
-      {state.value === 'intuition' && conjectureData && settings?.intuition !== false && (
-        <ExperimentalTask
-          width={width}
-          height={height}
-          prompt={expText}
-          columnDimensions={columnDimensions}
-          rowDimensions={rowDimensions}
-          poseData={poseData}
-          UUID={UUID}
-          onComplete={handleNext}
-          cursorTimer={debugMode ? 1000 : 10000}
-          gameID={gameID}
-          stageType="intuition"
-          question={(() => {
-            const textBoxes = conjectureData[UUID]['Text Boxes'];
-            return textBoxes['Intuition Description'] || textBoxes['Conjecture Description'] || '';
-          })()}
-          correctAnswer={(() => {
-            const textBoxes = conjectureData[UUID]['Text Boxes'];
-            const answer = textBoxes['Intuition Correct Answer'];
-            return answer === 'TRUE' || answer === 'FALSE' ? answer : null;
-          })()}
-        />
-      )}
+      {(() => {
+        if (state.value === 'intuition') {
+          const shouldRender = conjectureData && settings?.intuition !== false;
+          console.log('[LevelPlay] Intuition render check:', {
+            state: state.value,
+            hasConjectureData: !!conjectureData,
+            settingsIntuition: settings?.intuition,
+            shouldRender: shouldRender
+          });
+          if (shouldRender) {
+            return (
+              <ExperimentalTask
+                width={width}
+                height={height}
+                prompt={expText}
+                columnDimensions={columnDimensions}
+                rowDimensions={rowDimensions}
+                poseData={poseData}
+                UUID={UUID}
+                onComplete={handleNext}
+                cursorTimer={debugMode ? 1000 : 10000}
+                gameID={gameID}
+                stageType="intuition"
+                question={(() => {
+                  const textBoxes = conjectureData[UUID]['Text Boxes'];
+                  return textBoxes['Intuition Description'] || textBoxes['Conjecture Description'] || '';
+                })()}
+                correctAnswer={(() => {
+                  const textBoxes = conjectureData[UUID]['Text Boxes'];
+                  const answer = textBoxes['Intuition Correct Answer'];
+                  return answer === 'TRUE' || answer === 'FALSE' ? answer : null;
+                })()}
+              />
+            );
+          }
+        }
+        return null;
+      })()}
       {state.value === 'insight' && settings?.insight !== false && (
         <ExperimentalTask
           width={width}
@@ -418,20 +793,53 @@ export default function LevelPlay(props) {
           gameID={gameID}
         />
       )} */}
-      {state.value === 'mcq' && (
-        <NewStage  
-          width={width}
-          height={height}
-          onComplete={handleNext}
-          gameID={gameID}
-          poseData={poseData}
-          columnDimensions={columnDimensions}
-          question="How many sides does a triangle have??"
-        />
-      )}
+      {(() => {
+        if (state.value === 'mcq') {
+          const shouldRender = settings?.multipleChoice !== false;
+          const hasConjectureData = !!conjectureData;
+          const hasQuestion = !!(conjectureData?.[UUID]?.['Text Boxes']?.['MCQ Question']);
+          console.log('[LevelPlay] MCQ render check:', {
+            state: state.value,
+            settingsMultipleChoice: settings?.multipleChoice,
+            hasConjectureData: hasConjectureData,
+            hasQuestion: hasQuestion,
+            shouldRender: shouldRender
+          });
+          if (shouldRender) {
+            return (
+              <NewStage  
+                width={width}
+                height={height}
+                onComplete={handleNext}
+                gameID={gameID}
+                poseData={poseData}
+                columnDimensions={columnDimensions}
+                question={(() => {
+                  const textBoxes = conjectureData?.[UUID]?.['Text Boxes'];
+                  return textBoxes?.['MCQ Question'] || '';
+                })()}
+                mcqChoices={(() => {
+                  const textBoxes = conjectureData?.[UUID]?.['Text Boxes'];
+                  return {
+                    A: textBoxes?.['Multiple Choice 1'] || 'Choice A',
+                    B: textBoxes?.['Multiple Choice 2'] || 'Choice B',
+                    C: textBoxes?.['Multiple Choice 3'] || 'Choice C',
+                    D: textBoxes?.['Multiple Choice 4'] || 'Choice D',
+                  };
+                })()}
+                correctAnswer={(() => {
+                  const textBoxes = conjectureData?.[UUID]?.['Text Boxes'];
+                  return textBoxes?.['MCQ Correct Answer'] || 'A';
+                })()}
+              />
+            );
+          }
+        }
+        return null;
+      })()}
 
       {/* Outro dialogue */}
-      {state.value === 'outroDialogue' && conjectureData && (
+      {state.value === 'outroDialogue' && conjectureData && settings?.story && (
         <Chapter
           key={`outro-${UUID}`}
           poseData={poseData}
@@ -442,7 +850,7 @@ export default function LevelPlay(props) {
           chapterConjecture={conjectureData[UUID]}
           currentConjectureIdx={currentConjectureIdx}
          nextChapterCallback={async () => {
-          // Скачать все видео перед завершением уровня
+          // Download all videos before level completion
           if (videoRecorderRef.current?.downloadAllVideos) {
             try {
               await videoRecorderRef.current.downloadAllVideos();
@@ -455,6 +863,53 @@ export default function LevelPlay(props) {
         }}          isOutro={true}
         />
       )}
+
+      {/* Fallback: Show BACK button if game is stuck (no component to render) */}
+      {(() => {
+        if (!settings) return null;
+        
+        // Check if current state has a component to render or is loading data
+        const isTweenLoading = state.value === 'tween' && settings.tween !== false && isLoadingPoses && poses.length === 0;
+        const isPoseMatchingLoading = state.value === 'poseMatching' && settings.poseMatching !== false && isLoadingPoses && poses.length === 0;
+        const isIntuitionLoading = state.value === 'intuition' && settings.intuition !== false && !conjectureData;
+        
+        const hasComponentToRender = 
+          (state.value === 'tween' && settings.tween !== false && (poses.length > 0 || isLoadingPoses)) ||
+          (state.value === 'poseMatching' && settings.poseMatching !== false && poses.length > 0 && !isLoadingPoses) ||
+          (state.value === 'intuition' && settings.intuition !== false && conjectureData) ||
+          (state.value === 'insight' && settings.insight !== false) ||
+          (state.value === 'mcq' && settings.multipleChoice !== false) ||
+          (state.value === 'introDialogue' && !hasShownIntro(currentConjectureIdx) && conjectureData && settings.story === true) ||
+          (state.value === 'outroDialogue' && conjectureData && settings.story === true) ||
+          state.value === 'levelEnd';
+        
+        // Don't show BACK button if data is still loading
+        const isDataLoading = isTweenLoading || isPoseMatchingLoading || isIntuitionLoading;
+        
+        // If no component to render and not in introDialogue (waiting for data), and data is not loading, show BACK button
+        if (!hasComponentToRender && !isDataLoading && state.value !== 'introDialogue' && conjectureData) {
+          console.log('[LevelPlay] No component to render, showing fallback BACK button. State:', state.value, {
+            isTweenLoading,
+            isPoseMatchingLoading,
+            isIntuitionLoading,
+            hasComponentToRender
+          });
+          return (
+            <Button
+              width={width * 0.20}
+              x={width * 0.5}
+              y={height * 0.5}
+              color={red}
+              fontSize={width * 0.02}
+              fontColor={white}
+              text={"BACK"}
+              fontWeight={800}
+              callback={backCallback}
+            />
+          );
+        }
+        return null;
+      })()}
     </>
   );
 }

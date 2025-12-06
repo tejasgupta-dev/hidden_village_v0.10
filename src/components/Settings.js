@@ -151,7 +151,7 @@ const Settings = ({ width, height, x, y, onClose }) => {
     videoRecording: true,
     motionRecording: true,
     eventRecording: true,
-    fps: 30,
+    fps: 12,
     research: true,
     teaching: false,
   });
@@ -181,12 +181,6 @@ const Settings = ({ width, height, x, y, onClose }) => {
     setSettings((prev) => ({
       ...prev,
       repetitions: Math.max(1, prev.repetitions + increment),
-    }));
-
-  const updateNumberOfhints = (increment) =>
-    setSettings((prev) => ({
-      ...prev,
-      NumberOfhints: Math.max(0, prev.NumberOfhints + increment),
     }));
 
   const updateFps = (value) => {
@@ -406,6 +400,7 @@ const Settings = ({ width, height, x, y, onClose }) => {
         x={rightColX}
         y={firstRowY + rowSpacing * 2}
         onToggle={() => toggleSetting("motionRecording")}
+        disabled={true}
       />
       <SettingRow
         label="Event Recording:"
@@ -413,6 +408,7 @@ const Settings = ({ width, height, x, y, onClose }) => {
         x={rightColX}
         y={firstRowY + rowSpacing * 3}
         onToggle={() => toggleSetting("eventRecording")}
+        disabled={true}
       />
       {/* FPS: editable textbox (uses prompt for simple text entry) */}
       <Container position={[rightColX, firstRowY + rowSpacing * 4]}>
@@ -459,6 +455,7 @@ const Settings = ({ width, height, x, y, onClose }) => {
         x={rightColX}
         y={firstRowY + rowSpacing * 5.5}
         onToggle={() => toggleSetting("research")}
+        disabled={true}
       />
       <SettingRow
         label="Teaching:"
@@ -466,40 +463,8 @@ const Settings = ({ width, height, x, y, onClose }) => {
         x={rightColX}
         y={firstRowY + rowSpacing * 6.5}
         onToggle={() => toggleSetting("teaching")}
+        disabled={true}
       />
-
-      
-
-      {/* Number of Hints with +/- buttons */}
-      <Container position={[rightColX, firstRowY + rowSpacing * 8]}>
-        <Text text="Number of Hints:" style={LABEL_STYLE} y={0} />
-        <RectButton
-          width={40}
-          height={32}
-          x={200}
-          y={-2}
-          text="-"
-          color="#9ca3af"
-          fontColor="white"
-          callback={() => updateNumberOfhints(-1)}
-        />
-        <Text
-          text={`${settings.NumberOfhints}`}
-          style={LABEL_STYLE}
-          x={250}
-          y={0}
-        />
-        <RectButton
-          width={40}
-          height={32}
-          x={300}
-          y={-2}
-          text="+"
-          color="#2563eb"
-          fontColor="white"
-          callback={() => updateNumberOfhints(1)}
-        />
-      </Container>
 
       {/* Language toggle */}
       <SettingRow
@@ -508,13 +473,14 @@ const Settings = ({ width, height, x, y, onClose }) => {
         x={rightColX}
         y={firstRowY + rowSpacing * 9}
         onToggle={updateLanguage}
+        disabled={true}
       />
       <Text
         text={`(${settings.language})`}
         style={{
           fontFamily: "Arial",
           fontSize: 12,
-          fill: 0x6b7280,
+          fill: 0x9ca3af,
         }}
         x={rightColX + 360}
         y={firstRowY + rowSpacing * 9}

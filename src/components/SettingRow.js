@@ -9,7 +9,14 @@ export default function SettingRow({
   onToggle,
   buttonX = 260, // space between label & toggle
   buttonW = 96,  // wider pill
+  disabled = false, // disabled state
 }) {
+  const isDisabled = disabled;
+  const labelColor = isDisabled ? 0x9ca3af : 0x1f2937; // gray-400 when disabled, slate-800 when enabled
+  const buttonColor = isDisabled ? "#6b7280" : (value ? "#2563eb" : "#9ca3af"); // gray-500 when disabled
+  const alpha = isDisabled ? 0.6 : 1;
+  const callback = isDisabled ? undefined : onToggle;
+
   return (
     <Container position={[x, y]}>
       <Text
@@ -18,7 +25,7 @@ export default function SettingRow({
           fontFamily: "Arial",
           fontSize: 16,
           fontWeight: "600",
-          fill: 0x1f2937,      // slate-800
+          fill: labelColor,
           letterSpacing: 0.5,
         }}
       />
@@ -28,9 +35,10 @@ export default function SettingRow({
         x={buttonX}
         y={-2}                // slight visual centering
         text={value ? "ON" : "OFF"}
-        color={value ? "#2563eb" : "#9ca3af"} // blue ON, neutral OFF (accessible)
+        color={buttonColor}
         fontColor="white"
-        callback={onToggle}
+        callback={callback}
+        alpha={alpha}
       />
     </Container>
   );

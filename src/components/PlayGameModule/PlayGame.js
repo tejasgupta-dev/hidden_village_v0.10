@@ -129,7 +129,8 @@ const PlayGame = (props) => {
         />
       )}
 
-      {state.value === "end" && (
+      {(state.value === "end" || 
+        (uuidIDX >= uuidsList.length && uuidsList.length > 0 && (state.value === "idle" || state.value === "loading"))) && (
         <Button
           width={width * 0.20}
           x={width * 0.5}

@@ -142,6 +142,9 @@ const chapterMachine = createMachine(
         lastText: () => [],
         cursorMode: () => false,
         isOutro: (_, event) => event.isOutro,
+        // Update callbacks if provided in event (they use refs so they're always current)
+        onIntroComplete: (_, event) => event.onIntroComplete !== undefined ? event.onIntroComplete : (context) => context.onIntroComplete,
+        onOutroComplete: (_, event) => event.onOutroComplete !== undefined ? event.onOutroComplete : (context) => context.onOutroComplete,
       }),
       introDialogueStep: assign({
         currentText: (context) => context.introText[0] || {},

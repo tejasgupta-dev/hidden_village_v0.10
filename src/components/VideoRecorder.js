@@ -12,10 +12,20 @@ const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
   const streamRef = useRef(null);
+  const audioStreamRef = useRef(null); // Separate audio stream for proper cleanup
   const recordingPhaseRef = useRef(null);
-  const recordedVideosRef = useRef([]); // Хранилище всех записанных видео
+  const recordedVideosRef = useRef([]); // Storage for all recorded videos
   const isMountedRef = useRef(true);
+  const phaseChangeIntervalRef = useRef(null); // To store interval from handlePhaseChange
   const [state, send] = useMachine(LevelPlayMachine);
+
+  // Initialize isMountedRef when component mounts
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Checking to ensure props were received
   useEffect(() => {
@@ -51,18 +61,22 @@ const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach((track) => track.stop());
+        audioStreamRef.current = null;
+      }
     };
   }, []);
 
   // When the phase prop changes, handle recording changes with proper sequencing
   useEffect(() => {
     if (phase !== currentPhase) {
-      console.log(`Phase changing from ${currentPhase} to ${phase}`);
+      console.log(`[VideoRecorder] Phase changing from ${currentPhase} to ${phase}`);
       
       const handlePhaseChange = async () => {
         // Step 1: Stop the current recording if one is active
         if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-          console.log(`Stopping recording for phase: ${recordingPhaseRef.current}`);
+          console.log(`[VideoRecorder] Stopping recording for phase: ${recordingPhaseRef.current}`);
           mediaRecorderRef.current.stop();
           
           // Wait for the recording to fully stop before starting a new one
@@ -71,24 +85,45 @@ const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
             const checkRecording = setInterval(() => {
               if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
                 clearInterval(checkRecording);
+                if (phaseChangeIntervalRef.current === checkRecording) {
+                  phaseChangeIntervalRef.current = null;
+                }
                 resolve();
               }
             }, 100);
+            phaseChangeIntervalRef.current = checkRecording;
           });
         }
         
         // Step 2: Start a new recording if we have a new phase
         if (phase) {
-          console.log(`Starting new recording for phase: ${phase}`);
-          startRecording(phase); // Pass the current phase
+          console.log(`[VideoRecorder] Starting new recording for phase: ${phase}`);
+          // Wait for stream readiness before starting recording
+          const streamReady = await waitForStream();
+          if (streamReady && isMountedRef.current) {
+            startRecording(phase); // Pass the current phase
+          } else {
+            console.warn(`[VideoRecorder] Cannot start recording for phase ${phase}: video stream not available`);
+          }
         }
         
-        // Step 3: Update the current phase state
-        setCurrentPhase(phase);
+        // Step 3: Update the current phase state (only if component is still mounted)
+        if (isMountedRef.current) {
+          setCurrentPhase(phase);
+        }
       };
       
       handlePhaseChange();
     }
+
+    // Cleanup function to clear intervals and prevent state updates after unmount
+    return () => {
+      // Clear any active interval from handlePhaseChange
+      if (phaseChangeIntervalRef.current) {
+        clearInterval(phaseChangeIntervalRef.current);
+        phaseChangeIntervalRef.current = null;
+      }
+    };
   }, [phase, currentPhase]);
 
 
@@ -160,11 +195,11 @@ const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
     return eventType.charAt(0).toUpperCase() + eventType.slice(1);
   };
 
-  // Проверка доступности Firebase Storage
+  // Check Firebase Storage availability
   const checkStorageAvailability = () => {
     try {
       if (storage && typeof storage !== 'undefined') {
-        // Попробовать создать ref для проверки
+        // Try to create ref for checking
         const testRef = ref(storage, 'test');
         return true;
       }
@@ -174,7 +209,7 @@ const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
     }
   };
 
-  // Функция скачивания видео на компьютер
+  // Function to download video to computer
   const downloadVideoToComputer = (blob, filename) => {
     try {
       const url = URL.createObjectURL(blob);
@@ -191,11 +226,11 @@ const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
     }
   };
 
-  // Upload the video to Firebase Storage или скачать локально
+  // Upload the video to Firebase Storage or download locally
   const uploadVideo = async (blob, filename, recordingPhase) => {
     const isStorageAvailable = checkStorageAvailability();
     
-    // Если Storage недоступен, скачиваем локально
+    // If Storage unavailable, download locally
     if (!isStorageAvailable) {
       console.log(`Storage not available, downloading video locally: ${filename}`);
       downloadVideoToComputer(blob, filename);
@@ -206,7 +241,7 @@ const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
       const fileSizeMB = (blob.size / 1024 / 1024).toFixed(2);
       console.log(`Uploading video for phase: ${recordingPhase}, filename: ${filename}, size: ${fileSizeMB} MB`);
       
-      // Убедиться, что storage инициализирован
+      // Ensure storage is initialized
       const storageInstance = storage || getStorage(app);
       if (!storageInstance) {
         throw new Error('Storage is not initialized');
@@ -214,41 +249,44 @@ const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
       
       const videoRef = ref(storageInstance, `videos/${filename}`);
       
-      // Используем uploadBytesResumable для надежной загрузки с поддержкой возобновления
+      // Determine contentType based on file extension
+      const contentType = filename.endsWith('.webm') ? 'video/webm' : 'video/mp4';
+      
+      // Use uploadBytesResumable for reliable upload with resume support
       const uploadTask = uploadBytesResumable(videoRef, blob, {
-        contentType: 'video/mp4',
+        contentType: contentType,
         customMetadata: {
           phase: recordingPhase || 'unknown',
           uploadedAt: new Date().toISOString()
         }
       });
 
-      // Ожидаем завершения загрузки с обработкой прогресса
+      // Wait for upload completion with progress handling
       return new Promise((resolve, reject) => {
         uploadTask.on(
           'state_changed',
           (snapshot) => {
-            // Отслеживание прогресса загрузки
+            // Track upload progress
             const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
             console.log(`Upload progress: ${progress.toFixed(1)}%`);
           },
           (error) => {
-            // Обработка ошибок во время загрузки
+            // Handle errors during upload
             console.error('Upload error:', error);
-            // Если загрузка не удалась, скачиваем локально
+            // If upload failed, download locally
             console.log('Upload failed, downloading locally instead');
             downloadVideoToComputer(blob, filename);
             reject(error);
           },
           async () => {
-            // Загрузка завершена успешно
+            // Upload completed successfully
             try {
               const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
               console.log('Video uploaded successfully:', downloadURL);
               resolve(downloadURL);
             } catch (error) {
               console.error('Error getting download URL:', error);
-              // Если получение URL не удалось, скачиваем локально
+              // If getting URL failed, download locally
               downloadVideoToComputer(blob, filename);
               reject(error);
             }
@@ -257,81 +295,192 @@ const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
       });
     } catch (error) {
       console.error('Error uploading video:', error);
-      // В случае ошибки скачиваем локально
+      // In case of error, download locally
       downloadVideoToComputer(blob, filename);
       throw error;
     }
   };
 
-  // Функция для немедленной обработки видео (загрузка или скачивание)
+  // Function for immediate video processing (upload or download)
   const processVideoImmediately = async (blob, filename, phase) => {
     try {
       await uploadVideo(blob, filename, phase);
-      // Если обработка успешна, возвращаем true
+      // If processing successful, return true
       return true;
     } catch (error) {
-      // Если обработка не удалась, возвращаем false
+      // If processing failed, return false
       console.error(`Failed to process video ${filename}:`, error);
       return false;
     }
   };
 
+  // Function to select compatible recording format
+  const getSupportedMimeType = () => {
+    const formats = [
+      'video/webm; codecs=vp9,opus',
+      'video/webm; codecs=vp8,opus',
+      'video/webm; codecs=vp9',
+      'video/webm; codecs=vp8',
+      'video/mp4; codecs=avc1.42E01E,mp4a.40.2',
+      'video/mp4; codecs=avc1.42E01E',
+      'video/webm',
+      'video/mp4'
+    ];
+
+    for (const format of formats) {
+      if (MediaRecorder.isTypeSupported(format)) {
+        console.log(`Selected supported format: ${format}`);
+        return format;
+      }
+    }
+
+    // Fallback - use empty string, browser will choose default format
+    console.warn('No specific format supported, using browser default');
+    return '';
+  };
+
+  // Function to wait for stream readiness
+  const waitForStream = async (timeout = 10000) => {
+    const startTime = Date.now();
+    const checkInterval = 100; // Check every 100ms
+    
+    return new Promise((resolve) => {
+      const checkStream = setInterval(() => {
+        if (streamRef.current) {
+          clearInterval(checkStream);
+          resolve(true);
+        } else if (Date.now() - startTime >= timeout) {
+          clearInterval(checkStream);
+          console.warn('Timeout waiting for video stream');
+          resolve(false);
+        }
+      }, checkInterval);
+    });
+  };
+
   const startRecording = async (recordingPhase) => {
-    // Проверяем настройки перед записью
+    // Check settings before recording
     const settings = await getUserSettings();
     if (!settings?.videoRecording) {
-      console.log('Video recording disabled in settings');
+      console.log(`[VideoRecorder] Video recording disabled in settings for phase: ${recordingPhase}`);
       return;
     }
+    
+    console.log(`[VideoRecorder] Starting recording for phase: ${recordingPhase}`);
 
     recordedChunksRef.current = [];
     
-    // Настройка getUserMedia с учетом audioRecording
+    // Configure getUserMedia with audioRecording consideration
     const audioEnabled = settings?.audioRecording !== false;
     
+    // Get video stream from MediaPipe (should already be in streamRef.current)
     if (!streamRef.current) {
-      try {
-        const mediaConstraints = {
-          video: true,
-          audio: audioEnabled ? {
-            echoCancellation: true,
-            noiseSuppression: true
-          } : false
-        };
-        
-        streamRef.current = await navigator.mediaDevices.getUserMedia(mediaConstraints);
-        console.log("Audio tracks is included:", streamRef.current.getAudioTracks().length > 0);
-        console.log(`Recording with audio: ${audioEnabled}`);
-      } catch (error) {
-        console.error("Media device access failed:", error);
-        // Если доступ к аудио не удался, пробуем только видео
-        if (audioEnabled) {
-          try {
-            streamRef.current = await navigator.mediaDevices.getUserMedia({ video: true });
-            console.log("Falling back to video-only recording");
-          } catch (videoError) {
-            console.error("Video device access also failed:", videoError);
-            return;
-          }
-        } else {
-          // Если аудио отключено в настройках, просто записываем видео
-          try {
-            streamRef.current = await navigator.mediaDevices.getUserMedia({ video: true });
-          } catch (videoError) {
-            console.error("Video device access failed:", videoError);
-            return;
-          }
+      console.warn('Video stream not available from streamRef, attempting to get from input-video element');
+      // Try to get stream directly from input-video element
+      const inputVideo = document.getElementsByClassName("input-video")[0];
+      if (inputVideo && inputVideo.srcObject) {
+        try {
+          // Clone stream for independent recording
+          streamRef.current = inputVideo.srcObject.clone();
+          console.log('Successfully obtained stream from input-video element');
+        } catch (cloneError) {
+          console.error('Failed to clone stream from input-video:', cloneError);
+          console.warn('Cannot start recording: video stream not available');
+          return;
         }
+      } else {
+        console.warn('Cannot start recording: video stream not available from MediaPipe or input-video');
+        return;
       }
     }
+
+    // Check for audio tracks in current stream
+    const videoStream = streamRef.current;
+    const hasAudioTracks = videoStream.getAudioTracks().length > 0;
+    const videoTracks = videoStream.getVideoTracks();
+    
+    console.log(`Video stream info - Video tracks: ${videoTracks.length}, Audio tracks: ${hasAudioTracks ? videoStream.getAudioTracks().length : 0}`);
+
+    let finalStream = videoStream;
+
+    // If audio enabled in settings but missing in stream, get separate audio stream
+    if (audioEnabled && !hasAudioTracks) {
+      try {
+        console.log('Audio enabled but not in video stream, requesting separate audio stream...');
+        const audioStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true
+          }
+        });
+
+        const audioTracks = audioStream.getAudioTracks();
+        console.log(`Obtained ${audioTracks.length} audio track(s)`);
+
+        // Save reference to audio stream for proper cleanup
+        audioStreamRef.current = audioStream;
+
+        // Create new stream combining video tracks from MediaPipe with audio tracks
+        finalStream = new MediaStream();
+        
+        // Add all video tracks
+        videoTracks.forEach(track => {
+          finalStream.addTrack(track);
+          console.log(`Added video track: ${track.label}, enabled: ${track.enabled}, muted: ${track.muted}`);
+        });
+        
+        // Add all audio tracks
+        audioTracks.forEach(track => {
+          finalStream.addTrack(track);
+          console.log(`Added audio track: ${track.label}, enabled: ${track.enabled}, muted: ${track.muted}`);
+        });
+
+        // Stop old stream and replace with new combined stream
+        if (streamRef.current !== finalStream) {
+          streamRef.current.getTracks().forEach(track => {
+            if (track.kind === 'audio') {
+              track.stop();
+            }
+          });
+        }
+        streamRef.current = finalStream;
+
+        console.log(`Final stream - Video tracks: ${finalStream.getVideoTracks().length}, Audio tracks: ${finalStream.getAudioTracks().length}`);
+      } catch (audioError) {
+        console.error("Failed to get audio stream:", audioError);
+        console.log("Continuing with video-only recording");
+        // Continue with video stream without audio
+      }
+    } else if (!audioEnabled) {
+      console.log('Audio recording disabled in settings');
+      // Remove audio tracks if they exist but audio is disabled
+      if (hasAudioTracks) {
+        finalStream = new MediaStream();
+        videoTracks.forEach(track => finalStream.addTrack(track));
+        streamRef.current.getAudioTracks().forEach(track => track.stop());
+        streamRef.current = finalStream;
+        console.log('Removed audio tracks (audio disabled in settings)');
+      }
+    } else {
+      console.log(`Audio already present in stream: ${finalStream.getAudioTracks().length} track(s)`);
+    }
+
+    // Final check of tracks before recording
+    const finalVideoTracks = finalStream.getVideoTracks().length;
+    const finalAudioTracks = finalStream.getAudioTracks().length;
+    console.log(`Starting recording with - Video tracks: ${finalVideoTracks}, Audio tracks: ${finalAudioTracks}`);
 
     try {
       // Store the phase at the start of recording - this won't change even if app phase changes
       recordingPhaseRef.current = recordingPhase;
       console.log(`Setting up recording for phase: ${recordingPhase}`);
       
-      const options = { mimeType: 'video/mp4; codecs=vp9,opus' };
-      mediaRecorderRef.current = new MediaRecorder(streamRef.current, options);
+      // Select compatible recording format
+      const mimeType = getSupportedMimeType();
+      const options = mimeType ? { mimeType } : {};
+      
+      console.log(`Using MediaRecorder options:`, options);
+      mediaRecorderRef.current = new MediaRecorder(finalStream, options);
       
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
@@ -355,7 +504,12 @@ const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
           return;
         }
         
-        const blob = new Blob(recordedChunksRef.current, { type: mediaRecorderRef.current.mimeType });
+        // Determine mimeType and file extension
+        const mimeType = mediaRecorderRef.current.mimeType || 'video/webm';
+        const fileExtension = mimeType.includes('webm') ? 'webm' : 'mp4';
+        console.log(`Recording mimeType: ${mimeType}, file extension: ${fileExtension}`);
+        
+        const blob = new Blob(recordedChunksRef.current, { type: mimeType });
         
         try {
           // Get all the necessary data for the filename
@@ -374,43 +528,45 @@ const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
           // Use the phase that was captured when recording started
           const eventType = formatEventType(recordingPhaseValue || 'unknown');
           
-          // Create the filename with the correct phase
-          const filename = `${formattedDate}_${participantID}_${gameNameFormatted}_${levelNameResult}_${eventType}.mp4`;
+          // Create the filename with the correct phase and extension
+          const filename = `${formattedDate}_${participantID}_${gameNameFormatted}_${levelNameResult}_${eventType}.${fileExtension}`;
           
           console.log('Generated filename:', filename);
           console.log('Using event type:', eventType, 'from recording phase:', recordingPhaseValue);
           
-          // Создаем запись с метаданными (blob будет добавлен только при ошибке)
+          // Create record with metadata (blob will be added only on error)
           const videoData = {
             filename,
             phase: recordingPhaseValue,
             timestamp: Date.now(),
             processed: false,
-            blob: null // blob будет добавлен только если обработка не удалась
+            blob: null // blob will be added only if processing failed
           };
           
-          // Обрабатываем видео сразу
+          // Process video immediately
           const processed = await processVideoImmediately(blob, filename, recordingPhaseValue);
           
           if (processed) {
-            // Обработка успешна - сохраняем только метаданные, blob не нужен
+            // Processing successful - save only metadata, blob not needed
             videoData.processed = true;
             console.log(`Video processed successfully: ${filename}`);
           } else {
-            // Обработка не удалась - сохраняем blob для повторной попытки
+            // Processing failed - save blob for retry
             videoData.blob = blob;
             videoData.processed = false;
             console.warn(`Video processing failed, blob saved for retry: ${filename}`);
           }
           
-          // Сохраняем запись (с blob только если обработка не удалась)
+          // Save record (with blob only if processing failed)
           recordedVideosRef.current.push(videoData);
           
         } catch (error) {
           console.error('Error generating filename or uploading video:', error);
-          const fallbackFilename = `video_${new Date().getTime()}_${recordingPhaseValue || 'unknown'}.mp4`;
+          const mimeType = mediaRecorderRef.current.mimeType || 'video/webm';
+          const fileExtension = mimeType.includes('webm') ? 'webm' : 'mp4';
+          const fallbackFilename = `video_${new Date().getTime()}_${recordingPhaseValue || 'unknown'}.${fileExtension}`;
           
-          // Создаем запись с fallback именем
+          // Create record with fallback name
           const videoData = {
             filename: fallbackFilename,
             phase: recordingPhaseValue || 'unknown',
@@ -419,14 +575,14 @@ const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
             blob: null
           };
           
-          // Пробуем обработать с fallback именем
+          // Try to process with fallback name
           const processed = await processVideoImmediately(blob, fallbackFilename, recordingPhaseValue || 'unknown');
           
           if (processed) {
             videoData.processed = true;
             console.log(`Video processed with fallback filename: ${fallbackFilename}`);
           } else {
-            // Сохраняем blob для повторной попытки
+            // Save blob for retry
             videoData.blob = blob;
             videoData.processed = false;
             console.warn(`Fallback processing also failed, blob saved: ${fallbackFilename}`);
@@ -437,13 +593,13 @@ const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
       };
       
       mediaRecorderRef.current.start();
-      console.log(`Recording started for phase: ${recordingPhase}`);
+      console.log(`[VideoRecorder] Recording started successfully for phase: ${recordingPhase}`);
     } catch (e) {
       console.error("Error creating MediaRecorder", e);
     }
   };
 
-  // Функция для обработки оставшихся необработанных видео
+  // Function to process remaining unprocessed videos
   const checkAndProcessRemainingVideos = async () => {
     if (!isMountedRef.current) {
       console.warn('Component unmounted, cannot process videos');
@@ -456,7 +612,7 @@ const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
       return;
     }
 
-    // Фильтруем только необработанные видео (где есть blob)
+    // Filter only unprocessed videos (where blob exists)
     const unprocessedVideos = videos.filter(v => !v.processed && v.blob !== null);
     
     if (unprocessedVideos.length === 0) {
@@ -476,7 +632,7 @@ const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
         const processed = await processVideoImmediately(video.blob, video.filename, video.phase);
         if (processed) {
           video.processed = true;
-          video.blob = null; // Освобождаем память
+          video.blob = null; // Free memory
           console.log(`Successfully processed: ${video.filename}`);
         } else {
           console.warn(`Failed to process: ${video.filename}, will retry later`);
@@ -490,23 +646,23 @@ const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
     console.log(`Processing complete. ${stillUnprocessed} video(s) still need processing.`);
   };
 
-  // Функция для скачивания всех записанных видео (обрабатывает только необработанные)
+  // Function to download all recorded videos (processes only unprocessed)
   const downloadAllRecordedVideos = async () => {
     await checkAndProcessRemainingVideos();
   };
 
-  // Экспортируем методы через ref
+  // Export methods via ref
   useImperativeHandle(ref, () => ({
     downloadAllVideos: downloadAllRecordedVideos,
     getRecordedVideos: () => recordedVideosRef.current
   }));
 
-  // Cleanup при размонтировании - обрабатываем оставшиеся видео
+  // Cleanup on unmount - process remaining videos
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
       
-      // Обрабатываем оставшиеся необработанные видео при размонтировании
+      // Process remaining unprocessed videos on unmount
       const videos = recordedVideosRef.current;
       if (videos.length > 0) {
         const unprocessed = videos.filter(v => !v.processed && v.blob !== null);
@@ -516,14 +672,14 @@ const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
         
         if (unprocessed.length > 0) {
           console.log('Processing remaining unprocessed videos...');
-          // Используем синхронную версию для cleanup
+          // Use synchronous version for cleanup
           checkAndProcessRemainingVideos().catch(error => {
             console.error('Error processing remaining videos on unmount:', error);
           });
         }
       }
       
-      // Останавливаем запись
+      // Stop recording
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         try {
           mediaRecorderRef.current.stop();
@@ -532,9 +688,15 @@ const VideoRecorder = forwardRef(({ phase, curricularID, gameID }, ref) => {
         }
       }
       
-      // Останавливаем стрим
+      // Stop stream
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+      
+      // Stop separate audio stream if it was created
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach((track) => track.stop());
+        audioStreamRef.current = null;
       }
     };
   }, []);

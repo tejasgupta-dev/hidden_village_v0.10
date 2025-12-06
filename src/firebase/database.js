@@ -1,5 +1,5 @@
 // Firebase Init
-import { ref, push, getDatabase, set, query, equalTo, get, orderByChild, orderByKey, onValue, child, startAt, endAt, remove, update } from "firebase/database";
+import { ref, push, getDatabase, set, query, equalTo, get, orderByChild, orderByKey, onValue, child, startAt, endAt, remove, update, limitToFirst } from "firebase/database";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 
 import { Curriculum } from "../components/CurricularModule/CurricularModule";
@@ -128,7 +128,6 @@ export const initializeSession = async (gameId, frameRate, UUID, orgId) => {
   
   // Prevent duplicate initialization for this specific session
   if (initializedSessions.has(sessionKey)) {
-    console.log('Session already initialized for this user/device/session');
     return;
   }
   
@@ -156,23 +155,17 @@ export const initializeSession = async (gameId, frameRate, UUID, orgId) => {
   await set(sessionRef, sessionData);
   initializedSessions.set(sessionKey, true);
   lastEventType = null; // Start with null so first event gets detected
-  console.log('Session initialized with static data for session:', sessionKey);
 };
 
 // Buffer frame data (called every frame)
 export const bufferPoseData = async (poseData, gameId, UUID, frameRate = 12, orgId) => {
   if (eventType === null) return;
   
-  const now = Date.now();
   const frameData = {
     pose: JSON.stringify(poseData),
     timestamp: new Date().toUTCString(),
-    unixTimestamp: now,
-    timeSinceGameStart: gameStartTime ? now - gameStartTime : 0,
-    timeSinceLastEvent: lastEventTime ? now - lastEventTime : 0,
   };
   
-  lastEventTime = now;
   frameBuffer.push(frameData);
 };
 
@@ -185,7 +178,6 @@ export const flushFrameBuffer = async (gameId, UUID, frameRate = 12, orgId, targ
   
   // Prevent concurrent flush operations
   if (isFlushing) {
-    console.warn('Flush already in progress, skipping duplicate flush');
     return;
   }
   
@@ -223,8 +215,6 @@ export const flushFrameBuffer = async (gameId, UUID, frameRate = 12, orgId, targ
     
     await flushPromise;
     
-    console.log(`Flushed ${frameBuffer.length} frames to database for event type: ${eventTypeToUse}`);
-    
     // Clear the buffer and update last known event type
     // Use the eventTypeToUse for lastEventType to maintain correct state
     frameBuffer = [];
@@ -249,7 +239,6 @@ const checkEventTypeChange = async (gameId, UUID, frameRate = 12, orgId) => {
       return false;
     }
     
-    console.log(`Event type changed from ${lastEventType} to ${eventType}, flushing buffer`);
     await flushFrameBuffer(gameId, UUID, frameRate, orgId);
     return true;
   }
@@ -307,7 +296,6 @@ export const bufferPoseDataWithAutoFlush = async (poseData, gameId, UUID, frameR
       return;
     }
     
-    console.log('Buffer size limit reached, flushing immediately');
     await flushFrameBuffer(gameId, UUID, frameRate, orgId);
   }
 };
@@ -343,7 +331,6 @@ export const startSmartAutoFlush = (gameId, UUID, orgId, options = {}) => {
     
     // Only do time-based flush if we didn't just flush due to event change
     if (!flushedDueToEventChange && frameBuffer.length >= minBufferSize) {
-      console.log(`Auto-flushing ${frameBuffer.length} frames`);
       await flushFrameBuffer(gameId, UUID, frameRate, orgId);
     }
   }, flushIntervalMs);
@@ -373,11 +360,9 @@ export const loadGameDialoguesFromFirebase = async (gameId, orgId) => {
 // Helper function to get current user's organization context
 export const getCurrentOrgContext = async () => {
   try {
-    console.log('getCurrentOrgContext: Getting current user context...');
     // Import here to avoid circular dependency
     const { getCurrentUserContext } = await import('./userDatabase.js');
     const result = await getCurrentUserContext();
-    console.log('getCurrentOrgContext: Result:', result);
     return result;
   } catch (error) {
     console.error('getCurrentOrgContext: Error getting current org context:', error);
@@ -680,7 +665,8 @@ export const getConjectureDataByUUIDWithCurrentOrg = async (conjectureID, includ
   console.log('getConjectureDataByUUIDWithCurrentOrg: Result from current org:', result);
   
   // If not found in current org, search in all other organizations
-  if (!result && includePublicFromOtherOrgs) {
+  // Search if includePublicFromOtherOrgs is true OR if forceLoadPrivate is true (to load private levels from game's level list)
+  if (!result && (includePublicFromOtherOrgs || forceLoadPrivate)) {
     console.log('getConjectureDataByUUIDWithCurrentOrg: Level not found in current org, searching in other organizations...');
     try {
       const db = getDatabase();
@@ -703,8 +689,30 @@ export const getConjectureDataByUUIDWithCurrentOrg = async (conjectureID, includ
                 // Otherwise, only include public levels from other organizations
                 if (forceLoadPrivate || levelData.isPublic === true) {
                   console.log(`getConjectureDataByUUIDWithCurrentOrg: Found level in organization ${otherOrgId} (forceLoadPrivate: ${forceLoadPrivate}, isPublic: ${levelData.isPublic})`);
+                  
+                  // Check structure of levelData before returning
+                  const levelDataKeys = Object.keys(levelData);
+                  const hasStartPose = levelData['Start Pose'] !== undefined;
+                  const hasIntermediatePose = levelData['Intermediate Pose'] !== undefined;
+                  const hasEndPose = levelData['End Pose'] !== undefined;
+                  
+                  console.log('getConjectureDataByUUIDWithCurrentOrg: Level data structure check:', {
+                    'levelData keys': levelDataKeys,
+                    'has Start Pose': hasStartPose,
+                    'has Intermediate Pose': hasIntermediatePose,
+                    'has End Pose': hasEndPose,
+                    'Start Pose structure': hasStartPose ? Object.keys(levelData['Start Pose']) : null,
+                    'Intermediate Pose structure': hasIntermediatePose ? Object.keys(levelData['Intermediate Pose']) : null,
+                    'End Pose structure': hasEndPose ? Object.keys(levelData['End Pose']) : null
+                  });
+                  
                   // Return the level data with UUID as key to match expected format in LevelPlay.js
-                  return { [conjectureID]: { ...levelData, _isFromOtherOrg: true, _sourceOrgId: otherOrgId } };
+                  const result = { [conjectureID]: { ...levelData, _isFromOtherOrg: true, _sourceOrgId: otherOrgId } };
+                  console.log('getConjectureDataByUUIDWithCurrentOrg: Returning result with structure:', {
+                    'result keys': Object.keys(result),
+                    'result[UUID] keys': result[conjectureID] ? Object.keys(result[conjectureID]) : null
+                  });
+                  return result;
                 } else {
                   console.log(`getConjectureDataByUUIDWithCurrentOrg: Found level in organization ${otherOrgId} but it is not public`);
                 }
@@ -718,8 +726,36 @@ export const getConjectureDataByUUIDWithCurrentOrg = async (conjectureID, includ
       console.error('getConjectureDataByUUIDWithCurrentOrg: Error searching in other organizations:', error);
       // Return null if search fails
     }
-  } else if (!result && !includePublicFromOtherOrgs) {
-    console.log('getConjectureDataByUUIDWithCurrentOrg: Level not found in current org and includePublicFromOtherOrgs is false, skipping search in other organizations');
+  } else if (!result && !includePublicFromOtherOrgs && !forceLoadPrivate) {
+    console.log('getConjectureDataByUUIDWithCurrentOrg: Level not found in current org and includePublicFromOtherOrgs is false and forceLoadPrivate is false, skipping search in other organizations');
+  }
+  
+  // Log final result structure before returning
+  if (result) {
+    const resultKeys = Object.keys(result);
+    const uuidKey = resultKeys[0];
+    if (uuidKey && result[uuidKey]) {
+      const levelData = result[uuidKey];
+      const levelDataKeys = Object.keys(levelData);
+      const hasStartPose = levelData['Start Pose'] !== undefined;
+      const hasIntermediatePose = levelData['Intermediate Pose'] !== undefined;
+      const hasEndPose = levelData['End Pose'] !== undefined;
+      
+      console.log('getConjectureDataByUUIDWithCurrentOrg: Final result structure:', {
+        'result keys': resultKeys,
+        'levelData keys': levelDataKeys,
+        'has Start Pose': hasStartPose,
+        'has Intermediate Pose': hasIntermediatePose,
+        'has End Pose': hasEndPose,
+        'Start Pose keys': hasStartPose ? Object.keys(levelData['Start Pose']) : null,
+        'Intermediate Pose keys': hasIntermediatePose ? Object.keys(levelData['Intermediate Pose']) : null,
+        'End Pose keys': hasEndPose ? Object.keys(levelData['End Pose']) : null
+      });
+    } else {
+      console.warn('getConjectureDataByUUIDWithCurrentOrg: Result structure is unexpected:', result);
+    }
+  } else {
+    console.warn('getConjectureDataByUUIDWithCurrentOrg: Returning null - level not found');
   }
   
   return result;
@@ -1364,8 +1400,32 @@ export const getConjectureDataByUUID = async (conjectureID, orgId) => {
       for (const [levelId, levelData] of Object.entries(allLevels)) {
         if (levelData.UUID === conjectureID) {
           console.log('getConjectureDataByUUID: Found matching level:', levelId);
+          
+          // Check structure of levelData before returning
+          const levelDataKeys = Object.keys(levelData);
+          const hasStartPose = levelData['Start Pose'] !== undefined;
+          const hasIntermediatePose = levelData['Intermediate Pose'] !== undefined;
+          const hasEndPose = levelData['End Pose'] !== undefined;
+          
+          console.log('getConjectureDataByUUID: Level data structure check:', {
+            'levelId': levelId,
+            'levelData keys': levelDataKeys,
+            'has Start Pose': hasStartPose,
+            'has Intermediate Pose': hasIntermediatePose,
+            'has End Pose': hasEndPose,
+            'Start Pose structure': hasStartPose ? Object.keys(levelData['Start Pose']) : null,
+            'Intermediate Pose structure': hasIntermediatePose ? Object.keys(levelData['Intermediate Pose']) : null,
+            'End Pose structure': hasEndPose ? Object.keys(levelData['End Pose']) : null,
+            'Start Pose has poseData': hasStartPose ? !!levelData['Start Pose'].poseData : null
+          });
+          
           // Return with UUID as key to match expected format in LevelPlay.js
-          return { [conjectureID]: levelData };
+          const result = { [conjectureID]: levelData };
+          console.log('getConjectureDataByUUID: Returning result with structure:', {
+            'result keys': Object.keys(result),
+            'result[UUID] keys': result[conjectureID] ? Object.keys(result[conjectureID]) : null
+          });
+          return result;
         }
       }
       
@@ -1406,11 +1466,12 @@ export const getCurricularDataByUUID = async (curricularID, orgId) => {
     }
   } catch (error) {
     // Handle index errors gracefully - Firebase requires index to be defined in rules
+    // This is a performance optimization suggestion, not a critical error
     if (error.message && error.message.includes('index')) {
-      console.warn('getCurricularDataByUUID: Index not defined in Firebase rules. Add ".indexOn": "UUID" for path "/orgs/{orgId}/games"', {
+      // Use console.debug instead of console.warn for less critical messages
+      console.debug('getCurricularDataByUUID: Performance tip - Consider adding ".indexOn": "UUID" to Firebase rules for path "/orgs/{orgId}/games" to improve query performance', {
         curricularID,
-        orgId,
-        error: error.message
+        orgId
       });
     } else {
       console.error('getCurricularDataByUUID: Error querying database', {
@@ -1709,7 +1770,7 @@ export const writeToDatabasePoseMatchingEnd = async (gameId) => {
 };
 
 // Write in the start of the tween phase
-export const writeToDatabaseTweenStart = async (gameId) => {
+export const writeToDatabaseTweenStart = async (gameId, conjectureId) => {
   // Create a new date object to get a timestamp
   const dateObj = new Date();
   const timestamp = dateObj.toISOString();
@@ -1728,7 +1789,7 @@ export const writeToDatabaseTweenStart = async (gameId) => {
 };
 
 // Write in the end of the tween phase
-export const writeToDatabaseTweenEnd = async (gameId) => {
+export const writeToDatabaseTweenEnd = async (gameId, conjectureId) => {
   // Create a new date object to get a timestamp
   const dateObj = new Date();
   const timestamp = dateObj.toISOString();
@@ -1786,8 +1847,8 @@ export const writeToDatabaseIntuitionStart = async (gameId, question) => {
   const promises = [
     // TODO: Uncomment line below to also store ISO format timestamp
     // set(ref(db, `${userSession}/Intuition Start`), timestamp),
-    set(ref(db, `${userSession}/Intuition Start GMT`), timestampGMT),
-    set(ref(db, `${userSession}/Intuition Question`), question || ''),
+    set(ref(db, `${userSession}/TF Answer Time GMT`), timestampGMT),
+    set(ref(db, `${userSession}/TF Question`), question || ''),
   ];
 
   // Return the promise that push() returns
@@ -1820,18 +1881,13 @@ export const writeToDatabaseIntuitionEnd = async (gameId) => {
 
 // Write True/False answer to database
 export const writeToDatabaseTFAnswer = async (answer, correctAnswer, gameId, question) => {
-  const dateObj = new Date();
-  const timestampGMT = dateObj.toUTCString();
-  
   const isCorrect = answer === correctAnswer;
   
   const userSession = `_GameData/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${conjectureId}`;
   
   const promises = [
     set(ref(db, `${userSession}/TF Given Answer`), answer),
-    set(ref(db, `${userSession}/TF Question`), question || ''),
     set(ref(db, `${userSession}/TF Correct`), isCorrect),
-    set(ref(db, `${userSession}/TF Answer Time GMT`), timestampGMT),
   ];
   
   await Promise.all(promises);
@@ -1980,6 +2036,174 @@ export const writeToDatabaseOutroEnd = async (gameId) => {
   await Promise.all(promises);
 };
 
+// Recursive function to load pose data with automatic splitting on "payload too large" error
+// Automatically breaks down requests by structure levels: user -> device -> loginTime -> UUID
+async function loadPoseDataRecursive(dbPath, maxDepth = 4) {
+  // Analyze path structure for diagnostics
+  const pathSegments = dbPath.split('/').filter(seg => seg.length > 0);
+  const pathDepth = pathSegments.length;
+  const pathLevel = pathSegments.length >= 5 ? pathSegments[4] : 'unknown'; // Usually: _PoseData/org/game/date/user
+  
+  console.log(`[loadPoseDataRecursive] ========== STARTING LOAD ==========`);
+  console.log(`[loadPoseDataRecursive] Path: ${dbPath}`);
+  console.log(`[loadPoseDataRecursive] Path depth: ${pathDepth} segments`);
+  console.log(`[loadPoseDataRecursive] Path segments:`, pathSegments);
+  console.log(`[loadPoseDataRecursive] Path level: ${pathLevel} (likely: ${pathSegments.length >= 5 ? 'user' : pathSegments.length >= 4 ? 'date' : 'other'})`);
+  console.log(`[loadPoseDataRecursive] Max depth: ${maxDepth}`);
+  
+  // Try to get child keys for diagnostics (without loading data)
+  let childKeysCount = null;
+  let childKeysSample = null;
+  try {
+    const diagnosticRef = ref(db, dbPath);
+    const diagnosticSnapshot = await get(query(diagnosticRef, limitToFirst(100)));
+    if (diagnosticSnapshot.exists()) {
+      const diagnosticData = diagnosticSnapshot.val();
+      childKeysCount = Object.keys(diagnosticData).length;
+      childKeysSample = Object.keys(diagnosticData).slice(0, 10);
+      console.log(`[loadPoseDataRecursive] DIAGNOSTIC: Found ${childKeysCount} child keys (showing first 10):`, childKeysSample);
+      if (childKeysCount >= 100) {
+        console.log(`[loadPoseDataRecursive] DIAGNOSTIC: WARNING - 100+ child keys detected, data may be very large!`);
+      }
+    } else {
+      console.log(`[loadPoseDataRecursive] DIAGNOSTIC: No child keys found (path may not exist or be empty)`);
+    }
+  } catch (diagnosticError) {
+    const diagnosticErrorMsg = diagnosticError?.message || String(diagnosticError);
+    console.warn(`[loadPoseDataRecursive] DIAGNOSTIC: Could not get child keys for diagnostics:`, diagnosticErrorMsg);
+  }
+  
+  try {
+    // Try to load data directly
+    console.log(`[loadPoseDataRecursive] Attempting direct load from ${dbPath}...`);
+    const snapshot = await get(ref(db, dbPath));
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      const dataSize = JSON.stringify(data).length;
+      const dataSizeMB = (dataSize / 1024 / 1024).toFixed(2);
+      const dataSizeKB = (dataSize / 1024).toFixed(2);
+      console.log(`[loadPoseDataRecursive] ========== SUCCESS: DIRECT LOAD ==========`);
+      console.log(`[loadPoseDataRecursive] Path: ${dbPath}`);
+      console.log(`[loadPoseDataRecursive] Data size: ${dataSize} bytes (${dataSizeKB} KB / ${dataSizeMB} MB)`);
+      console.log(`[loadPoseDataRecursive] Child keys count: ${childKeysCount !== null ? childKeysCount : 'unknown'}`);
+      if (childKeysCount !== null) {
+        const avgSizePerChild = childKeysCount > 0 ? (dataSize / childKeysCount) : 0;
+        console.log(`[loadPoseDataRecursive] Average size per child: ${(avgSizePerChild / 1024).toFixed(2)} KB`);
+      }
+      console.log(`[loadPoseDataRecursive] ==========================================`);
+      return data;
+    }
+    console.log(`[loadPoseDataRecursive] No data found at ${dbPath}`);
+    return null;
+  } catch (error) {
+    // If data is too large, split into child nodes
+    // Firebase may throw errors in different formats, check multiple properties
+    const errorMessage = error?.message || error?.code || String(error);
+    const errorString = errorMessage.toLowerCase();
+    
+    // Check for "too large" error in various formats
+    if ((errorString.includes('too large') || 
+         errorString.includes('payload') && errorString.includes('large') ||
+         errorString.includes('exceeds') ||
+         error?.code === 'payload-too-large') && maxDepth > 0) {
+      console.log(`[loadPoseDataRecursive] ========== ERROR: PAYLOAD TOO LARGE ==========`);
+      console.log(`[loadPoseDataRecursive] Path: ${dbPath}`);
+      console.log(`[loadPoseDataRecursive] Path depth: ${pathDepth} segments`);
+      console.log(`[loadPoseDataRecursive] Path level: ${pathLevel}`);
+      console.log(`[loadPoseDataRecursive] Error message: ${errorMessage}`);
+      console.log(`[loadPoseDataRecursive] Child keys count (from diagnostic): ${childKeysCount !== null ? childKeysCount : 'unknown'}`);
+      if (childKeysSample) {
+        console.log(`[loadPoseDataRecursive] Child keys sample:`, childKeysSample);
+      }
+      console.log(`[loadPoseDataRecursive] Estimated data size: TOO LARGE (exceeds Firebase limit ~256MB)`);
+      console.log(`[loadPoseDataRecursive] Will split into child nodes (remaining depth: ${maxDepth})...`);
+      console.log(`[loadPoseDataRecursive] ==========================================`);
+      
+      try {
+        // Get list of child keys using limitToFirst to avoid loading all data
+        console.log(`[loadPoseDataRecursive] Getting list of child keys from ${dbPath}...`);
+        const parentRef = ref(db, dbPath);
+        const childrenSnapshot = await get(query(parentRef, limitToFirst(1000)));
+        
+        if (!childrenSnapshot.exists()) {
+          console.log(`[loadPoseDataRecursive] No child nodes found at ${dbPath}`);
+          return null;
+        }
+        
+        const children = Object.keys(childrenSnapshot.val());
+        console.log(`[loadPoseDataRecursive] ========== SPLITTING INTO CHILD NODES ==========`);
+        console.log(`[loadPoseDataRecursive] Parent path: ${dbPath}`);
+        console.log(`[loadPoseDataRecursive] Found ${children.length} child nodes`);
+        console.log(`[loadPoseDataRecursive] Child keys:`, children.slice(0, 20), children.length > 20 ? `... (${children.length} total)` : '');
+        console.log(`[loadPoseDataRecursive] ==========================================`);
+        
+        const result = {};
+        let successCount = 0;
+        let failCount = 0;
+        let totalSize = 0;
+        
+        // Load each child node separately
+        for (let i = 0; i < children.length; i++) {
+          const childKey = children[i];
+          const childPath = `${dbPath}/${childKey}`;
+          
+          console.log(`[loadPoseDataRecursive] [${i + 1}/${children.length}] Loading child: ${childKey} from ${childPath}`);
+          
+          try {
+            const childStartTime = Date.now();
+            const childData = await loadPoseDataRecursive(childPath, maxDepth - 1);
+            const childLoadTime = Date.now() - childStartTime;
+            
+            if (childData !== null) {
+              const childSize = JSON.stringify(childData).length;
+              const childSizeMB = (childSize / 1024 / 1024).toFixed(2);
+              totalSize += childSize;
+              result[childKey] = childData;
+              successCount++;
+              console.log(`[loadPoseDataRecursive] [${i + 1}/${children.length}] SUCCESS: ${childKey} - ${childSize} bytes (${childSizeMB} MB) in ${childLoadTime}ms`);
+            } else {
+              console.log(`[loadPoseDataRecursive] [${i + 1}/${children.length}] No data returned for ${childKey}`);
+            }
+          } catch (childError) {
+            failCount++;
+            const childErrorMsg = childError?.message || childError?.code || String(childError);
+            const childErrorString = childErrorMsg.toLowerCase();
+            console.warn(`[loadPoseDataRecursive] [${i + 1}/${children.length}] ERROR loading child ${childKey}:`, childErrorMsg);
+            if (childErrorString.includes('too large')) {
+              console.warn(`[loadPoseDataRecursive] [${i + 1}/${children.length}] Child ${childKey} is also too large - recursive splitting should handle this`);
+            }
+            // Continue with other children even if one fails
+          }
+        }
+        
+        const totalSizeMB = (totalSize / 1024 / 1024).toFixed(2);
+        console.log(`[loadPoseDataRecursive] ========== SPLITTING COMPLETED ==========`);
+        console.log(`[loadPoseDataRecursive] Parent path: ${dbPath}`);
+        console.log(`[loadPoseDataRecursive] Total children: ${children.length}`);
+        console.log(`[loadPoseDataRecursive] Successfully loaded: ${successCount}`);
+        console.log(`[loadPoseDataRecursive] Failed: ${failCount}`);
+        console.log(`[loadPoseDataRecursive] Total size of loaded data: ${totalSize} bytes (${totalSizeMB} MB)`);
+        if (children.length > 0) {
+          const avgSizePerChild = totalSize / children.length;
+          console.log(`[loadPoseDataRecursive] Average size per child: ${(avgSizePerChild / 1024).toFixed(2)} KB`);
+        }
+        console.log(`[loadPoseDataRecursive] ==========================================`);
+        
+        return result;
+      } catch (splitError) {
+        const splitErrorMessage = splitError?.message || String(splitError);
+        console.error(`[loadPoseDataRecursive] FATAL ERROR splitting ${dbPath}:`, splitErrorMessage);
+        console.error(`[loadPoseDataRecursive] Split error details:`, splitError);
+        throw splitError;
+      }
+    }
+    // Re-throw error if it's not "too large" or maxDepth reached
+    console.error(`[loadPoseDataRecursive] ERROR at ${dbPath}:`, errorMessage);
+    console.error(`[loadPoseDataRecursive] Error is not "too large" or maxDepth (${maxDepth}) reached. Re-throwing...`);
+    throw error;
+  }
+}
+
 // Search functionality that downloads a set of child nodes from a game based on inputted dates
 export const getFromDatabaseByGame = async (selectedGame, gameId, selectedStart, selectedEnd, orgId, selectedUser = null) => {
   try {
@@ -1997,26 +2221,24 @@ export const getFromDatabaseByGame = async (selectedGame, gameId, selectedStart,
     }
     
     // Create reference to the realtime database
-    const posedbRef = ref(db, `_PoseData/${orgId}/${gameId}`);
     const eventdbRef = ref(db, `_GameData/${gameId}`);
     
     console.log('[getFromDatabaseByGame] Query paths:', {
-      posePath: `_PoseData/${orgId}/${gameId}`,
-      eventPath: `_GameData/${gameId}`
+      eventPath: `_GameData/${gameId}`,
+      note: 'Pose data will be loaded per user/date using loadPoseDataRecursive'
     });
 
-    // Get all data first, then filter by date range in code
-    // This ensures we get ALL sessions, not just those matching the query filter
-    console.log('[getFromDatabaseByGame] Fetching all data...');
-    const poseSnapshot = await get(posedbRef);
+    // NEW APPROACH: Load only event data first (it's usually much smaller)
+    // Then load pose data only for users/dates that exist in event data
+    // This avoids "payload too large" errors when pose data is huge
+    console.log('[getFromDatabaseByGame] Fetching event data (source of truth)...');
     const eventSnapshot = await get(eventdbRef);
     
-    console.log('[getFromDatabaseByGame] Raw data fetched:', {
-      poseDataExists: poseSnapshot.exists(),
+    console.log('[getFromDatabaseByGame] Event data fetched:', {
       eventDataExists: eventSnapshot.exists(),
     });
 
-    // Extract users from both pose and event data for comparison
+    // Helper function to extract users and dates from data
     const extractUsersFromData = (data, dataType) => {
       if (!data) return { dates: {}, allUsers: new Set() };
       
@@ -2030,222 +2252,6 @@ export const getFromDatabaseByGame = async (selectedGame, gameId, selectedStart,
       }
       return result;
     };
-
-    const poseUsers = poseSnapshot.exists() ? extractUsersFromData(poseSnapshot.val(), 'POSE') : { dates: {}, allUsers: new Set() };
-    const eventUsers = eventSnapshot.exists() ? extractUsersFromData(eventSnapshot.val(), 'EVENT') : { dates: {}, allUsers: new Set() };
-
-    console.log('[getFromDatabaseByGame] ========== USER COMPARISON: POSE DATA vs EVENT DATA ==========');
-    console.log('[getFromDatabaseByGame] POSE DATA users:', Array.from(poseUsers.allUsers).sort());
-    console.log('[getFromDatabaseByGame] EVENT DATA users:', Array.from(eventUsers.allUsers).sort());
-    
-    // Find users in event data but not in pose data
-    const missingInPose = Array.from(eventUsers.allUsers).filter(user => !poseUsers.allUsers.has(user));
-    const missingInEvent = Array.from(poseUsers.allUsers).filter(user => !eventUsers.allUsers.has(user));
-    
-    if (missingInPose.length > 0) {
-      console.warn('[getFromDatabaseByGame] WARNING: Users in EVENT DATA but NOT in POSE DATA:', missingInPose);
-      console.warn('[getFromDatabaseByGame] This may indicate Firebase security rules are blocking access to pose data for these users!');
-    }
-    if (missingInEvent.length > 0) {
-      console.warn('[getFromDatabaseByGame] WARNING: Users in POSE DATA but NOT in EVENT DATA:', missingInEvent);
-    }
-    
-    // Compare users for each date
-    const allDates = new Set([...Object.keys(poseUsers.dates), ...Object.keys(eventUsers.dates)]);
-    for (const dateKey of allDates) {
-      const poseDateUsers = poseUsers.dates[dateKey] || [];
-      const eventDateUsers = eventUsers.dates[dateKey] || [];
-      console.log(`[getFromDatabaseByGame] Date ${dateKey}:`);
-      console.log(`  POSE DATA: ${poseDateUsers.length} user(s):`, poseDateUsers);
-      console.log(`  EVENT DATA: ${eventDateUsers.length} user(s):`, eventDateUsers);
-      
-      if (poseDateUsers.length !== eventDateUsers.length) {
-        console.warn(`[getFromDatabaseByGame] MISMATCH on date ${dateKey}: POSE has ${poseDateUsers.length} users, EVENT has ${eventDateUsers.length} users`);
-        const missing = eventDateUsers.filter(u => !poseDateUsers.includes(u));
-        if (missing.length > 0) {
-          console.warn(`[getFromDatabaseByGame] Missing users in POSE DATA for date ${dateKey}:`, missing);
-        }
-      }
-    }
-    console.log('[getFromDatabaseByGame] ===============================================================');
-
-    // Log raw snapshot to see what Firebase actually returns
-    if (poseSnapshot.exists()) {
-      const rawVal = poseSnapshot.val();
-      const dates = Object.keys(rawVal);
-      console.log('[getFromDatabaseByGame] Raw POSE snapshot keys (top level - dates):', dates);
-      console.log('[getFromDatabaseByGame] Raw POSE snapshot structure summary:', {
-        datesCount: dates.length,
-        dates: dates
-      });
-      
-      // Log users for each date
-      for (const dateKey of dates) {
-        if (rawVal[dateKey] && typeof rawVal[dateKey] === 'object') {
-          const users = Object.keys(rawVal[dateKey]);
-          console.log(`[getFromDatabaseByGame] POSE Date ${dateKey}: ${users.length} user(s):`, users);
-        }
-      }
-      
-      // Check if there are any null values (which might indicate permission issues)
-      const checkForNulls = (obj, path = '') => {
-        for (const key in obj) {
-          const currentPath = path ? `${path}.${key}` : key;
-          if (obj[key] === null) {
-            console.warn(`[getFromDatabaseByGame] Found null value at path: ${currentPath} - This may indicate Firebase security rules are blocking access!`);
-          } else if (typeof obj[key] === 'object' && obj[key] !== null) {
-            checkForNulls(obj[key], currentPath);
-          }
-        }
-      };
-      checkForNulls(rawVal);
-    } else {
-      console.warn('[getFromDatabaseByGame] Pose snapshot does not exist - check Firebase rules!');
-    }
-
-    // Try to get data for missing users directly - first in game's org, then in all other orgs
-    if (missingInPose.length > 0) {
-      console.log('[getFromDatabaseByGame] ========== ATTEMPTING DIRECT ACCESS TO MISSING USERS ==========');
-      
-      // Get all organizations
-      let allOrgIds = [orgId]; // Start with game's organization
-      try {
-        const orgsRef = ref(db, 'orgs');
-        const orgsSnapshot = await get(orgsRef);
-        if (orgsSnapshot.exists()) {
-          const orgs = orgsSnapshot.val();
-          const orgIdsList = Object.keys(orgs);
-          console.log(`[getFromDatabaseByGame] Found ${orgIdsList.length} organizations total`);
-          // Add all organizations, but keep game's org first
-          allOrgIds = [orgId, ...orgIdsList.filter(id => id !== orgId)];
-          console.log(`[getFromDatabaseByGame] Will check pose data in ${allOrgIds.length} organizations:`, allOrgIds);
-        }
-      } catch (error) {
-        console.warn('[getFromDatabaseByGame] Could not get list of organizations:', error.message);
-        console.warn('[getFromDatabaseByGame] Will only check in game organization:', orgId);
-      }
-      
-      for (const missingUser of missingInPose) {
-        for (const dateKey of Object.keys(eventUsers.dates)) {
-          if (eventUsers.dates[dateKey].includes(missingUser)) {
-            console.log(`[getFromDatabaseByGame] Searching for ${missingUser} on ${dateKey} in all organizations...`);
-            let foundInOrg = null;
-            
-            // Check in all organizations
-            for (const checkOrgId of allOrgIds) {
-              try {
-                const directPath = `_PoseData/${checkOrgId}/${gameId}/${dateKey}/${missingUser}`;
-                console.log(`[getFromDatabaseByGame] Checking org ${checkOrgId}: ${directPath}`);
-                const directRef = ref(db, directPath);
-                const directSnapshot = await get(directRef);
-                
-                if (directSnapshot.exists()) {
-                  console.log(`[getFromDatabaseByGame] SUCCESS: Found ${missingUser} on ${dateKey} in organization ${checkOrgId}!`);
-                  console.log(`[getFromDatabaseByGame] Direct access data keys:`, Object.keys(directSnapshot.val()));
-                  foundInOrg = checkOrgId;
-                  break; // Found it, no need to check other orgs
-                } else {
-                  console.log(`[getFromDatabaseByGame] No data for ${missingUser} in org ${checkOrgId}`);
-                }
-              } catch (error) {
-                console.warn(`[getFromDatabaseByGame] ERROR: Direct access to ${missingUser} on ${dateKey} in org ${checkOrgId} failed:`, error.message);
-                if (error.message.includes('permission') || error.message.includes('security')) {
-                  console.warn(`[getFromDatabaseByGame] This likely indicates Firebase security rules are blocking access!`);
-                }
-              }
-            }
-            
-            if (!foundInOrg) {
-              console.warn(`[getFromDatabaseByGame] Could not find data for ${missingUser} on ${dateKey} in any organization`);
-            }
-          }
-        }
-      }
-      console.log('[getFromDatabaseByGame] ===============================================================');
-    }
-
-    // Helper function to analyze data structure in detail
-    const analyzePoseDataStructure = (data, label) => {
-      if (!data) {
-        console.log(`[getFromDatabaseByGame] ${label}: No data`);
-        return;
-      }
-      
-      const dates = Object.keys(data);
-      console.log(`[getFromDatabaseByGame] ${label}: Found ${dates.length} date(s):`, dates);
-      
-      let totalSessions = 0;
-      let totalUsers = 0;
-      const sessionDetails = [];
-      
-      for (const dateKey of dates) {
-        const dateData = data[dateKey];
-        if (!dateData || typeof dateData !== 'object') {
-          console.warn(`[getFromDatabaseByGame] ${label}: Date ${dateKey} has invalid structure:`, dateData);
-          continue;
-        }
-        
-        const users = Object.keys(dateData);
-        totalUsers += users.length;
-        console.log(`[getFromDatabaseByGame] ${label} - Date ${dateKey}: ${users.length} user(s):`, users);
-        
-        for (const userKey of users) {
-          const userData = dateData[userKey];
-          if (!userData || typeof userData !== 'object') {
-            console.warn(`[getFromDatabaseByGame] ${label}: Date ${dateKey}, User ${userKey} has invalid structure:`, userData);
-            continue;
-          }
-          
-          const devices = Object.keys(userData);
-          console.log(`[getFromDatabaseByGame] ${label} - Date ${dateKey}, User ${userKey}: ${devices.length} device(s):`, devices);
-          
-          for (const deviceKey of devices) {
-            const deviceData = userData[deviceKey];
-            if (!deviceData || typeof deviceData !== 'object') {
-              console.warn(`[getFromDatabaseByGame] ${label}: Date ${dateKey}, User ${userKey}, Device ${deviceKey} has invalid structure:`, deviceData);
-              continue;
-            }
-            
-            const loginTimes = Object.keys(deviceData);
-            console.log(`[getFromDatabaseByGame] ${label} - Date ${dateKey}, User ${userKey}, Device ${deviceKey}: ${loginTimes.length} loginTime(s):`, loginTimes);
-            totalSessions += loginTimes.length;
-            
-            for (const loginTimeKey of loginTimes) {
-              const loginTimeData = deviceData[loginTimeKey];
-              if (!loginTimeData || typeof loginTimeData !== 'object') {
-                console.warn(`[getFromDatabaseByGame] ${label}: Date ${dateKey}, User ${userKey}, Device ${deviceKey}, LoginTime ${loginTimeKey} has invalid structure:`, loginTimeData);
-                continue;
-              }
-              
-              const uuids = Object.keys(loginTimeData);
-              console.log(`[getFromDatabaseByGame] ${label} - Date ${dateKey}, User ${userKey}, Device ${deviceKey}, LoginTime ${loginTimeKey}: ${uuids.length} UUID(s):`, uuids);
-              
-              for (const uuidKey of uuids) {
-                sessionDetails.push({
-                  date: dateKey,
-                  user: userKey,
-                  device: deviceKey,
-                  loginTime: loginTimeKey,
-                  uuid: uuidKey
-                });
-              }
-            }
-          }
-        }
-      }
-      
-      console.log(`[getFromDatabaseByGame] ${label} Summary: ${dates.length} dates, ${totalUsers} users, ${totalSessions} sessions, ${sessionDetails.length} UUIDs`);
-      console.log(`[getFromDatabaseByGame] ${label} Session details:`, sessionDetails);
-      return sessionDetails;
-    };
-
-    // Analyze raw pose data BEFORE filtering
-    if (poseSnapshot.exists()) {
-      const rawPoseData = poseSnapshot.val();
-      console.log('[getFromDatabaseByGame] ========== RAW POSE DATA STRUCTURE (BEFORE FILTERING) ==========');
-      const rawSessions = analyzePoseDataStructure(rawPoseData, 'RAW_POSE');
-      console.log('[getFromDatabaseByGame] ===============================================================');
-    }
 
     // Helper function to filter data by date range
     const filterByDateRange = (data, startDate, endDate) => {
@@ -2276,92 +2282,119 @@ export const getFromDatabaseByGame = async (selectedGame, gameId, selectedStart,
       return filteredDates.length > 0 ? filtered : null;
     };
 
-    // Filter pose data by date range
-    let poseData = poseSnapshot.exists() ? filterByDateRange(poseSnapshot.val(), selectedStart, selectedEnd) : null;
+    // NEW APPROACH: Filter event data first, then load pose data only for users/dates in event data
     let eventData = eventSnapshot.exists() ? filterByDateRange(eventSnapshot.val(), selectedStart, selectedEnd) : null;
-
-    // Compare users after date filtering
-    console.log('[getFromDatabaseByGame] ========== USER COMPARISON AFTER DATE FILTERING ==========');
-    if (poseData) {
-      const poseUsersAfterDateFilter = extractUsersFromData(poseData, 'POSE');
-      console.log('[getFromDatabaseByGame] POSE DATA users after date filter:', Array.from(poseUsersAfterDateFilter.allUsers).sort());
-    } else {
-      console.log('[getFromDatabaseByGame] POSE DATA: No data after date filtering');
+    
+    if (!eventData) {
+      console.warn('[getFromDatabaseByGame] No event data found for the specified date range');
+      alert('No data found for the specified game and date range.');
+      return null;
     }
-    if (eventData) {
-      const eventUsersAfterDateFilter = extractUsersFromData(eventData, 'EVENT');
-      console.log('[getFromDatabaseByGame] EVENT DATA users after date filter:', Array.from(eventUsersAfterDateFilter.allUsers).sort());
-    } else {
-      console.log('[getFromDatabaseByGame] EVENT DATA: No data after date filtering');
-    }
-    console.log('[getFromDatabaseByGame] ===========================================================');
 
-    // Check pose data in all organizations for missing users
-    if (eventData) {
-      const eventUsersAfterDateFilter = extractUsersFromData(eventData, 'EVENT');
-      const poseUsersAfterDateFilter = poseData ? extractUsersFromData(poseData, 'POSE') : { allUsers: new Set(), dates: {} };
-      const stillMissingInPose = Array.from(eventUsersAfterDateFilter.allUsers).filter(user => !poseUsersAfterDateFilter.allUsers.has(user));
-      
-      if (stillMissingInPose.length > 0) {
-        console.log('[getFromDatabaseByGame] ========== SEARCHING FOR MISSING USERS IN ALL ORGANIZATIONS ==========');
-        console.log('[getFromDatabaseByGame] Users still missing in pose data:', stillMissingInPose);
-        
-        // Get all organizations
-        let allOrgIds = [orgId];
-        try {
-          const orgsRef = ref(db, 'orgs');
-          const orgsSnapshot = await get(orgsRef);
-          if (orgsSnapshot.exists()) {
-            const orgs = orgsSnapshot.val();
-            const orgIdsList = Object.keys(orgs);
-            allOrgIds = [orgId, ...orgIdsList.filter(id => id !== orgId)];
-            console.log(`[getFromDatabaseByGame] Checking ${allOrgIds.length} organizations for missing users`);
-          }
-        } catch (error) {
-          console.warn('[getFromDatabaseByGame] Could not get list of organizations:', error.message);
-        }
-        
-        // Initialize poseData if it's null
-        if (!poseData) {
-          poseData = {};
-        }
-        
-        // For each missing user, check all organizations
-        for (const missingUser of stillMissingInPose) {
-          for (const dateKey of Object.keys(eventUsersAfterDateFilter.dates)) {
-            if (eventUsersAfterDateFilter.dates[dateKey].includes(missingUser)) {
-              console.log(`[getFromDatabaseByGame] Searching for ${missingUser} on ${dateKey} in all organizations...`);
+    console.log('[getFromDatabaseByGame] ========== EVENT DATA LOADED ==========');
+    const eventUsers = extractUsersFromData(eventData, 'EVENT');
+    console.log('[getFromDatabaseByGame] EVENT DATA users:', Array.from(eventUsers.allUsers).sort());
+    console.log('[getFromDatabaseByGame] EVENT DATA dates:', Object.keys(eventUsers.dates));
+    console.log('[getFromDatabaseByGame] ===============================================================');
+
+    // NEW APPROACH: Load pose data only for users/dates that exist in event data
+    // This avoids loading all pose data at once, which causes "payload too large" errors
+    console.log('[getFromDatabaseByGame] ========== LOADING POSE DATA FOR EVENT USERS ==========');
+    console.log('[getFromDatabaseByGame] Will load pose data for users/dates from event data using loadPoseDataRecursive');
+    
+    // Initialize poseData structure
+    let poseData = {};
+    
+    // Get all organizations to search in
+    let allOrgIds = [orgId];
+    try {
+      const orgsRef = ref(db, 'orgs');
+      const orgsSnapshot = await get(orgsRef);
+      if (orgsSnapshot.exists()) {
+        const orgs = orgsSnapshot.val();
+        const orgIdsList = Object.keys(orgs);
+        allOrgIds = [orgId, ...orgIdsList.filter(id => id !== orgId)];
+        console.log(`[getFromDatabaseByGame] Will search in ${allOrgIds.length} organizations:`, allOrgIds);
+      }
+    } catch (error) {
+      console.warn('[getFromDatabaseByGame] Could not get list of organizations:', error.message);
+      console.warn('[getFromDatabaseByGame] Will only search in game organization:', orgId);
+    }
+    
+    // Filter by selectedUser if specified
+    const usersToLoad = selectedUser && selectedUser !== 'ALL' 
+      ? [selectedUser].filter(user => eventUsers.allUsers.has(user))
+      : Array.from(eventUsers.allUsers);
+    
+    console.log(`[getFromDatabaseByGame] Users to load pose data for:`, usersToLoad);
+    
+    // Load pose data for each user/date from event data
+    for (const user of usersToLoad) {
+      for (const dateKey of Object.keys(eventUsers.dates)) {
+        if (eventUsers.dates[dateKey].includes(user)) {
+          console.log(`[getFromDatabaseByGame] Loading pose data for user: ${user}, date: ${dateKey}...`);
+          
+          let userDataLoaded = false;
+          
+          // Try to load from each organization until found
+          for (const checkOrgId of allOrgIds) {
+            try {
+              const userPath = `_PoseData/${checkOrgId}/${gameId}/${dateKey}/${user}`;
+              console.log(`[getFromDatabaseByGame] Trying org ${checkOrgId}: ${userPath}`);
               
-              for (const checkOrgId of allOrgIds) {
-                try {
-                  const userPath = `_PoseData/${checkOrgId}/${gameId}/${dateKey}/${missingUser}`;
-                  const userRef = ref(db, userPath);
-                  const userSnapshot = await get(userRef);
-                  
-                  if (userSnapshot.exists() && userSnapshot.val() !== null) {
-                    console.log(`[getFromDatabaseByGame] FOUND: ${missingUser} on ${dateKey} in organization ${checkOrgId}!`);
-                    
-                    // Merge the data into poseData
-                    if (!poseData[dateKey]) {
-                      poseData[dateKey] = {};
-                    }
-                    poseData[dateKey][missingUser] = userSnapshot.val();
-                    console.log(`[getFromDatabaseByGame] Merged data for ${missingUser} from org ${checkOrgId} into pose data`);
-                    break; // Found it, no need to check other orgs for this user/date
-                  }
-                } catch (error) {
-                  console.warn(`[getFromDatabaseByGame] Error checking ${missingUser} in org ${checkOrgId}:`, error.message);
+              const startTime = Date.now();
+              const userData = await loadPoseDataRecursive(userPath);
+              const loadTime = Date.now() - startTime;
+              
+              if (userData !== null && Object.keys(userData).length > 0) {
+                const dataSize = JSON.stringify(userData).length;
+                const dataSizeMB = (dataSize / 1024 / 1024).toFixed(2);
+                console.log(`[getFromDatabaseByGame] SUCCESS: Loaded pose data for ${user} on ${dateKey} from org ${checkOrgId}`);
+                console.log(`[getFromDatabaseByGame] Data size: ${dataSize} bytes (${dataSizeMB} MB), Load time: ${loadTime}ms`);
+                
+                // Add to poseData
+                if (!poseData[dateKey]) {
+                  poseData[dateKey] = {};
                 }
+                poseData[dateKey][user] = userData;
+                userDataLoaded = true;
+                break; // Found it, no need to check other orgs
               }
+            } catch (error) {
+              const errorMessage = error?.message || error?.code || String(error);
+              const errorString = errorMessage.toLowerCase();
+              if (errorString.includes('too large')) {
+                console.warn(`[getFromDatabaseByGame] Data too large for ${user} on ${dateKey} in org ${checkOrgId} - recursive loader should handle this`);
+              } else {
+                console.warn(`[getFromDatabaseByGame] Error loading ${user} on ${dateKey} from org ${checkOrgId}:`, errorMessage);
+              }
+              // Continue checking other orgs
             }
           }
+          
+          if (!userDataLoaded) {
+            console.warn(`[getFromDatabaseByGame] Could not load pose data for ${user} on ${dateKey} from any organization`);
+          }
         }
-        
-        // Log final users after merging
-        const finalPoseUsers = extractUsersFromData(poseData, 'POSE');
-        console.log('[getFromDatabaseByGame] POSE DATA users after merging from all orgs:', Array.from(finalPoseUsers.allUsers).sort());
-        console.log('[getFromDatabaseByGame] ===========================================================');
       }
+    }
+    
+    console.log('[getFromDatabaseByGame] ========== POSE DATA LOADING COMPLETED ==========');
+    const loadedPoseUsers = extractUsersFromData(poseData, 'POSE');
+    console.log('[getFromDatabaseByGame] POSE DATA users loaded:', Array.from(loadedPoseUsers.allUsers).sort());
+    console.log('[getFromDatabaseByGame] POSE DATA dates loaded:', Object.keys(loadedPoseUsers.dates));
+    
+    // Check if we have pose data for all event users
+    const missingPoseUsers = Array.from(eventUsers.allUsers).filter(user => !loadedPoseUsers.allUsers.has(user));
+    if (missingPoseUsers.length > 0) {
+      console.warn('[getFromDatabaseByGame] WARNING: Some users from EVENT DATA have no POSE DATA:', missingPoseUsers);
+      console.warn('[getFromDatabaseByGame] This may indicate data is in a different organization or Firebase security rules are blocking access');
+    }
+    console.log('[getFromDatabaseByGame] ===============================================================');
+    
+    // Convert poseData to null if empty (for consistency with old code)
+    if (Object.keys(poseData).length === 0) {
+      poseData = null;
     }
 
     // Filter by user if selectedUser is specified
@@ -2471,10 +2504,15 @@ export const getFromDatabaseByGame = async (selectedGame, gameId, selectedStart,
       console.log('[getFromDatabaseByGame] No user filter applied (selectedUser:', selectedUser, ')');
     }
 
-    // Analyze filtered pose data AFTER filtering
+    // Log final pose data structure
     if (poseData) {
-      console.log('[getFromDatabaseByGame] ========== FILTERED POSE DATA STRUCTURE (AFTER FILTERING) ==========');
-      const filteredSessions = analyzePoseDataStructure(poseData, 'FILTERED_POSE');
+      const poseDates = Object.keys(poseData);
+      console.log('[getFromDatabaseByGame] ========== FINAL POSE DATA STRUCTURE ==========');
+      console.log('[getFromDatabaseByGame] Dates:', poseDates);
+      for (const dateKey of poseDates) {
+        const users = Object.keys(poseData[dateKey] || {});
+        console.log(`[getFromDatabaseByGame] Date ${dateKey}: ${users.length} user(s)`, users);
+      }
       console.log('[getFromDatabaseByGame] ===============================================================');
     }
 
@@ -2798,15 +2836,17 @@ export const getGameNameByUUID = async (gameID, orgId) => {
     
     if (gameData && Object.keys(gameData).length > 0) {
       const gameKey = Object.keys(gameData)[0];
-      const gameName = gameData[gameKey].name;
+      const game = gameData[gameKey];
+      // Try name first, then fallback to CurricularName
+      const gameName = game.name || game.CurricularName;
       if (gameName) {
-        console.log('getGameNameByUUID: Found game name', { gameID, gameName });
+        console.log('getGameNameByUUID: Found game name', { gameID, gameName, source: game.name ? 'name' : 'CurricularName' });
         return gameName;
       } else {
-        console.warn('getGameNameByUUID: Game data found but name is missing', { gameID, gameKey });
+        console.debug('getGameNameByUUID: Game data found but name is missing, using fallback', { gameID, gameKey, availableKeys: Object.keys(game) });
       }
     } else {
-      console.warn('getGameNameByUUID: Game data not found', { gameID, orgId });
+      console.debug('getGameNameByUUID: Game data not found, using fallback name', { gameID, orgId });
     }
     
     return 'UnknownGame';
@@ -2837,22 +2877,39 @@ export const getLevelNameByUUID = async (levelUUID, orgId) => {
     const levelData = await getConjectureDataByUUID(levelUUID, orgId);
     if (levelData && Object.keys(levelData).length > 0) {
       const levelKey = Object.keys(levelData)[0];
-      // First try to get the level Name field
-      if (levelData[levelKey].Name) {
-        console.log('getLevelNameByUUID: Found level name', { levelUUID, name: levelData[levelKey].Name });
-        return levelData[levelKey].Name;
+      const level = levelData[levelKey];
+      
+      // Try multiple name sources in order of preference
+      // 1. Name field (capital N)
+      if (level.Name) {
+        console.log('getLevelNameByUUID: Found level name from Name field', { levelUUID, name: level.Name });
+        return level.Name;
       }
-      // Otherwise try the CurricularName or conjecture name
-      if (levelData[levelKey]['Text Boxes'] && 
-          levelData[levelKey]['Text Boxes']['Conjecture Name']) {
-        const conjectureName = levelData[levelKey]['Text Boxes']['Conjecture Name'];
-        console.log('getLevelNameByUUID: Found conjecture name', { levelUUID, name: conjectureName });
+      
+      // 2. CurricularName field
+      if (level.CurricularName) {
+        console.log('getLevelNameByUUID: Found level name from CurricularName field', { levelUUID, name: level.CurricularName });
+        return level.CurricularName;
+      }
+      
+      // 3. Text Boxes -> Conjecture Name
+      if (level['Text Boxes'] && level['Text Boxes']['Conjecture Name']) {
+        const conjectureName = level['Text Boxes']['Conjecture Name'];
+        console.log('getLevelNameByUUID: Found conjecture name from Text Boxes', { levelUUID, name: conjectureName });
         return conjectureName;
       }
-      console.warn('getLevelNameByUUID: Level data found but name is missing', { levelUUID, levelKey });
+      
+      // Log available keys for debugging
+      console.debug('getLevelNameByUUID: Level data found but name is missing, using fallback', { 
+        levelUUID, 
+        levelKey,
+        availableKeys: Object.keys(level),
+        hasTextBoxes: !!level['Text Boxes'],
+        textBoxesKeys: level['Text Boxes'] ? Object.keys(level['Text Boxes']) : null
+      });
       return 'UnknownLevel';
     }
-    console.warn('getLevelNameByUUID: Level data not found', { levelUUID, orgId });
+    console.debug('getLevelNameByUUID: Level data not found, using fallback name', { levelUUID, orgId });
     return 'UnknownLevel';
   } catch (error) {
     console.error('getLevelNameByUUID: Error getting level name', {
@@ -2968,7 +3025,7 @@ export const findGameIdByNameAcrossOrgs = async (name, currentOrgId) => {
       return null;
     }
     
-    // 1. Сначала ищем в текущей организации
+    // 1. First search in current organization
     console.log('[findGameIdByNameAcrossOrgs] Searching in current org:', currentOrgId);
     const currentOrgGamesRef = ref(db, `orgs/${currentOrgId}/games`);
     const currentOrgSnapshot = await get(currentOrgGamesRef);
@@ -2991,7 +3048,7 @@ export const findGameIdByNameAcrossOrgs = async (name, currentOrgId) => {
       console.log('[findGameIdByNameAcrossOrgs] No games found in current org');
     }
     
-    // 2. Если не найдено, ищем в публичных играх других организаций
+    // 2. If not found, search in public games of other organizations
     console.log('[findGameIdByNameAcrossOrgs] Searching in other orgs for public games...');
     const orgsRef = ref(db, 'orgs');
     const orgsSnapshot = await get(orgsRef);
@@ -3004,7 +3061,7 @@ export const findGameIdByNameAcrossOrgs = async (name, currentOrgId) => {
       for (const [otherOrgId, orgData] of Object.entries(orgs)) {
         if (otherOrgId === currentOrgId) {
           console.log('[findGameIdByNameAcrossOrgs] Skipping current org:', otherOrgId);
-          continue; // Пропускаем текущую организацию
+          continue; // Skip current organization
         }
         
         console.log('[findGameIdByNameAcrossOrgs] Checking org:', otherOrgId);
@@ -3016,7 +3073,7 @@ export const findGameIdByNameAcrossOrgs = async (name, currentOrgId) => {
           console.log('[findGameIdByNameAcrossOrgs] Found', Object.keys(games).length, 'games in org:', otherOrgId);
           
           for (const [gameKey, gameData] of Object.entries(games)) {
-            // Ищем только публичные игры
+            // Search only for public games
             if (gameData && gameData.isPublic === true && gameData.name && 
                 (gameData.name === name || gameData.name.includes(name))) {
               console.log('[findGameIdByNameAcrossOrgs] Match found in other org!', { gameId: gameData.UUID, orgId: otherOrgId });

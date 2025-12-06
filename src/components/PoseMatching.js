@@ -32,15 +32,27 @@ const PoseMatching = (props) => {
     repetitions = 1,
   } = props;
 
+  // Debug logging (only in development)
+  if (process.env.NODE_ENV === 'development') {
+    console.debug('[PoseMatching] Component rendered with props:', {
+      'posesToMatch': posesToMatch ? `Array(${posesToMatch.length})` : posesToMatch,
+      'posesToMatch.length': posesToMatch?.length,
+      'tolerances': tolerances,
+      'UUID': UUID,
+      'gameID': gameID,
+      'singleMatchPerPose': singleMatchPerPose,
+      'repetitions': repetitions
+    });
+  }
+
   // clearer names for state
   const [linearPoseIndex, setLinearPoseIndex] = useState(0); // legacy mode
-  const [currentGroup, setCurrentGroup] = useState(0); // logical group index
-  const [subPoseIndex, setSubPoseIndex] = useState(0); // 0..SUB_GROUP_SIZE-1
+  const [subPoseIndex, setSubPoseIndex] = useState(0); // 0..uniquePosesCount-1
   const [repIndex, setRepIndex] = useState(0); // 0..repetitions-1
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [text, setText] = useState(() =>
     singleMatchPerPose
-      ? `Match pose ${currentGroup + 1}.${subPoseIndex + 1} on the left!`
+      ? `Match pose ${repIndex + 1}.${subPoseIndex + 1} on the left!`
       : `Match pose ${Math.floor(linearPoseIndex / 3) + 1}.${linearPoseIndex % 3 + 1} on the left!`
   );
   const [poseSimilarity, setPoseSimilarity] = useState([]);
@@ -50,18 +62,26 @@ const PoseMatching = (props) => {
   const col2Dim = useMemo(() => columnDimensions(2), [columnDimensions]);
   const playerColumn = useMemo(() => columnDimensions(3), [columnDimensions]);
 
+  // Calculate number of unique poses
+  const uniquePosesCount = useMemo(() => {
+    if (repetitions > 0 && posesToMatch.length > 0) {
+      return Math.floor(posesToMatch.length / repetitions);
+    }
+    return posesToMatch.length;
+  }, [posesToMatch.length, repetitions]);
+
   const currentPose = useMemo(() => {
     if (singleMatchPerPose) {
-      const srcIdx = currentGroup * SUB_GROUP_SIZE + subPoseIndex;
+      const srcIdx = repIndex * uniquePosesCount + subPoseIndex;
       if (srcIdx >= posesToMatch.length) return {};
       return enrichLandmarks(posesToMatch[srcIdx]);
     }
     if (linearPoseIndex >= posesToMatch.length) return {};
     return enrichLandmarks(posesToMatch[linearPoseIndex]);
-  }, [posesToMatch, linearPoseIndex, singleMatchPerPose, currentGroup, subPoseIndex]);
+  }, [posesToMatch, linearPoseIndex, singleMatchPerPose, repIndex, subPoseIndex, uniquePosesCount]);
 
   const poseMatchData = useMemo(() => {
-    let srcIdx = singleMatchPerPose ? currentGroup * SUB_GROUP_SIZE + subPoseIndex : linearPoseIndex;
+    let srcIdx = singleMatchPerPose ? repIndex * uniquePosesCount + subPoseIndex : linearPoseIndex;
     if (srcIdx >= posesToMatch.length) return [];
 
     const currentPoseData = posesToMatch[srcIdx];
@@ -69,13 +89,13 @@ const PoseMatching = (props) => {
       ...config,
       landmarks: matchSegmentToLandmarks(config, currentPoseData, modelColumn),
     }));
-  }, [posesToMatch, linearPoseIndex, modelColumn, singleMatchPerPose, currentGroup, subPoseIndex]);
+  }, [posesToMatch, linearPoseIndex, modelColumn, singleMatchPerPose, repIndex, subPoseIndex, uniquePosesCount]);
 
   const currentTolerance = useMemo(() => {
     if (!Array.isArray(tolerances)) return DEFAULT_SIMILARITY_THRESHOLD;
 
     if (singleMatchPerPose) {
-      const idx = currentGroup;
+      const idx = subPoseIndex;
       if (idx < tolerances.length && typeof tolerances[idx] === "number" && !isNaN(tolerances[idx]) && tolerances[idx] >= 0) {
         return tolerances[idx];
       }
@@ -91,7 +111,7 @@ const PoseMatching = (props) => {
       return tolerances[linearPoseIndex];
     }
     return DEFAULT_SIMILARITY_THRESHOLD;
-  }, [tolerances, linearPoseIndex, singleMatchPerPose, currentGroup]);
+  }, [tolerances, linearPoseIndex, singleMatchPerPose, subPoseIndex]);
 
   // initialize or log start
   useEffect(() => {
@@ -111,7 +131,7 @@ const PoseMatching = (props) => {
   useEffect(() => {
     if (!singleMatchPerPose) return;
     setText(`Match pose ${repIndex + 1}.${subPoseIndex + 1} on the left!`);
-  }, [currentGroup, subPoseIndex, singleMatchPerPose, repIndex]);
+  }, [subPoseIndex, singleMatchPerPose, repIndex]);
 
   // similarity calculation
   useEffect(() => {
@@ -164,31 +184,24 @@ const PoseMatching = (props) => {
         return;
       }
 
-      // singleMatchPerPose flow - advance sub/rep/group
+      // singleMatchPerPose flow - advance sub/rep
       let nextSub = subPoseIndex + 1;
       let nextRep = repIndex;
-      let nextGroup = currentGroup;
 
-      if (nextSub >= SUB_GROUP_SIZE) {
+      if (nextSub >= uniquePosesCount) {
         nextSub = 0;
         nextRep = repIndex + 1;
-        if (nextRep >= Math.max(1, Math.floor(repetitions))) {
-          nextRep = 0;
-          nextGroup = currentGroup + 1; // <-- this increments the group
-        }
       }
 
-      const limitGroups = Math.ceil(posesToMatch.length / SUB_GROUP_SIZE);
-      if (nextGroup >= limitGroups) {
+      if (nextRep >= Math.max(1, Math.floor(repetitions))) {
         setIsTransitioning(false);
         onComplete();
       } else {
-        setCurrentGroup(nextGroup);
         setSubPoseIndex(nextSub);
         setRepIndex(nextRep);
         setText(`Match pose ${nextRep + 1}.${nextSub + 1} on the left!`);
         setIsTransitioning(false);
-        console.log(`Advanced to group ${nextGroup}, rep ${nextRep}, sub ${nextSub}`);
+        console.log(`Advanced to rep ${nextRep}, sub ${nextSub}`);
       }
     }, TRANSITION_DELAY);
   }, [
@@ -198,9 +211,9 @@ const PoseMatching = (props) => {
     onComplete,
     singleMatchPerPose,
     repetitions,
-    currentGroup,
     subPoseIndex,
     repIndex,
+    uniquePosesCount,
   ]);
 
   useEffect(() => {
@@ -214,7 +227,25 @@ const PoseMatching = (props) => {
     }
   }, [poseSimilarity, currentTolerance, isTransitioning, handlePoseMatch]);
 
-  if (posesToMatch.length === 0) return null;
+  if (posesToMatch.length === 0) {
+    console.warn('[PoseMatching] Returning null - posesToMatch.length is 0:', {
+      'posesToMatch': posesToMatch,
+      'posesToMatch.length': posesToMatch?.length,
+      'posesToMatch type': typeof posesToMatch,
+      'posesToMatch is array': Array.isArray(posesToMatch)
+    });
+    return null;
+  }
+
+  // Debug logging (only in development)
+  if (process.env.NODE_ENV === 'development') {
+    console.debug('[PoseMatching] Rendering pose matching UI:', {
+      'posesToMatch.length': posesToMatch.length,
+      'uniquePosesCount': uniquePosesCount,
+      'repIndex': repIndex,
+      'subPoseIndex': subPoseIndex
+    });
+  }
 
   return (
     <Container>

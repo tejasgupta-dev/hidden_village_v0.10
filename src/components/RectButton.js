@@ -30,13 +30,15 @@ const RectButton = (props) => {
     [width, height, x, y, color, buttonWidth, cornerRadius] // Added cornerRadius to the dependencies array
   );
 
+  const isInteractive = callback !== undefined && callback !== null;
+  
   return (
     <Container alpha={alpha}>
       <Graphics 
         draw={draw} 
-        interactive={true} 
+        interactive={isInteractive} 
         pointerdown={callback}
-        cursor="pointer"
+        cursor={isInteractive ? "pointer" : "default"}
       />
       <Text
         text={text}                                 // The text to display
@@ -51,9 +53,9 @@ const RectButton = (props) => {
             wordWrapWidth: buttonWidth,             // Setting the word wrap width
           })
         }
-        interactive={true}
+        interactive={isInteractive}
         pointerdown={callback}
-        cursor="pointer"
+        cursor={isInteractive ? "pointer" : "default"}
         x={x + buttonWidth / 2} // Centering text in the button
         y={y + height * 0.2}    // Adjusting the y-position for text
         anchor={0.5}

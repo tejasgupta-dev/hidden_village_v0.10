@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import * as PIXI from "pixi.js";
 import { Graphics, Text, Sprite, Container } from "@inlet/react-pixi";
-import cursorIcon from '../assets/cursor.png';
 import CursorMode from "./CursorMode.js";
 
 // Import cursor icon using URL constructor similar to CursorMode.js
@@ -72,10 +71,11 @@ const ExperimentalTask = (props) => {
     const fadeIntervalRef = useRef(null);
     const questionTimerRef = useRef(null);
     const buttonPressRef = useRef(false);
+    const prevCursorPosRef = useRef({ x: -100, y: -100 });
   
   
-    const leftCol  = columnDimensions(1);
-    const rightCol = columnDimensions(3);
+    const leftCol = useMemo(() => columnDimensions(1), [columnDimensions]);
+    const rightCol = useMemo(() => columnDimensions(3), [columnDimensions]);
     
     // Compute centered boxes around middle of screen (smaller than full column)
     const BOX_WIDTH = 400;
@@ -255,7 +255,14 @@ const ExperimentalTask = (props) => {
         x: lm.x * window.innerWidth,
         y: lm.y * window.innerHeight,
       };
-      setCursorPos(pos);
+      
+      // Only update cursor position if it actually changed (avoid unnecessary re-renders)
+      const prevPos = prevCursorPosRef.current;
+      const threshold = 1; // Update if position changed by more than 1 pixel
+      if (Math.abs(pos.x - prevPos.x) > threshold || Math.abs(pos.y - prevPos.y) > threshold) {
+        setCursorPos(pos);
+        prevCursorPosRef.current = pos;
+      }
 
 
   
@@ -299,7 +306,7 @@ const ExperimentalTask = (props) => {
         setHoveredBox(next);
         setHoverTime(0);
       }
-    }, [poseData, columnDimensions, hoveredBox, trueBox, falseBox, questionButtonRect, handleQuestionButtonToggle, showQuestion]);
+    }, [poseData, hoveredBox, trueBox, falseBox, questionButtonRect, handleQuestionButtonToggle, showQuestion]);
 
     // Hover dwell timer (2 seconds)
     useEffect(() => {

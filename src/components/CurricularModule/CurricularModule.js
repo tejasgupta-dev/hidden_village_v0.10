@@ -63,7 +63,7 @@ export const Curriculum = {
   },
 
   removeConjectureByIndex(index) { // remove a particular conjecture based on its index in the list
-    this.CurrentConjectures.splice(index, 1);;
+    this.CurrentConjectures.splice(index, 1);
   },
 
   async setCurricularEditor(curricular, showPublic = true) { // fill in curriculum data

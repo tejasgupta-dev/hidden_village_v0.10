@@ -138,7 +138,7 @@ const CurricularSelectModule = (props) => {
         const isPlayMode = getPlayGame();
         
         if (isPlayMode) {
-          // PLAY mode: show only games assigned to current class
+          // PLAY mode: show all published games from current organization
           const { classId, orgId } = await getCurrentClassContext(firebaseApp);
           
           if (!isMounted) return;
@@ -179,26 +179,20 @@ const CurricularSelectModule = (props) => {
             return;
           }
           
-          // Get games assigned to current class
-          const classInfo = await getClassInfo(orgId, classId, firebaseApp);
-          const assignedGameIds = classInfo?.assignedGames ? Object.keys(classInfo.assignedGames) : [];
-          
-          console.log('Current class:', classId, 'Assigned games:', assignedGameIds);
-          
           // Get all games (with or without public games from other orgs based on showPublic)
           const allGames = await getCurricularListWithCurrentOrg(isPlayMode, showPublic);
           
           if (!isMounted) return;
           
-          // Filter games: show games assigned to class OR public games from other orgs (if showPublic is true)
+          // Filter games: show all published games from current organization OR public games from other orgs (if showPublic is true)
           // In play mode, only show published games (isFinal === true)
           const classGames = allGames ? allGames.filter(game => {
             // Only show published games in play mode
             if (game.isFinal !== true) {
               return false;
             }
-            // Always show games assigned to the class (if published)
-            if (assignedGameIds.includes(game.UUID)) {
+            // Show all games from current organization (if published)
+            if (!game._isFromOtherOrg) {
               return true;
             }
             // Show public games from other organizations if showPublic is true (if published)
@@ -208,7 +202,7 @@ const CurricularSelectModule = (props) => {
             return false;
           }) : [];
           
-          console.log('Filtered games for class:', classGames.length, 'out of', allGames ? allGames.length : 0, 'showPublic:', showPublic, 'assigned:', assignedGameIds.length);
+          console.log('Filtered games for play mode:', classGames.length, 'out of', allGames ? allGames.length : 0, 'showPublic:', showPublic);
           if (isMounted) {
             setCurricularList(classGames);
           }
@@ -323,29 +317,30 @@ const CurricularSelectModule = (props) => {
               return;
             }
             
-            // Get games assigned to current class
-            const classInfo = await getClassInfo(orgId, classId, firebaseApp);
-            const assignedGameIds = classInfo?.assignedGames ? Object.keys(classInfo.assignedGames) : [];
-            
-            console.log('CurricularSelector: Updated current class:', classId, 'Assigned games:', assignedGameIds);
-            
             // Get all games
             const allGames = await getCurricularListWithCurrentOrg(isPlayMode, true);
             
             if (!isMounted) return;
             
-            // Filter only published games assigned to current class
+            // Filter games: show all published games from current organization OR public games from other orgs
             // In play mode, only show published games (isFinal === true)
             const classGames = allGames ? allGames.filter(game => {
               // Only show published games in play mode
               if (game.isFinal !== true) {
                 return false;
               }
-              // Show games assigned to the class (if published)
-              return assignedGameIds.includes(game.UUID);
+              // Show all games from current organization (if published)
+              if (!game._isFromOtherOrg) {
+                return true;
+              }
+              // Show public games from other organizations (if published)
+              if (game._isFromOtherOrg && game.isPublic === true) {
+                return true;
+              }
+              return false;
             }) : [];
             
-            console.log('CurricularSelector: Updated filtered games for class:', classGames.length, 'out of', allGames.length);
+            console.log('CurricularSelector: Updated filtered games for play mode:', classGames.length, 'out of', allGames.length);
             if (isMounted) {
               setCurricularList(classGames);
             }
