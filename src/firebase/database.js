@@ -1,6 +1,7 @@
 // Firebase Init
 import { ref, push, getDatabase, set, query, equalTo, get, orderByChild, orderByKey, onValue, child, startAt, endAt, remove, update, limitToFirst } from "firebase/database";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { app } from "./init";
 
 import { Curriculum } from "../components/CurricularModule/CurricularModule";
 import { parse } from "querystring-es3";
@@ -10,10 +11,10 @@ import { convertJsonToCsv, } from "../firebase/jsonTOcsv.js";
 // Import the uuid library
 import { v4 as uuidv4 } from 'uuid';
 
-const db = getDatabase();
+const db = getDatabase(app);
 
 // Get the Firebase authentication instance
-const auth = getAuth();
+const auth = getAuth(app);
 
 // Declare variables that change on user change -> these represent paths in the Firebase
 let userId;
@@ -53,15 +54,22 @@ let conjectureId;
 // Listen for changes to the authentication state
 // and update the userId variable accordingly
 onAuthStateChanged(auth, (user) => {
-  userId = user.uid;
-  userEmail = user.email;
-  userName = userEmail.split('@')[0];
-  date = new Date();
-  loginTime = date.toUTCString();
-  readableDate = formatDate(date);
+  if (user) {
+    userId = user.uid;
+    userEmail = user.email;
+    userName = userEmail.split('@')[0];
+    date = new Date();
+    loginTime = date.toUTCString();
+    readableDate = formatDate(date);
 
-  // NEW: ensure we have a stable per-device identity
-  ensureDeviceIdentity();
+    // NEW: ensure we have a stable per-device identity
+    ensureDeviceIdentity();
+  } else {
+    // User is signed out or not authenticated
+    userId = null;
+    userEmail = null;
+    userName = null;
+  }
 });
 
 // Function to Format date into readable format
@@ -453,7 +461,7 @@ export const getConjectureListWithCurrentOrg = async (final, includePublicFromOt
   // If requested, also get public levels from other organizations
   if (includePublicFromOtherOrgs) {
     try {
-      const db = getDatabase();
+      const db = getDatabase(app);
       const orgsRef = ref(db, 'orgs');
       const orgsSnapshot = await get(orgsRef);
       
@@ -501,7 +509,7 @@ export const getCurricularListWithCurrentOrg = async (final, includePublicFromOt
   // If requested, also get public games from other organizations
   if (includePublicFromOtherOrgs) {
     try {
-      const db = getDatabase();
+      const db = getDatabase(app);
       const orgsRef = ref(db, 'orgs');
       const orgsSnapshot = await get(orgsRef);
       
@@ -548,7 +556,7 @@ export const searchConjecturesByWordWithCurrentOrg = async (searchWord) => {
   
   // Also search public levels from other organizations
   try {
-    const db = getDatabase();
+    const db = getDatabase(app);
     const orgsRef = ref(db, 'orgs');
     const orgsSnapshot = await get(orgsRef);
     
@@ -669,7 +677,7 @@ export const getConjectureDataByUUIDWithCurrentOrg = async (conjectureID, includ
   if (!result && (includePublicFromOtherOrgs || forceLoadPrivate)) {
     console.log('getConjectureDataByUUIDWithCurrentOrg: Level not found in current org, searching in other organizations...');
     try {
-      const db = getDatabase();
+      const db = getDatabase(app);
       const orgsRef = ref(db, 'orgs');
       const orgsSnapshot = await get(orgsRef);
       
@@ -1211,8 +1219,8 @@ const countRejectedPromises = async (promises) => {
    * TODO: Add a last edited by field
    */
   export const saveGame = async (UUID = null, isFinal = false, orgId) => {
-    const db = getDatabase();
-    const auth = getAuth();
+    const db = getDatabase(app);
+    const auth = getAuth(app);
     const user = auth.currentUser;
 
     if (!user) {
@@ -1353,7 +1361,7 @@ export const deleteFromDatabaseCurricular = async (UUID, orgId) => {
 
 // save dialogues to firebase within an organization
 export const saveNarrativeDraftToFirebase = async (UUID, dialogues, orgId) => {
-  const auth = getAuth();
+  const auth = getAuth(app);
   const user = auth.currentUser;
   
   if (!user) {

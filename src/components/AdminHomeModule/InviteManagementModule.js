@@ -6,7 +6,7 @@ import RectButton from "../RectButton";
 import Background from "../Background";
 import InviteList from "./InviteList";
 import { getInvitesForOrganization, deleteInviteCode, generateInviteCode, getCurrentUserContext } from "../../firebase/userDatabase";
-import firebase from "firebase/compat/app";
+import { getAuth } from "firebase/auth";
 
 const InviteManagementModule = ({ width, height, firebaseApp, onBack }) => {
   const [invites, setInvites] = useState([]);
@@ -72,7 +72,7 @@ const InviteManagementModule = ({ width, height, firebaseApp, onBack }) => {
       }
       
       // Get current user UID
-      const auth = firebaseApp.auth();
+      const auth = getAuth(firebaseApp);
       const user = auth.currentUser;
       if (!user) {
         setError('User not authenticated');

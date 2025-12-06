@@ -1,6 +1,5 @@
 
 import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
-import firebase from "firebase/compat/app";
 import { initializeApp } from 'firebase/app';
 import { ref, push, getDatabase, set, query, equalTo, get, orderByChild } from "firebase/database";
 
@@ -137,7 +136,7 @@ export const writeCurrentUserToDatabaseNewUser = async (newID, newEmail, newRole
 export const writeNewUserToDatabase = async (userEmail, userRole, userPassword, orgName) => {
     try {
         // Get the Firebase authentication instance
-        const auth = getAuth();
+        const auth = getAuth(app);
 
         const userCredential = await createUserWithEmailAndPassword(auth, userEmail, userPassword);
         

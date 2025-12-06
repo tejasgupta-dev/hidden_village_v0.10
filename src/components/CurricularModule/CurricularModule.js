@@ -6,6 +6,7 @@ import RectButton from "../RectButton";
 // Import necessary Firebase functions
 import { getDatabase, ref, get, update } from "firebase/database";
 import { getAuth } from "firebase/auth"; // Import getAuth
+import { app } from "../../firebase/init";
 import { getConjectureDataByUUIDWithCurrentOrg, deleteFromDatabaseCurricularWithCurrentOrg, loadGameDialoguesFromFirebaseWithCurrentOrg, saveGameWithCurrentOrg } from "../../firebase/database";
 import { CurricularContentEditor } from "../CurricularModule/CurricularModuleBoxes";
 import { setAddtoCurricular } from '../ConjectureSelector/ConjectureSelectorModule';
@@ -173,7 +174,7 @@ const CurricularModule = (props) => {
       try {
         // Also remove the game from the gameNames index
         const gameName = localStorage.getItem('CurricularName');
-        const db = getDatabase();
+        const db = getDatabase(app);
         const updates = {};
         updates[`/Game/${currentUUID}`] = null; // Delete game data
         if (gameName) {

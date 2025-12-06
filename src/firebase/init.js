@@ -1,7 +1,5 @@
 // Firebase Init
-import firebase from "firebase/compat/app";
-import "firebase/compat/storage"; // Add compat storage
-
+import { initializeApp } from "firebase/app";
 import { getAuth, setPersistence, browserSessionPersistence } from 'firebase/auth';
 import { getStorage } from "firebase/storage";
 
@@ -16,20 +14,10 @@ const firebaseConfig = {
   appId: process.env.appId || "1:689113030161:web:acff8b2ca76d5ea7385bb0",
 };
 
-// Initialize Firebase
-const app = firebase.initializeApp(firebaseConfig);
+// Initialize Firebase with modular API
+const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-
-// Initialize storage - try modular API, if it doesn't work, use compat
-let storage;
-try {
-  storage = getStorage(app);
-  console.log('Storage initialized with modular API');
-} catch (error) {
-  console.warn('Modular storage failed, trying compat:', error);
-  // Fallback to compat storage if modular doesn't work
-  storage = firebase.storage();
-}
+const storage = getStorage(app);
 
 // Set session persistence
 setPersistence(auth, browserSessionPersistence)

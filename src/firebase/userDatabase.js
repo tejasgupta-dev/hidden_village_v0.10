@@ -2,6 +2,7 @@ import { ref, push, getDatabase, set, query, equalTo, get, orderByChild, remove,
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, setPersistence, browserSessionPersistence  } from "firebase/auth";
 import { async } from "regenerator-runtime";
 import { v4 as uuidv4 } from 'uuid';
+import { app } from "./init";
 
 // User Id functionality will be added in a different PR
 let userId;
@@ -77,7 +78,7 @@ export const refreshUserContext = async (firebaseApp) => {
     }
 };
 
-export const writeNewUserToDatabase = async (userEmail, userRole) => {
+export const writeNewUserToDatabase = async (userEmail, userRole, firebaseApp = app) => {
     // Create a new date object to get a timestamp
     const dateObj = new Date();
     const timestamp = dateObj.toISOString();
@@ -85,7 +86,7 @@ export const writeNewUserToDatabase = async (userEmail, userRole) => {
     console.log("Current User");
 
     // Get the Firebase authentication instance
-    const auth = getAuth();
+    const auth = getAuth(firebaseApp);
 
     // Log information about the current user, if one exists
     const currentUser = auth.currentUser;
@@ -489,10 +490,10 @@ export const getUsersByOrganizationFromDatabase = async (orgId, firebaseApp) => 
 };
 
 // Get user email for data download auto populate
-export const getUserEmailFromDatabase = async (props) => {
+export const getUserEmailFromDatabase = async (firebaseApp = app) => {
     try {
         // Get current authenticated user
-        const auth = getAuth();
+        const auth = getAuth(firebaseApp);
         const currentUser = auth.currentUser;
         
         if (!currentUser) {
@@ -501,7 +502,7 @@ export const getUserEmailFromDatabase = async (props) => {
         }
         
         const userId = currentUser.uid;
-        const db = getDatabase();
+        const db = getDatabase(firebaseApp);
         const userPath = `users/${userId}`;
 
         // Get the user snapshot from the database

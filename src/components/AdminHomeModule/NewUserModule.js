@@ -7,6 +7,7 @@ import {writeNewUserToDatabase} from "../../firebase/userDatabase"
 
 
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword,signInWithEmailAndPassword } from "firebase/auth";
+import { app } from "../../firebase/init";
 import InputBox from '../InputBox';
 import { getSavedPassword, getSavedUsername } from '../auth/UserSaver';
 
@@ -109,7 +110,7 @@ const NewUserModule = (props) => {
             callback={() => {
                 const currentUserEmail = getSavedUsername();
                 const currentUserPassword = getSavedPassword();
-                const auth = getAuth();
+                const auth = getAuth(app);
 
                 signInWithEmailAndPassword(auth, currentUserEmail, currentUserPassword)
                     .then((userCredential) => {

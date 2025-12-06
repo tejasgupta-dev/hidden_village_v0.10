@@ -13,7 +13,8 @@ import ConjectureSelectorModule, { getAddToCurricular, setAddtoCurricular } from
 import CurricularSelectorModule, { getPlayGame, setPlayGame } from "../CurricularSelector/CurricularSelector.js";
 import StoryEditorModule from "../StoryEditorModule/StoryEditorModule.js"; 
 import { getCurrentUserContext, getUserOrgsFromDatabase, switchPrimaryOrganization, getOrganizationInfo, useInviteCode } from "../../firebase/userDatabase";
-import firebase from "firebase/compat";
+import { app } from "../../firebase/init";
+import { getAuth } from "firebase/auth";
 import { Curriculum } from "../CurricularModule/CurricularModule.js";
 import Settings from "../Settings";
 import UserManagementModule from "../AdminHomeModule/UserManagementModule";
@@ -38,14 +39,14 @@ const PlayMenu = (props) => {
     const [currentOrgId, setCurrentOrgId] = useState(null);
     
     // Get Firebase app instance
-    const firebaseApp = firebase.app();
+    const firebaseApp = app;
     
     // Load student organizations for switching
     useEffect(() => {
         const loadStudentOrgs = async () => {
             if (userRole === "Student" && firebaseApp) {
                 try {
-                    const auth = firebaseApp.auth();
+                    const auth = getAuth(firebaseApp);
                     const user = auth.currentUser;
                     if (user) {
                         const userOrgs = await getUserOrgsFromDatabase(user.uid, firebaseApp);
@@ -79,7 +80,7 @@ const PlayMenu = (props) => {
     
     const handleSwitchOrganization = async (targetOrgId) => {
         try {
-            const auth = firebaseApp.auth();
+            const auth = getAuth(firebaseApp);
             const user = auth.currentUser;
             if (user) {
                 await switchPrimaryOrganization(user.uid, targetOrgId, firebaseApp);
@@ -99,7 +100,7 @@ const PlayMenu = (props) => {
                 return; // User cancelled or entered empty code
             }
             
-            const auth = firebaseApp.auth();
+            const auth = getAuth(firebaseApp);
             const user = auth.currentUser;
             if (!user) {
                 alert('User not authenticated');

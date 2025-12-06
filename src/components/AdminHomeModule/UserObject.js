@@ -4,13 +4,14 @@ import { TextStyle } from "@pixi/text";
 import RectButton from '../RectButton'; 
 import UserManagementModule from '../../components/AdminHomeModule/UserManagementModule'
 import { updateUserRoleInOrg, getUserNameFromDatabase, removeUserFromOrganization, getCurrentUserContext, isDefaultOrganization } from '../../firebase/userDatabase'
-import firebase from 'firebase/compat/app';
+import { app } from '../../firebase/init';
+import { getAuth } from 'firebase/auth';
 
 import { green, neonGreen, black, blue, white, pink, orange, red, transparent, turquoise } from "../../utils/colors";
 
 let currentUsername = null; // set currentUsername to null so that while the promise in getUserName() is pending, getUserName() returns null
 async function getUserName(){
-    const firebaseApp = firebase.app();
+    const firebaseApp = app;
     const promise = getUserNameFromDatabase(firebaseApp);
 
     // Wait for the promise to resolve and get the username
@@ -24,8 +25,8 @@ const UserObject = (props) => {
     // Get current user UID
     const getCurrentUserUid = () => {
         try {
-            const firebaseApp = firebase.app();
-            const auth = firebaseApp.auth();
+            const firebaseApp = app;
+            const auth = getAuth(firebaseApp);
             return auth.currentUser?.uid;
         } catch (error) {
             console.error('Error getting current user UID:', error);
@@ -120,7 +121,7 @@ const UserObject = (props) => {
                 return;
             }
             
-            const firebaseApp = firebase.app();
+            const firebaseApp = app;
             const result = await updateUserRoleInOrg(userId, orgId, nextRole, firebaseApp, currentUserRole);
 
             if (result) {
@@ -145,10 +146,10 @@ const UserObject = (props) => {
     const handleDeleteUser = async () => {
         try {
             // Get Firebase app instance
-            const firebaseApp = firebase.app();
+            const firebaseApp = app;
             
             // Get current user to prevent self-deletion
-            const auth = firebaseApp.auth();
+            const auth = getAuth(firebaseApp);
             const currentUser = auth.currentUser;
             
             if (!currentUser) {

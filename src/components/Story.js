@@ -7,8 +7,8 @@ import { StoryMachine } from "../machines/storyMachine.js";
 import { Stage } from "@inlet/react-pixi";
 import { yellow } from "../utils/colors";
 import { generateRowAndColumnFunctions } from "./utilities/layoutFunction";
-import firebase from "firebase/compat/app";
-import "firebase/compat/auth";
+import { app } from "../firebase/init";
+import { getAuth, signOut, onAuthStateChanged as onAuthStateChangedModular } from "firebase/auth";
 import PlayMenu from "./PlayMenu/PlayMenu.js";
 import { getCurrentUserContext, getUserNameFromDatabase, getCurrentUserOrgInfo } from "../firebase/userDatabase";
 
@@ -32,7 +32,7 @@ const Story = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   
   // Get Firebase app instance
-  const firebaseApp = firebase.app();
+  const firebaseApp = app;
 
   let [rowDimensions, columnDimensions] = generateRowAndColumnFunctions(
     width,
@@ -47,7 +47,8 @@ const Story = () => {
 
   // Check auth state
   useEffect(() => {
-    const unsubscribe = firebase.auth().onAuthStateChanged((user) => {
+    const auth = getAuth(firebaseApp);
+    const unsubscribe = onAuthStateChangedModular(auth, (user) => {
       if (!user) {
         window.location.href = "/signin";
       } else {
@@ -55,7 +56,7 @@ const Story = () => {
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [firebaseApp]);
 
   // Fetch user name and role after auth
   useEffect(() => {
@@ -211,7 +212,7 @@ const Story = () => {
               width={width}
               height={height}
               startCallback={() => send("TOGGLE")}
-              logoutCallback={() => firebase.auth().signOut()}
+              logoutCallback={() => signOut(getAuth(firebaseApp))}
               userName={userName}
             />
           )}
@@ -225,7 +226,7 @@ const Story = () => {
               userName={userName}
               role={userRole}
               organization={userOrg}
-              logoutCallback={() => firebase.auth().signOut()}
+              logoutCallback={() => signOut(getAuth(firebaseApp))}
             />
           )}
         </Stage>

@@ -4,7 +4,6 @@ import { TextStyle } from "@pixi/text";
 import { blue, white, red, green, black } from "../../utils/colors";
 import RectButton from "../RectButton";
 import Background from "../Background";
-import firebase from "firebase/compat/app";
 import { getAuth } from "firebase/auth";
 import {
   getCurrentUserContext,

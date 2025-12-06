@@ -7,7 +7,6 @@ import Background from "../Background";
 import ClassList from "./ClassList";
 import AssignContentModule from "./AssignContentModule";
 import AssignStudentsModule from "./AssignStudentsModule";
-import firebase from "firebase/compat/app";
 import { getAuth } from "firebase/auth";
 import {
   getCurrentUserContext,

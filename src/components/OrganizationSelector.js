@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Text } from "@inlet/react-pixi";
 import { TextStyle } from "@pixi/text";
 import { green, blue, red, white, black } from "../utils/colors";
 import RectButton from "./RectButton";
 import Background from "./Background";
 import { getUserOrgsFromDatabase, getOrganizationInfo, getCurrentUserContext, refreshUserContext } from "../firebase/userDatabase";
-import firebase from "firebase/compat/app";
+import { app } from "../firebase/init";
+import { getAuth } from "firebase/auth";
+import { getDatabase, ref, update } from "firebase/database";
 
 const OrganizationSelector = ({ width, height, onOrganizationSelected }) => {
   const [organizations, setOrganizations] = useState([]);
@@ -13,77 +15,75 @@ const OrganizationSelector = ({ width, height, onOrganizationSelected }) => {
   const [error, setError] = useState(null);
   const [selecting, setSelecting] = useState(false);
   const isMountedRef = useRef(true);
+  const firebaseApp = app;
+
+  const loadUserOrganizations = useCallback(async () => {
+    try {
+      if (!isMountedRef.current) return;
+      setLoading(true);
+      setError(null);
+      
+      const auth = getAuth(firebaseApp);
+      const user = auth.currentUser;
+      
+      if (!user) {
+        if (!isMountedRef.current) return;
+        setError('User not authenticated');
+        setLoading(false);
+        return;
+      }
+      
+      // Get user's organizations
+      const userOrgs = await getUserOrgsFromDatabase(user.uid, firebaseApp);
+      const orgIds = Object.keys(userOrgs);
+      
+      if (!isMountedRef.current) return;
+      
+      if (orgIds.length === 0) {
+        setError('You are not a member of any organization');
+        setLoading(false);
+        return;
+      }
+      
+      // Get organization details
+      const orgPromises = orgIds.map(async (orgId) => {
+        const orgInfo = await getOrganizationInfo(orgId, firebaseApp);
+        return {
+          id: orgId,
+          name: orgInfo.name,
+          role: userOrgs[orgId].roleSnapshot || 'Member'
+        };
+      });
+      
+      const orgsWithDetails = await Promise.all(orgPromises);
+      
+      if (!isMountedRef.current) return;
+      setOrganizations(orgsWithDetails);
+      
+    } catch (err) {
+      console.error('Error loading organizations:', err);
+      if (!isMountedRef.current) return;
+      setError('Failed to load organizations');
+    } finally {
+      if (!isMountedRef.current) return;
+      setLoading(false);
+    }
+  }, [firebaseApp]);
 
   useEffect(() => {
-    const loadUserOrganizations = async () => {
-      try {
-        if (!isMountedRef.current) return;
-        setLoading(true);
-        setError(null);
-        
-        const firebaseApp = firebase.app();
-        const auth = firebaseApp.auth();
-        const user = auth.currentUser;
-        
-        if (!user) {
-          if (!isMountedRef.current) return;
-          setError('User not authenticated');
-          setLoading(false);
-          return;
-        }
-        
-        // Get user's organizations
-        const userOrgs = await getUserOrgsFromDatabase(user.uid, firebaseApp);
-        const orgIds = Object.keys(userOrgs);
-        
-        if (!isMountedRef.current) return;
-        
-        if (orgIds.length === 0) {
-          setError('You are not a member of any organization');
-          setLoading(false);
-          return;
-        }
-        
-        // Get organization details
-        const orgPromises = orgIds.map(async (orgId) => {
-          const orgInfo = await getOrganizationInfo(orgId, firebaseApp);
-          return {
-            id: orgId,
-            name: orgInfo.name,
-            role: userOrgs[orgId].roleSnapshot || 'Member'
-          };
-        });
-        
-        const orgsWithDetails = await Promise.all(orgPromises);
-        
-        if (!isMountedRef.current) return;
-        setOrganizations(orgsWithDetails);
-        
-      } catch (err) {
-        console.error('Error loading organizations:', err);
-        if (!isMountedRef.current) return;
-        setError('Failed to load organizations');
-      } finally {
-        if (!isMountedRef.current) return;
-        setLoading(false);
-      }
-    };
-
     loadUserOrganizations();
 
     return () => {
       isMountedRef.current = false;
     };
-  }, []);
+  }, [loadUserOrganizations]);
 
   const handleSelectOrganization = async (orgId) => {
     try {
       if (!isMountedRef.current) return;
       setSelecting(true);
       
-      const firebaseApp = firebase.app();
-      const db = firebaseApp.database();
-      const auth = firebaseApp.auth();
+      const auth = getAuth(firebaseApp);
       const user = auth.currentUser;
       
       if (!user) {
@@ -94,7 +94,8 @@ const OrganizationSelector = ({ width, height, onOrganizationSelected }) => {
       }
       
       // Update user's primary organization
-      await db.ref(`users/${user.uid}`).update({
+      const db = getDatabase(firebaseApp);
+      await update(ref(db, `users/${user.uid}`), {
         primaryOrgId: orgId,
         lastOrgSwitch: new Date().toISOString()
       });

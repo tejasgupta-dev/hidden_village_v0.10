@@ -9,7 +9,7 @@ import { Curriculum } from "../CurricularModule/CurricularModule";
 import { currentConjecture, setEditLevel, setGoBackFromLevelEdit } from "../ConjectureModule/ConjectureModule"
 import PixiLoader from '../utilities/PixiLoader';
 import { getAuth } from "firebase/auth";
-import firebase from "firebase/compat/app";
+import { app } from "../../firebase/init";
 import { canEditWithoutPIN, getCurrentUserContext } from "../../firebase/userDatabase";
 
 import InputBox from '../InputBox';
@@ -103,7 +103,7 @@ async function handleLevelClicked(conjecture, conjectureCallback, firebaseApp = 
 const ConjectureSelectModule = (props) => {
   console.log("ConjectureSelectModule Runs now");
   const { height, width, conjectureCallback, backCallback, curricularCallback, firebaseApp } = props;
-  const app = firebaseApp || firebase.app();
+  const firebaseAppInstance = firebaseApp || app;
   const [conjectureList, setConjectureList] = useState([]);
   const [filteredConjectureList, setFilteredConjectureList] = useState([]);
   const [currentPage, setCurrentPage] = useState(0);
@@ -166,7 +166,7 @@ const ConjectureSelectModule = (props) => {
     return () => {
       isMounted = false;
     };
-  }, [conjectureList, showPublic, app]);
+  }, [conjectureList, showPublic, firebaseAppInstance]);
 
   //use to get a fixed number of conjectures per page and to navigate between the pages
   const conjecturesPerPage = 7;
@@ -424,7 +424,7 @@ const ConjectureSelectModule = (props) => {
         fontWeight={800}
         callback={
           selectedConjecture
-            ? () => handleLevelClicked(selectedConjecture, conjectureCallback, app)
+            ? () => handleLevelClicked(selectedConjecture, conjectureCallback, firebaseAppInstance)
             : null
         }
       />

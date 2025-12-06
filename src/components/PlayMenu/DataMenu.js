@@ -68,7 +68,7 @@ const DataMenu = (props) => {
     const fetchEmail = async () => {
       try {
         setIsLoading(true);
-        const email = await getUserEmailFromDatabase();
+        const email = await getUserEmailFromDatabase(app);
         if (isMounted) setUserEmail(email);
       } catch (error) {
         if (isMounted) setError(error.message);
@@ -87,8 +87,8 @@ const DataMenu = (props) => {
 
   const downloadVideos = async (gameName, start, end) => {
     try {
-      const storage = getStorage();
-      const database = getDatabase();
+      const storage = getStorage(app);
+      const database = getDatabase(app);
   
       // Parsing dates
       // const parseDate = (dateStr) => {
@@ -389,7 +389,7 @@ const DataMenu = (props) => {
                   
                   // Extract users from _GameData
                   try {
-                    const eventdbRef = dbRef(getDatabase(), `_GameData/${gameId}`);
+                    const eventdbRef = dbRef(getDatabase(app), `_GameData/${gameId}`);
                     const eventSnapshot = await get(eventdbRef);
                     if (eventSnapshot.exists()) {
                       const eventData = eventSnapshot.val();
@@ -410,7 +410,7 @@ const DataMenu = (props) => {
                   
                   // Extract users from _PoseData
                   try {
-                    const posedbRef = dbRef(getDatabase(), `_PoseData/${gameOrgId}/${gameId}`);
+                    const posedbRef = dbRef(getDatabase(app), `_PoseData/${gameOrgId}/${gameId}`);
                     const poseSnapshot = await get(posedbRef);
                     if (poseSnapshot.exists()) {
                       const poseData = poseSnapshot.val();
