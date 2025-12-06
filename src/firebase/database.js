@@ -370,7 +370,7 @@ export const getCurrentOrgContext = async () => {
   try {
     // Import here to avoid circular dependency
     const { getCurrentUserContext } = await import('./userDatabase.js');
-    const result = await getCurrentUserContext();
+    const result = await getCurrentUserContext(app);
     return result;
   } catch (error) {
     console.error('getCurrentOrgContext: Error getting current org context:', error);

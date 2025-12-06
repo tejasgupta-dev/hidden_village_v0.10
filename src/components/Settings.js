@@ -147,8 +147,8 @@ const Settings = ({ width, height, x, y, onClose }) => {
     multipleChoice: true,
     tween: true,
     repetitions: 3, // number of pose match repetitions
-    audioRecording: true,
-    videoRecording: true,
+    audioRecording: false,
+    videoRecording: false,
     motionRecording: true,
     eventRecording: true,
     fps: 12,
@@ -163,7 +163,12 @@ const Settings = ({ width, height, x, y, onClose }) => {
       try {
         const saved = await getUserSettings();
         if (mounted && saved) {
-          setSettings((prev) => ({ ...prev, ...saved }));
+          setSettings((prev) => {
+            const updated = { ...prev, ...saved };
+            // Normalize: audio always matches video state
+            updated.audioRecording = updated.videoRecording;
+            return updated;
+          });
         }
       } catch (e) {
         console.error("Failed to load settings:", e);
@@ -176,6 +181,18 @@ const Settings = ({ width, height, x, y, onClose }) => {
 
   const toggleSetting = (key) =>
     setSettings((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  // Special handler for video recording: audio automatically syncs with video
+  const toggleVideoRecording = () => {
+    setSettings((prev) => {
+      const newVideoRecording = !prev.videoRecording;
+      return {
+        ...prev,
+        videoRecording: newVideoRecording,
+        audioRecording: newVideoRecording, // Audio always matches video state
+      };
+    });
+  };
 
   const updateRepetitions = (increment) =>
     setSettings((prev) => ({
@@ -381,24 +398,17 @@ const Settings = ({ width, height, x, y, onClose }) => {
         y={firstRowY - 24}
       />
       <SettingRow
-        label="Audio Recording:"
-        value={settings.audioRecording}
-        x={rightColX}
-        y={firstRowY + rowSpacing * 0}
-        onToggle={() => toggleSetting("audioRecording")}
-      />
-      <SettingRow
         label="Video Recording:"
         value={settings.videoRecording}
         x={rightColX}
-        y={firstRowY + rowSpacing * 1}
-        onToggle={() => toggleSetting("videoRecording")}
+        y={firstRowY + rowSpacing * 0}
+        onToggle={toggleVideoRecording}
       />
       <SettingRow
         label="Motion Recording:"
         value={settings.motionRecording}
         x={rightColX}
-        y={firstRowY + rowSpacing * 2}
+        y={firstRowY + rowSpacing * 1}
         onToggle={() => toggleSetting("motionRecording")}
         disabled={true}
       />
@@ -406,7 +416,7 @@ const Settings = ({ width, height, x, y, onClose }) => {
         label="Event Recording:"
         value={settings.eventRecording}
         x={rightColX}
-        y={firstRowY + rowSpacing * 3}
+        y={firstRowY + rowSpacing * 2}
         onToggle={() => toggleSetting("eventRecording")}
         disabled={true}
       />

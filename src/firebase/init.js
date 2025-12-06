@@ -3,34 +3,50 @@ import { initializeApp } from "firebase/app";
 import { getAuth, setPersistence, browserSessionPersistence } from 'firebase/auth';
 import { getStorage } from "firebase/storage";
 
+console.log('[Firebase Init] Starting initialization...');
+
+
 // Firebase config
 const firebaseConfig = {
-  apiKey: process.env.apiKey || "AIzaSyCgFROG1iDZ2AiTp3H5eEtgQtkpajpbsUY",
-  authDomain: process.env.authDomain || "uwm-11f9a.firebaseapp.com",
-  databaseURL: process.env.databaseURL || "https://uwm-11f9a-default-rtdb.firebaseio.com",
-  projectId: process.env.projectId || "uwm-11f9a",
-  storageBucket: process.env.storageBucket || "uwm-11f9a.firebasestorage.app",
-  messagingSenderId: process.env.messagingSenderId || "689113030161",
-  appId: process.env.appId || "1:689113030161:web:acff8b2ca76d5ea7385bb0",
+  apiKey: process.env.apiKey,
+  authDomain: process.env.authDomain,
+  databaseURL: process.env.databaseURL,
+  projectId: process.env.projectId,
+  storageBucket: process.env.storageBucket,
+  messagingSenderId: process.env.messagingSenderId,
+  appId: process.env.appId,
 };
 
+console.log('[Firebase Init] Config:', {
+  projectId: firebaseConfig.projectId,
+  authDomain: firebaseConfig.authDomain,
+  hasApiKey: !!firebaseConfig.apiKey
+});
+
 // Initialize Firebase with modular API
-const app = initializeApp(firebaseConfig);
+let app;
+try {
+  app = initializeApp(firebaseConfig);
+  console.log('[Firebase Init] App initialized successfully:', app.options.projectId);
+} catch (error) {
+  console.error('[Firebase Init] Error initializing app:', error);
+  throw error;
+}
+
 const auth = getAuth(app);
 const storage = getStorage(app);
+
+console.log('[Firebase Init] Auth and Storage initialized');
 
 // Set session persistence
 setPersistence(auth, browserSessionPersistence)
   .then(() => {
-    // Existing and future Auth states are now persisted in the current
-    // session only. Closing the window would clear any existing state even
-    // if a user forgets to sign out.
-    // TL;DR CLOSE WINDOW = SIGN IN AGAIN
+    console.log('[Firebase Init] Session persistence set successfully');
   })
   .catch((error) => {
-    // Handle errors
-    console.error('Error setting session persistence:', error);
+    console.error('[Firebase Init] Error setting session persistence:', error);
   });
 
+console.log('[Firebase Init] Exporting app, auth, storage');
 export { app, auth, storage };
 

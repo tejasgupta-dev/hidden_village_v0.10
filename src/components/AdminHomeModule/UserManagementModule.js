@@ -112,7 +112,7 @@ const UserManagementModule = (props) => {
             new TextStyle({
                 align: "center",
                 fontFamily: "Futura",
-                fontSize: 80,
+                fontSize: width * 0.06,
                 fontWeight: 800,
                 fill: [blue],
                 letterSpacing: -5,
@@ -123,12 +123,12 @@ const UserManagementModule = (props) => {
         <Text
             text={`CURRENT ORGANIZATION: ${currentOrgName}`}
             x={width * 0.12}
-            y={height * 0.12}
+            y={height * 0.15}
             style={
             new TextStyle({
                 align: "left",
                 fontFamily: "Arial",
-                fontSize: 24,
+                fontSize: width * 0.016,
                 fontWeight: "bold",
                 fill: [black],
             })

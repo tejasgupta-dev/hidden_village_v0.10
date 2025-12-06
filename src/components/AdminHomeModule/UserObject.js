@@ -62,10 +62,31 @@ const UserObject = (props) => {
 
     // Check if current user can change target user's role
     const canChangeRole = (targetRole) => {
-        if (!currentUserRole || !targetRole) return false;
+        console.log('[UserObject] canChangeRole called:', { 
+            currentUserRole, 
+            targetRole, 
+            userId, 
+            username 
+        });
+        
+        if (!currentUserRole) {
+            console.warn('[UserObject] canChangeRole: No currentUserRole provided');
+            return false;
+        }
+        
+        if (!targetRole) {
+            console.warn('[UserObject] canChangeRole: No targetRole provided for user', username, userId);
+            return false;
+        }
         
         const currentUserLevel = roleHierarchy[currentUserRole] ?? 999;
         const targetUserLevel = roleHierarchy[targetRole] ?? 999;
+        
+        console.log('[UserObject] canChangeRole: Role levels:', {
+            currentUserLevel,
+            targetUserLevel,
+            canChange: targetUserLevel >= currentUserLevel
+        });
         
         // Can only change roles of users with equal or lower level (higher hierarchy number)
         return targetUserLevel >= currentUserLevel;
@@ -95,49 +116,81 @@ const UserObject = (props) => {
 
     // Function to handle role change
     const handleChangeRole = async () => {
+        console.log('[UserObject] handleChangeRole called:', {
+            username,
+            userId,
+            currentRole: role,
+            currentUserRole,
+            orgId
+        });
+        
         try {
             if (!orgId) {
-                console.error("No organization ID provided");
+                console.error("[UserObject] No organization ID provided");
+                return;
+            }
+            
+            if (!role) {
+                console.error("[UserObject] No role provided for user:", username, userId);
+                alert(`Cannot change role: User ${username} has no role assigned. Please assign a role first.`);
                 return;
             }
             
             // Check if current user can change this role
             if (!canChangeRole(role)) {
-                alert(`You cannot change the role of ${role}. You can only change roles equal to or below your own role (${currentUserRole}).`);
+                const errorMsg = `You cannot change the role of ${role}. You can only change roles equal to or below your own role (${currentUserRole}).`;
+                console.warn('[UserObject]', errorMsg);
+                alert(errorMsg);
                 return;
             }
             
             const nextRole = getNextRole(role);
+            console.log('[UserObject] Next role calculated:', { currentRole: role, nextRole });
             
             // Check if role actually changed
             if (nextRole === role) {
+                console.warn('[UserObject] Role change not allowed: nextRole equals current role');
                 alert('Role change not allowed');
                 return;
             }
             
             // Double check: ensure next role is also allowed
             if (!canChangeRole(nextRole)) {
-                alert(`Cannot assign role ${nextRole}. You can only assign roles equal to or below your own role (${currentUserRole}).`);
+                const errorMsg = `Cannot assign role ${nextRole}. You can only assign roles equal to or below your own role (${currentUserRole}).`;
+                console.warn('[UserObject]', errorMsg);
+                alert(errorMsg);
                 return;
             }
+            
+            console.log('[UserObject] Proceeding with role change:', {
+                userId,
+                orgId,
+                fromRole: role,
+                toRole: nextRole
+            });
             
             const firebaseApp = app;
             const result = await updateUserRoleInOrg(userId, orgId, nextRole, firebaseApp, currentUserRole);
 
             if (result) {
                 // Success
+                console.log("[UserObject] User role changed successfully:", {
+                    userId,
+                    username,
+                    oldRole: role,
+                    newRole: nextRole
+                });
                 // Change the color of the button
                 // Update the list of users
                 await refreshUserListCallback();
-                console.log("User role changed successfully.");
             } else {
                 // Failure
-                console.log("Failed to change user role.");
+                console.error("[UserObject] Failed to change user role - updateUserRoleInOrg returned false");
                 alert("Failed to change user role. Please try again.");
             }
         } catch (error) {
             // Handle any errors that occurred during the operation
-            console.error("Error:", error);
+            console.error("[UserObject] Error in handleChangeRole:", error);
             alert(error.message || "An error occurred while changing the user role.");
         }
     };
@@ -212,10 +265,10 @@ const UserObject = (props) => {
     const rowCenterY = y + height * 0.5; // Vertical center of the row
     
     // Button dimensions - increased size
-    const roleButtonHeight = 45;
-    const roleButtonWidth = 200;
-    const deleteButtonHeight = 45;
-    const deleteButtonWidth = 200;
+    const roleButtonHeight = height;
+    const roleButtonWidth = width * 0.2;
+    const deleteButtonHeight = height;
+    const deleteButtonWidth = width * 0.17;
     
     return (
         <>
@@ -229,7 +282,7 @@ const UserObject = (props) => {
                     new TextStyle({
                         align: 'left',
                         fontFamily: 'Arial',
-                        fontSize: 16,
+                        fontSize: width * 0.016,
                         fontWeight: 'normal',
                         fill: [black],
                     })
@@ -244,15 +297,22 @@ const UserObject = (props) => {
                     x={roleCenterX}
                     y={rowCenterY}
                     color={roleColors[role]}
-                    fontSize={14}
+                    fontSize={width * 0.013}
                     fontColor={white}
                     text={role}
                     fontWeight={800}
                     callback={async () => {
-                        await getUserName();
-                        if(username != currentUsername && currentUsername != null){ // users cannot change their own role
-                            console.log("username:", username, " currentUsername:", currentUsername);
+                        // Use userId comparison instead of username, as usernames can be duplicated
+                        if (!isCurrentUser) { // users cannot change their own role
+                            console.log("[UserObject] Role button clicked:", { 
+                                username, 
+                                userId, 
+                                currentUserUid, 
+                                isCurrentUser 
+                            });
                             handleChangeRole();
+                        } else {
+                            console.log("[UserObject] Cannot change own role:", { username, userId });
                         }
                     }}
                 />
@@ -269,7 +329,7 @@ const UserObject = (props) => {
                         new TextStyle({
                             align: 'center',
                             fontFamily: 'Arial',
-                            fontSize: 14,
+                            fontSize: width * 0.013,
                             fontWeight: 800,
                             fill: [red],
                         })
@@ -285,7 +345,7 @@ const UserObject = (props) => {
                     x={deleteCenterX}
                     y={rowCenterY}
                     color={red}
-                    fontSize={14}
+                    fontSize={width * 0.013}
                     fontColor={white}
                     text={"DELETE"}
                     fontWeight={800}
@@ -303,7 +363,7 @@ const UserObject = (props) => {
                     style={new TextStyle({
                         align: 'center',
                         fontFamily: 'Arial',
-                        fontSize: 14,
+                        fontSize: width * 0.013,
                         fontWeight: 'bold',
                         fill: [blue],
                     })}

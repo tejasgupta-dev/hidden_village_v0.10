@@ -60,12 +60,12 @@ const OrganizationObject = (props) => {
     const rowCenterY = y + height * 0.5; // Vertical center of the row
     
     // Button dimensions - increased size
-    const switchButtonHeight = 45;
-    const switchButtonWidth = 200;
-    const leaveButtonHeight = 45;
-    const leaveButtonWidth = 200;
-    const deleteButtonHeight = 45;
-    const deleteButtonWidth = 200;
+    const switchButtonHeight = height;
+    const switchButtonWidth = width * 0.17;
+    const leaveButtonHeight = height;
+    const leaveButtonWidth = width * 0.17;
+    const deleteButtonHeight = height;
+    const deleteButtonWidth = width * 0.17;
 
     return (
         <>
@@ -79,7 +79,7 @@ const OrganizationObject = (props) => {
                     new TextStyle({
                         align: 'left',
                         fontFamily: 'Arial',
-                        fontSize: 16,
+                        fontSize: width * 0.016,
                         fontWeight: 'normal',
                         fill: isCurrent ? [green] : [black],
                     })
@@ -97,7 +97,7 @@ const OrganizationObject = (props) => {
                         new TextStyle({
                             align: 'center',
                             fontFamily: 'Arial',
-                            fontSize: 16,
+                            fontSize: width * 0.016,
                             fontWeight: 'bold',
                             fill: [green],
                         })
@@ -110,7 +110,7 @@ const OrganizationObject = (props) => {
                     x={switchCenterX}
                     y={rowCenterY}
                     color={roleColors[organization.roleSnapshot] || green}
-                    fontSize={14}
+                    fontSize={width * 0.013}
                     fontColor={white}
                     text="SWITCH"
                     fontWeight={800}
@@ -126,7 +126,7 @@ const OrganizationObject = (props) => {
                     x={leaveCenterX}
                     y={rowCenterY}
                     color={orange}
-                    fontSize={14}
+                    fontSize={width * 0.013}
                     fontColor={white}
                     text={"LEAVE"}
                     fontWeight={800}
@@ -142,7 +142,7 @@ const OrganizationObject = (props) => {
                     x={deleteCenterX}
                     y={rowCenterY}
                     color={red}
-                    fontSize={14}
+                    fontSize={width * 0.013}
                     fontColor={white}
                     text={"DELETE"}
                     fontWeight={800}
