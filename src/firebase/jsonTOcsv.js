@@ -23,8 +23,10 @@ export async function convertJsonToCsv(jsonFile, formattedGame, formattedStart, 
             "Event Type",
             "TF Given Answer",
             "TF Correct",
-            "MC Given Answer",
-            "MC Correct",
+            "TF Correct Answer",
+            "MCQ Given Answer",
+            "MCQ Correct",
+            "MCQ Correct Answer",
             "Pose",
             "Start Match"
         ];
@@ -49,6 +51,14 @@ export async function convertJsonToCsv(jsonFile, formattedGame, formattedStart, 
                         if (sessionId === "DaRep" || sessionId === "GameStart" || 
                             sessionId === "GameStartGMT" || sessionId === "Hints" || 
                             sessionId === "LatinSquareOrder") continue;
+                        
+                        // Extract TF and MCQ data from session level (shared across all poses in this session)
+                        const tfGivenAnswer = sessionDetails["TF Given Answer"] ?? "null";
+                        const tfCorrect = sessionDetails["TF Correct"] ?? "null";
+                        const tfCorrectAnswer = sessionDetails["TF Correct Answer"] ?? "null";
+                        const mcqGivenAnswer = sessionDetails["MCQ Given Answer"] ?? "null";
+                        const mcqCorrect = sessionDetails["MCQ Correct"] ?? "null";
+                        const mcqCorrectAnswer = sessionDetails["MCQ Correct Answer"] ?? "null";
                             
                         // Process poses
                         for (const [poseName, poseDetails] of Object.entries(sessionDetails)) {
@@ -67,10 +77,12 @@ export async function convertJsonToCsv(jsonFile, formattedGame, formattedStart, 
                                     "ETSS": "null",
                                     "ETSLO": latinSquareOrder,
                                     "Event Type": "null",
-                                    "TF Given Answer": "null",
-                                    "TF Correct": "null",
-                                    "MC Given Answer": "null",
-                                    "MC Correct": "null",
+                                    "TF Given Answer": tfGivenAnswer,
+                                    "TF Correct": tfCorrect,
+                                    "TF Correct Answer": tfCorrectAnswer,
+                                    "MCQ Given Answer": mcqGivenAnswer,
+                                    "MCQ Correct": mcqCorrect,
+                                    "MCQ Correct Answer": mcqCorrectAnswer,
                                     "Pose": poseName,
                                     "Start Match": poseDetails.MatchGMT ?? "null"
                                 });
@@ -120,8 +132,10 @@ export async function convertJsonToCsv(jsonFile, formattedGame, formattedStart, 
 //         "Event Type": "null",
 //         "TF Given Answer": "null",
 //         "TF Correct": "null",
-//         "MC Given Answer": "null",
-//         "MC Correct": "null",
+//         "TF Correct Answer": "null",
+//         "MCQ Given Answer": "null",
+//         "MCQ Correct": "null",
+//         "MCQ Correct Answer": "null",
 //         "Pose": pose,
 //         "Start Match": details.MatchUTC ?? "null"
 //     }));

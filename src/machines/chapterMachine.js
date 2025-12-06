@@ -140,7 +140,7 @@ const chapterMachine = createMachine(
         scene: (_, event) => event.scene,
         currentText: (_, event) => event.isOutro ? event.outroText[0] || null : event.introText[0] || null,
         lastText: () => [],
-        cursorMode: () => false,
+        cursorMode: (_, event) => event.cursorMode !== undefined ? event.cursorMode : false,
         isOutro: (_, event) => event.isOutro,
         // Update callbacks if provided in event (they use refs so they're always current)
         onIntroComplete: (_, event) => event.onIntroComplete !== undefined ? event.onIntroComplete : (context) => context.onIntroComplete,

@@ -23,9 +23,11 @@ column_mapping = {
     "ETSLO": "session.etslo",
     "Event Type": "event.type",
     "TF Given Answer": "response.tf_given_answer",
-    "Correct": "response.correct",
-    "MC Given Answer": "response.mc_given_answer",
-    "MC Correct": "response.mc_correct"
+    "TF Correct": "response.tf_correct",
+    "TF Correct Answer": "response.tf_correct_answer",
+    "MCQ Given Answer": "response.mcq_given_answer",
+    "MCQ Correct": "response.mcq_correct",
+    "MCQ Correct Answer": "response.mcq_correct_answer"
 }
 
 # approach 3: using json and csv library with helper functions

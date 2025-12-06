@@ -829,7 +829,7 @@ export default function LevelPlay(props) {
                 })()}
                 correctAnswer={(() => {
                   const textBoxes = conjectureData?.[UUID]?.['Text Boxes'];
-                  return textBoxes?.['MCQ Correct Answer'] || 'A';
+                  return textBoxes?.['Correct Answer'] || 'A';
                 })()}
               />
             );

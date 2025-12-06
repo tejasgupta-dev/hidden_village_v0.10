@@ -7,13 +7,13 @@ import { getStorage } from "firebase/storage";
 
 // Firebase config
 const firebaseConfig = {
-  apiKey: process.env.apiKey,
-  authDomain: process.env.authDomain,
-  databaseURL: process.env.databaseURL,
-  projectId: process.env.projectId,
-  storageBucket: process.env.storageBucket,
-  messagingSenderId: process.env.messagingSenderId,
-  appId: process.env.appId,
+  apiKey: process.env.apiKey || "AIzaSyCgFROG1iDZ2AiTp3H5eEtgQtkpajpbsUY",
+  authDomain: process.env.authDomain || "uwm-11f9a.firebaseapp.com",
+  databaseURL: process.env.databaseURL || "https://uwm-11f9a-default-rtdb.firebaseio.com",
+  projectId: process.env.projectId || "uwm-11f9a",
+  storageBucket: process.env.storageBucket || "uwm-11f9a.firebasestorage.app",
+  messagingSenderId: process.env.messagingSenderId || "689113030161",
+  appId: process.env.appId || "1:689113030161:web:acff8b2ca76d5ea7385bb0",
 };
 
 // Initialize Firebase

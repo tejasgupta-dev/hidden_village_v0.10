@@ -1888,6 +1888,7 @@ export const writeToDatabaseTFAnswer = async (answer, correctAnswer, gameId, que
   const promises = [
     set(ref(db, `${userSession}/TF Given Answer`), answer),
     set(ref(db, `${userSession}/TF Correct`), isCorrect),
+    set(ref(db, `${userSession}/TF Correct Answer`), correctAnswer || ''),
   ];
   
   await Promise.all(promises);
@@ -1904,10 +1905,10 @@ export const writeToDatabaseMCAnswer = async (answer, correctAnswer, gameId, que
   const userSession = `_GameData/${gameId}/${readableDate}/${userName}/${deviceSlug}/${loginTime}/${conjectureId}`;
   
   const promises = [
-    set(ref(db, `${userSession}/MC Given Answer`), answer),
-    set(ref(db, `${userSession}/MC Question`), question || ''),
-    set(ref(db, `${userSession}/MC Correct`), isCorrect),
-    set(ref(db, `${userSession}/MC Answer Time GMT`), timestampGMT),
+    set(ref(db, `${userSession}/MCQ Given Answer`), answer),
+    set(ref(db, `${userSession}/MCQ Correct`), isCorrect),
+    set(ref(db, `${userSession}/MCQ Correct Answer`), correctAnswer || ''),
+    set(ref(db, `${userSession}/MCQ Answer Time GMT`), timestampGMT),
   ];
   
   await Promise.all(promises);
