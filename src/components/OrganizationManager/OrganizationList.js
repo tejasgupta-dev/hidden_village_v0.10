@@ -71,7 +71,7 @@ const OrganizationList = (props) => {
                     new TextStyle({
                         align: 'left',
                         fontFamily: 'Arial',
-                        fontSize: 20,
+                        fontSize: width * 0.018,
                         fontWeight: 'bold',
                         fill: [black],
                     })
@@ -85,7 +85,7 @@ const OrganizationList = (props) => {
                     new TextStyle({
                         align: 'center',
                         fontFamily: 'Arial',
-                        fontSize: 20,
+                        fontSize: width * 0.018,
                         fontWeight: 'bold',
                         fill: [black],
                     })
@@ -99,7 +99,7 @@ const OrganizationList = (props) => {
                     new TextStyle({
                         align: 'center',
                         fontFamily: 'Arial',
-                        fontSize: 20,
+                        fontSize: width * 0.018,
                         fontWeight: 'bold',
                         fill: [black],
                     })
@@ -113,7 +113,7 @@ const OrganizationList = (props) => {
                     new TextStyle({
                         align: 'right',
                         fontFamily: 'Arial',
-                        fontSize: 20,
+                        fontSize: width * 0.018,
                         fontWeight: 'bold',
                         fill: [black],
                     })

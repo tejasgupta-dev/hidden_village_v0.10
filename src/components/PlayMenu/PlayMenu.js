@@ -192,7 +192,7 @@ const PlayMenu = (props) => {
             x={width * 0.05}
             y={height * 0.1}
             color={red}
-            fontSize={14}
+            fontSize={width * 0.012}
             fontColor={white}
             text={"LOG OUT"}
             fontWeight={800}

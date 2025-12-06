@@ -470,8 +470,17 @@ export const getUsersByOrganizationFromDatabase = async (orgId, firebaseApp) => 
                 
                 if (userSnapshot.exists()) {
                     const userData = userSnapshot.val();
+                    
+                    // Get role from roleSnapshot (primary source) with fallback to members[uid].role
+                    const roleSnapshotRef = ref(db, `users/${uid}/orgs/${orgId}/roleSnapshot`);
+                    const roleSnapshotData = await get(roleSnapshotRef);
+                    const roleFromSnapshot = roleSnapshotData.exists() ? roleSnapshotData.val() : null;
+                    
+                    // Use roleSnapshot as primary source, fallback to members[uid].role
+                    const userRole = roleFromSnapshot || members[uid].role || null;
+                    
                     // Add organization-specific data
-                    userData.roleInOrg = members[uid].role;
+                    userData.roleInOrg = userRole;
                     userData.statusInOrg = members[uid].status;
                     usersList.push(userData);
                 }
@@ -760,6 +769,7 @@ export const switchPrimaryOrganization = async (userId, newOrgId, firebaseApp) =
 // Update user role in organization
 export const updateUserRoleInOrg = async (uid, orgId, newRole, firebaseApp, changerRole = null) => {
     try {
+        console.log('[updateUserRoleInOrg] Starting role update:', { uid, orgId, newRole, changerRole });
         const db = getDatabase(firebaseApp);
         const auth = getAuth(firebaseApp);
         const currentUser = auth.currentUser;
@@ -772,6 +782,7 @@ export const updateUserRoleInOrg = async (uid, orgId, newRole, firebaseApp, chan
         const userOrgRef = ref(db, `users/${uid}/orgs/${orgId}/roleSnapshot`);
         const userOrgSnapshot = await get(userOrgRef);
         const currentTargetRole = userOrgSnapshot.exists() ? userOrgSnapshot.val() : null;
+        console.log('[updateUserRoleInOrg] Current target role:', currentTargetRole);
         
         // Get changer's role if not provided
         let changerUserRole = changerRole;
@@ -780,6 +791,7 @@ export const updateUserRoleInOrg = async (uid, orgId, newRole, firebaseApp, chan
             const changerOrgSnapshot = await get(changerOrgRef);
             changerUserRole = changerOrgSnapshot.exists() ? changerOrgSnapshot.val() : null;
         }
+        console.log('[updateUserRoleInOrg] Changer role:', changerUserRole);
         
         // Define role hierarchy (lower number = higher role)
         const roleHierarchy = {
@@ -795,29 +807,38 @@ export const updateUserRoleInOrg = async (uid, orgId, newRole, firebaseApp, chan
             const targetLevel = roleHierarchy[currentTargetRole] ?? 999;
             const newRoleLevel = roleHierarchy[newRole] ?? 999;
             
+            console.log('[updateUserRoleInOrg] Role levels:', { changerLevel, targetLevel, newRoleLevel });
+            
             // Cannot change roles of users with higher or equal level (unless changing to lower role)
             if (targetLevel < changerLevel) {
-                throw new Error(`Cannot change role of ${currentTargetRole}. You can only change roles equal to or below your own role (${changerUserRole}).`);
+                const errorMsg = `Cannot change role of ${currentTargetRole}. You can only change roles equal to or below your own role (${changerUserRole}).`;
+                console.error('[updateUserRoleInOrg]', errorMsg);
+                throw new Error(errorMsg);
             }
             
             // Cannot assign role higher than changer's role
             if (newRoleLevel < changerLevel) {
-                throw new Error(`Cannot assign role ${newRole}. You can only assign roles equal to or below your own role (${changerUserRole}).`);
+                const errorMsg = `Cannot assign role ${newRole}. You can only assign roles equal to or below your own role (${changerUserRole}).`;
+                console.error('[updateUserRoleInOrg]', errorMsg);
+                throw new Error(errorMsg);
             }
+        } else {
+            console.warn('[updateUserRoleInOrg] Skipping role hierarchy check - changerRole:', changerUserRole, 'currentTargetRole:', currentTargetRole);
         }
         
         const timestamp = new Date().toISOString();
         
+        console.log('[updateUserRoleInOrg] Updating role in database...');
         await Promise.all([
             set(ref(db, `users/${uid}/orgs/${orgId}/roleSnapshot`), newRole),
             set(ref(db, `users/${uid}/orgs/${orgId}/updatedAt`), timestamp),
             set(ref(db, `orgs/${orgId}/members/${uid}/role`), newRole)
         ]);
         
-        console.log(`User ${uid} role updated to ${newRole} in organization ${orgId}`);
+        console.log(`[updateUserRoleInOrg] Success: User ${uid} role updated to ${newRole} in organization ${orgId}`);
         return true;
     } catch (error) {
-        console.error("Error updating user role in organization:", error);
+        console.error("[updateUserRoleInOrg] Error updating user role in organization:", error);
         throw error; // Re-throw to allow UI to show error message
     }
 };

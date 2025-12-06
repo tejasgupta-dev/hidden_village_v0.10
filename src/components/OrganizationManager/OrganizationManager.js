@@ -332,7 +332,7 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback, onInvit
           style={new TextStyle({
             align: "center",
             fontFamily: "Arial",
-            fontSize: 24,
+            fontSize: width * 0.018,
             fontWeight: "bold",
             fill: [white],
           })}
@@ -353,7 +353,7 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback, onInvit
         style={new TextStyle({
           align: "center",
           fontFamily: "Futura",
-          fontSize: 80,
+          fontSize: width * 0.06,
           fontWeight: 800,
           fill: [blue],
           letterSpacing: -5,
@@ -368,7 +368,7 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback, onInvit
         style={new TextStyle({
           align: "left",
           fontFamily: "Arial",
-          fontSize: 24,
+          fontSize: width * 0.018,
           fontWeight: "bold",
           fill: [black],
         })}
@@ -452,7 +452,7 @@ const OrganizationManager = ({ width, height, firebaseApp, mainCallback, onInvit
           style={new TextStyle({
             align: "left",
             fontFamily: "Arial",
-            fontSize: 18,
+            fontSize: width * 0.011,
             fontWeight: "bold",
             fill: [red],
           })}
