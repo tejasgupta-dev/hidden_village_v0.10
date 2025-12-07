@@ -48,7 +48,7 @@ These currently do not work with the new format of playing the game.
 
 For information on setting up backend, creating an admin, and previous semester repositories, view the [associated GitHub Wiki.](https://github.com/PidgeonBrained/hidden_village_v0.6/wiki)
 
-To view the documentation for this project, either view our team's [Handover Document](https://docs.google.com/document/d/1g0zYiIag2n3r7xtsTSmn5-qeUNt8nkr1F0DQvGEtMmw/edit?usp=sharing), which documents our work and resources throughout the semester, or view our team's [Technical Handover Document](https://docs.google.com/document/d/1eI24NwXav6k3-k5dBk0ZuRsePfPII5uO/edit?usp=sharing&ouid=109884013000152953925&rtpof=true&sd=true), which documents our technical work this semester.
+To view the documentation for this project, either view our team's [Handover Document](https://mnscu-my.sharepoint.com/:b:/g/personal/ly4381wm_go_minnstate_edu/EcIRncwFvcxAueoWf7m-Xf0BHUDfVi4Cz3rqTDlKNXfomw?e=QuDyj3), which documents our work and resources throughout the semester, or view our team's [Technical Handover Document](https://docs.google.com/document/d/1eI24NwXav6k3-k5dBk0ZuRsePfPII5uO/edit?usp=sharing&ouid=109884013000152953925&rtpof=true&sd=true), which documents our technical work this semester.
 
 
 
