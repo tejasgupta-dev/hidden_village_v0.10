@@ -1,7 +1,10 @@
 # Hidden Village Project
 
 ## Getting started
-First, we need to clone the repository (`git clone git@github.com:PidgeonBrained/hidden_village_v0.6.git`). We recommend you clone using SSH. If you don't have SSH configured to work with github, you can follow [these instructions](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent).
+First, we need to clone the repository 
+old one://(`git clone git@github.com:PidgeonBrained/hidden_village_v0.6.git`)//
+latest one: 'https://github.com/IMolchanov620/hidden_village_v0.9.git'
+We recommend you clone using SSH. If you don't have SSH configured to work with github, you can follow [these instructions](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent).
 
 ## WINDOWS INSTRUCTIONS
 Please install [WSL](https://docs.microsoft.com/en-us/windows/wsl/install) before proceeding. (Sometimes this is not needed)
@@ -26,29 +29,23 @@ Npm package handler will install all the dependencies for the project in order t
 You can add new packages/dependencies to the package.json file so that they do not need to be installed everytime you open up a new repository of THV.
 
 ### Run a dev server
-To serve the app locally, run `npm run dev`, you can then visit any of these URLs which influence the behavior of the THV app:  
- [localhost:1234](#localhost:1234)  
+To serve the app locally,in terminal, run
+```
+npm run dev
  ```
- This is the default local app URL. Recording of conjecture data will not happen, and the framerate (FPS) will be set to the default (which is normally 30)
+
+you can then visit any of these URLs which influence the behavior of the THV app:  
+ ```
+ http://localhost:1234
+ ```
+ This is the default local app URL. The framerate (FPS) will be set to the default (which is normally 30)
  
- ```
-These currently do not work with the new format of playing the game.
-
- [http://localhost:1234/?recording=true](#http://localhost:1234/?recording=true)
- ```
- This will record conjecture data to firebase at the default FPS (usually 30)
- ```
- [http://localhost:1234/?recording=true&fps=30](#http://localhost:1234/?recording=true&fps=30)
- ```
- Changing the 30 (17, for example) to any positive integer will change FPS that data is sent to Firebase.
- ```
-
 
 ## Additional Setup Tutorials and Documentation
 
 For information on setting up backend, creating an admin, and previous semester repositories, view the [associated GitHub Wiki.](https://github.com/PidgeonBrained/hidden_village_v0.6/wiki)
 
-To view the documentation for this project, either view our team's [Handover Document](https://mnscu-my.sharepoint.com/:b:/g/personal/ly4381wm_go_minnstate_edu/EcIRncwFvcxAueoWf7m-Xf0BHUDfVi4Cz3rqTDlKNXfomw?e=QuDyj3), which documents our work and resources throughout the semester, or view our team's [Technical Handover Document](https://docs.google.com/document/d/1eI24NwXav6k3-k5dBk0ZuRsePfPII5uO/edit?usp=sharing&ouid=109884013000152953925&rtpof=true&sd=true), which documents our technical work this semester.
+To view the documentation for this project, either view our team's [Handover Document](https://mnscu-my.sharepoint.com/:b:/g/personal/ly4381wm_go_minnstate_edu/EcIRncwFvcxAueoWf7m-Xf0BHUDfVi4Cz3rqTDlKNXfomw?e=QuDyj3), which documents our work and resources throughout the semester, or view previous teams documentation: [Handover Document](https://mnscu-my.sharepoint.com/:w:/g/personal/ly4381wm_go_minnstate_edu/IQCKEGG46wRySqyiUCVqstc1AfjHErpj_3wHPjOecbtp3jU?e=G2PlRp) or [Technical Handover Document](https://docs.google.com/document/d/1eI24NwXav6k3-k5dBk0ZuRsePfPII5uO/edit?usp=sharing&ouid=109884013000152953925&rtpof=true&sd=true).
 
 
 
