@@ -1,9 +1,7 @@
 # Hidden Village Project
 
 ## Getting started
-First, we need to clone the repository 
-old one://(`git clone git@github.com:PidgeonBrained/hidden_village_v0.6.git`)//
-latest one: 'https://github.com/IMolchanov620/hidden_village_v0.9.git'
+First, we need to clone the repository 'https://github.com/IMolchanov620/hidden_village_v0.9.git'
 We recommend you clone using SSH. If you don't have SSH configured to work with github, you can follow [these instructions](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent).
 
 ## WINDOWS INSTRUCTIONS
@@ -43,7 +41,7 @@ you can then visit any of these URLs which influence the behavior of the THV app
 
 ## Additional Setup Tutorials and Documentation
 
-For information on setting up backend, creating an admin, and previous semester repositories, view the [associated GitHub Wiki.](https://github.com/PidgeonBrained/hidden_village_v0.6/wiki)
+For information on setting up backend, creating an admin, and previous semester repositories, view the [associated GitHub Wiki.](https://github.com/IMolchanov620/hidden_village_v0.9/wiki)
 
 To view the documentation for this project, either view our team's [Handover Document](https://mnscu-my.sharepoint.com/:b:/g/personal/ly4381wm_go_minnstate_edu/EcIRncwFvcxAueoWf7m-Xf0BHUDfVi4Cz3rqTDlKNXfomw?e=QuDyj3), which documents our work and resources throughout the semester, or view previous teams documentation: [Handover Document](https://mnscu-my.sharepoint.com/:w:/g/personal/ly4381wm_go_minnstate_edu/IQCKEGG46wRySqyiUCVqstc1AfjHErpj_3wHPjOecbtp3jU?e=G2PlRp) or [Technical Handover Document](https://docs.google.com/document/d/1eI24NwXav6k3-k5dBk0ZuRsePfPII5uO/edit?usp=sharing&ouid=109884013000152953925&rtpof=true&sd=true).
 
