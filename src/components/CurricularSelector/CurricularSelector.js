@@ -82,6 +82,7 @@ export async function handlePIN(curricular, message = "Please Enter the PIN.", f
 async function handleGameClicked(curricular, curricularCallback, setLoading, firebaseApp, showPublic = true) {
   if (Curriculum.getCurrentUUID() === curricular["UUID"]) {
     Curriculum.setCurrentUUID(null);
+    localStorage.removeItem('EditingGameUUID');
     return;
   }
 
@@ -90,10 +91,18 @@ async function handleGameClicked(curricular, curricularCallback, setLoading, fir
   try {
     if (playGame) {
       Curriculum.setCurrentUUID(curricular["UUID"]);
+      // Save UUID to localStorage for production builds
+      if (curricular["UUID"]) {
+        localStorage.setItem('EditingGameUUID', curricular["UUID"]);
+      }
       await Curriculum.setCurricularEditor(curricular, showPublic);
     } else if (await handlePIN(curricular, "Please Enter the PIN.", firebaseApp) && !playGame) {
       console.log("Attempting to edit game");
       Curriculum.setCurrentUUID(curricular["UUID"]);
+      // Save UUID to localStorage for production builds
+      if (curricular["UUID"]) {
+        localStorage.setItem('EditingGameUUID', curricular["UUID"]);
+      }
       await Curriculum.setCurricularEditor(curricular, showPublic);
     } else {
     // PIN was cancelled - don't proceed
@@ -573,6 +582,7 @@ const CurricularSelectModule = (props) => {
         fontWeight={800}
         callback={() => {
           Curriculum.setCurrentUUID(null);
+          localStorage.removeItem('EditingGameUUID');
           setSelectedCurricular(null);
           mainCallback();
         }}

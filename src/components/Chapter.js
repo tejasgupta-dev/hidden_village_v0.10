@@ -8,7 +8,7 @@ import { useMachine, useSelector, assign } from "@xstate/react";
 import chapterMachine from "../machines/chapterMachine.js";
 import { Sprite } from "@inlet/react-pixi";
 import script from "../scripts/chapters.toml";
-import { Curriculum } from "./CurricularModule/CurricularModule";
+import { Curriculum, getCurrentGameUUID } from "./CurricularModule/CurricularModule";
 import { loadGameDialoguesFromFirebaseWithCurrentOrg } from "../firebase/database.js";
 
 const characterRenderOrder = {
@@ -245,7 +245,7 @@ const Chapter = (props) => {
         console.log('isOutro:', isOutro);
         console.log('hasRun:', hasRun);
         setIsLoading(true);
-        const gameId = Curriculum.getCurrentUUID();
+        const gameId = getCurrentGameUUID();
         
         if (!gameId) {
           console.warn("No valid game ID found. Cannot load dialogues.");

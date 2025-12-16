@@ -15,7 +15,7 @@ import StoryEditorModule from "../StoryEditorModule/StoryEditorModule.js";
 import { getCurrentUserContext, getUserOrgsFromDatabase, switchPrimaryOrganization, getOrganizationInfo, useInviteCode } from "../../firebase/userDatabase";
 import { app } from "../../firebase/init";
 import { getAuth } from "firebase/auth";
-import { Curriculum } from "../CurricularModule/CurricularModule.js";
+import { Curriculum, getCurrentGameUUID } from "../CurricularModule/CurricularModule.js";
 import Settings from "../Settings";
 import UserManagementModule from "../AdminHomeModule/UserManagementModule";
 import NewUserModule from "../AdminHomeModule/NewUserModule";
@@ -324,7 +324,7 @@ const PlayMenu = (props) => {
             columnDimensions={columnDimensions}
             rowDimensions={rowDimensions}
             conjectureCallback={() => send("NEWLEVEL")}
-            gameID={Curriculum.getCurrentUUID()}
+            gameID={getCurrentGameUUID()}
           />
         )}
         {state.value === "newLevel" && ( //if the state is newLevel, show the Conjecture Module
@@ -357,7 +357,7 @@ const PlayMenu = (props) => {
                 backCallback={()=> send("MAIN")}
                 columnDimensions={columnDimensions}
                 rowDimensions={rowDimensions}
-                gameUUID={Curriculum.getCurrentUUID()}
+                gameUUID={getCurrentGameUUID()}
             /> 
         )}
         {state.value === "settings" && (
@@ -430,7 +430,7 @@ const PlayMenu = (props) => {
             height={height}
             mainCallback={() => send("MAIN")}
             curricularCallback={() => send("NEWGAME")}
-            gameUUID={Curriculum.getCurrentUUID()}
+            gameUUID={getCurrentGameUUID()}
           />
         )}
         {state.value === "levelSelect" && (

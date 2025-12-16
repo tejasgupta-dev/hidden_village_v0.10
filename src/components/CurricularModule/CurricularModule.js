@@ -139,6 +139,27 @@ export const Curriculum = {
   },
 };
 
+/**
+ * Helper function to get current game UUID with fallback to localStorage
+ * This ensures UUID is available even if Curriculum state is lost in production builds
+ * @returns {string|null} The current game UUID or null if not found
+ */
+export const getCurrentGameUUID = () => {
+  // First try to get UUID from Curriculum object
+  const curriculumUUID = Curriculum.getCurrentUUID();
+  if (curriculumUUID !== null && curriculumUUID !== undefined && curriculumUUID !== '') {
+    return curriculumUUID;
+  }
+  
+  // Fallback to localStorage if Curriculum UUID is not available
+  const storedUUID = localStorage.getItem('EditingGameUUID');
+  if (storedUUID !== null && storedUUID !== undefined && storedUUID !== '') {
+    return storedUUID;
+  }
+  
+  return null;
+};
+
 const CurricularModule = (props) => {
   const { height, width, userName, mainCallback, conjectureCallback, conjectureSelectCallback, storyEditorCallback, backToGameSelectCallback } = props;
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
@@ -152,6 +173,7 @@ const CurricularModule = (props) => {
     localStorage.removeItem('GameIsPublic');
     localStorage.removeItem('Game_isFromOtherOrg');
     localStorage.removeItem('Game_sourceOrgId');
+    localStorage.removeItem('EditingGameUUID');
     Curriculum.clearCurriculum();
   };
 
@@ -238,15 +260,22 @@ const CurricularModule = (props) => {
             text={"STORY EDITOR"}
             fontWeight={800}
             callback={() => {
-              if (!Curriculum.getCurrentUUID()) {
+              const currentUUID = getCurrentGameUUID();
+              if (!currentUUID) {
                 const newId = uuidv4();
                 Curriculum.setCurrentUUID(newId);
-              }
-              if (storyEditorCallback) {
-                const currentUUID = Curriculum.getCurrentUUID();
-                storyEditorCallback(currentUUID);
+                localStorage.setItem('EditingGameUUID', newId);
+                if (storyEditorCallback) {
+                  storyEditorCallback(newId);
+                } else {
+                  console.error("Error: storyEditorCallback is undefined!");
+                }
               } else {
-                console.error("Error: storyEditorCallback is undefined!");
+                if (storyEditorCallback) {
+                  storyEditorCallback(currentUUID);
+                } else {
+                  console.error("Error: storyEditorCallback is undefined!");
+                }
               }
             }}
           />
@@ -311,7 +340,8 @@ const CurricularModule = (props) => {
             callback={async () => {
               console.log('SAVE DRAFT: Starting save...');
               // Save UUID BEFORE saving to know if this was a new game
-              const uuidBeforeSave = Curriculum.getCurrentUUID();
+              // Use getCurrentGameUUID() to get UUID from memory or localStorage
+              const uuidBeforeSave = getCurrentGameUUID();
               const success = await saveGameWithCurrentOrg(uuidBeforeSave, false);
               console.log('SAVE DRAFT: Save result:', success, 'UUID before save:', uuidBeforeSave);
               if (success) {
@@ -334,7 +364,8 @@ const CurricularModule = (props) => {
             fontWeight={800}
             callback={async () => {
               // Save UUID BEFORE saving to know if this was a new game
-              const uuidBeforeSave = Curriculum.getCurrentUUID();
+              // Use getCurrentGameUUID() to get UUID from memory or localStorage
+              const uuidBeforeSave = getCurrentGameUUID();
               const success = await saveGameWithCurrentOrg(uuidBeforeSave, true);
               if (success) {
                 enhancedGameSelectCallback(uuidBeforeSave);
@@ -351,7 +382,7 @@ const CurricularModule = (props) => {
             fontColor={white}
             text={"DELETE"}
             fontWeight={800}
-            callback={() => deleteCurrentCurricular(Curriculum.getCurrentUUID())}
+            callback={() => deleteCurrentCurricular(getCurrentGameUUID())}
           />
         </>
       )}

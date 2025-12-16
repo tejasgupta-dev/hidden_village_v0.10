@@ -129,7 +129,7 @@ const Tween = ({
     if (targetStep >= totalSteps) {
       updatePoseFromStep(totalSteps);
       
-      if (loop === -1 || loopCount < loop) {
+      if (loop === -1 || loopCount < loop - 1) {
         startTimeRef.current = timestamp;
         setCurrentStep(0);
         setLoopCount(prev => prev + 1);

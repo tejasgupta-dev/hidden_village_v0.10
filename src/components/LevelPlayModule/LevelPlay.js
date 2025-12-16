@@ -84,6 +84,18 @@ export default function LevelPlay(props) {
   React.useEffect(() => {
     send("RESET_CONTEXT");
   }, [currentConjectureIdx, send]);
+  
+  // Clear all state when UUID changes to prevent using stale data from previous level
+  useEffect(() => {
+    console.log('[LevelPlay] UUID changed, clearing previous level data:', UUID);
+    setConjectureData(null);
+    setPoses([]);
+    setTolerances([]);
+    setExpText('');
+    setRepetitionCountFromDB(null);
+    setIsLoadingPoses(true);
+  }, [UUID]);
+  
   const [repetitionCountFromDB, setRepetitionCountFromDB] = useState(null);
   const [isLoadingPoses, setIsLoadingPoses] = useState(true);
   // default repetitions fallback
@@ -107,8 +119,19 @@ export default function LevelPlay(props) {
   useEffect(() => {
     console.log('[LevelPlay] Starting to load conjecture data for UUID:', UUID);
     setIsLoadingPoses(true);
+    
+    // Track the UUID for this request to prevent race conditions
+    const currentUUID = UUID;
+    let isCancelled = false;
+    
     getConjectureDataByUUIDWithCurrentOrg(UUID)
       .then((d) => {
+        // Check if this request is still relevant (UUID hasn't changed)
+        if (isCancelled || currentUUID !== UUID) {
+          console.log('[LevelPlay] Request cancelled or UUID changed, ignoring response');
+          return;
+        }
+        
         console.log('[LevelPlay] Data loaded from database:', {
           'UUID': UUID,
           'data keys': d ? Object.keys(d) : null,
@@ -132,6 +155,12 @@ export default function LevelPlay(props) {
         } catch (e) {
           console.warn("Failed to parse Repetitions from DB:", e);
           setRepetitionCountFromDB(null);
+        }
+        
+        // Check if this request is still relevant before processing
+        if (isCancelled || currentUUID !== UUID) {
+          console.log('[LevelPlay] Request cancelled or UUID changed during processing');
+          return;
         }
         
         // Check if poses exist in data
@@ -165,27 +194,174 @@ export default function LevelPlay(props) {
         
         const { ['Start Pose']: s, ['Intermediate Pose']: i, ['End Pose']: e } = d[UUID];
         
+        // Detailed logging of pose object structures
+        console.log('[LevelPlay] ========== DETAILED POSE STRUCTURE ANALYSIS ==========');
+        const startPoseKeys = Object.keys(s);
+        const intermediatePoseKeys = Object.keys(i);
+        const endPoseKeys = Object.keys(e);
+        
+        console.log('[LevelPlay] Start Pose - Keys:', startPoseKeys.join(', '));
+        console.log('[LevelPlay] Start Pose - Full object:', s);
+        console.log('[LevelPlay] Start Pose - Each key value:', 
+          startPoseKeys.reduce((acc, key) => {
+            acc[key] = s[key];
+            return acc;
+          }, {})
+        );
+        
+        console.log('[LevelPlay] Intermediate Pose - Keys:', intermediatePoseKeys.join(', '));
+        console.log('[LevelPlay] Intermediate Pose - Full object:', i);
+        console.log('[LevelPlay] Intermediate Pose - Each key value:', 
+          intermediatePoseKeys.reduce((acc, key) => {
+            acc[key] = i[key];
+            return acc;
+          }, {})
+        );
+        
+        console.log('[LevelPlay] End Pose - Keys:', endPoseKeys.join(', '));
+        console.log('[LevelPlay] End Pose - Full object:', e);
+        console.log('[LevelPlay] End Pose - Each key value:', 
+          endPoseKeys.reduce((acc, key) => {
+            acc[key] = e[key];
+            return acc;
+          }, {})
+        );
+        
+        console.log('[LevelPlay] ====================================================');
+        
         console.log('[LevelPlay] Parsing pose data:', {
-          'startPoseData length': s.poseData ? s.poseData.length : 0,
-          'intermediatePoseData length': i.poseData ? i.poseData.length : 0,
-          'endPoseData length': e.poseData ? e.poseData.length : 0
+          'startPoseData type': typeof s.poseData,
+          'startPoseData is null': s.poseData === null,
+          'startPoseData is undefined': s.poseData === undefined,
+          'startPoseData length': (typeof s.poseData === 'string') ? s.poseData.length : 'N/A (not a string)',
+          'intermediatePoseData type': typeof i.poseData,
+          'intermediatePoseData is null': i.poseData === null,
+          'intermediatePoseData is undefined': i.poseData === undefined,
+          'intermediatePoseData length': (typeof i.poseData === 'string') ? i.poseData.length : 'N/A (not a string)',
+          'endPoseData type': typeof e.poseData,
+          'endPoseData is null': e.poseData === null,
+          'endPoseData is undefined': e.poseData === undefined,
+          'endPoseData length': (typeof e.poseData === 'string') ? e.poseData.length : 'N/A (not a string)',
+          'startPose keys': s.poseData && typeof s.poseData === 'object' ? Object.keys(s.poseData) : 'N/A',
+          'intermediatePose keys': i.poseData && typeof i.poseData === 'object' ? Object.keys(i.poseData) : 'N/A',
+          'endPose keys': e.poseData && typeof e.poseData === 'object' ? Object.keys(e.poseData) : 'N/A'
+        });
+        
+        // Helper function to find poseData in alternative locations
+        const findPoseData = (poseObject, poseName) => {
+          // Try standard field first
+          if (poseObject.poseData !== null && poseObject.poseData !== undefined) {
+            console.log(`[LevelPlay] Found poseData in standard field for ${poseName}`);
+            return poseObject.poseData;
+          }
+          
+          // Try alternative field names
+          const alternativeFields = ['pose', 'data', 'pose_data', 'PoseData', 'poseData', 'landmarks'];
+          for (const field of alternativeFields) {
+            if (poseObject[field] !== null && poseObject[field] !== undefined) {
+              console.log(`[LevelPlay] Found poseData in alternative field '${field}' for ${poseName}`);
+              return poseObject[field];
+            }
+          }
+          
+          // If poseObject itself looks like pose data (has landmarks structure)
+          if (typeof poseObject === 'object' && !Array.isArray(poseObject)) {
+            const keys = Object.keys(poseObject);
+            // Check if it has typical pose data structure
+            if (keys.includes('leftHandLandmarks') || keys.includes('rightHandLandmarks') || 
+                keys.includes('faceLandmarks') || keys.includes('poseLandmarks')) {
+              console.log(`[LevelPlay] ${poseName} object itself appears to be pose data`);
+              return poseObject;
+            }
+          }
+          
+          return null;
+        };
+        
+        // Helper function for safe parsing of poseData
+        // Handles cases where poseData might already be an object (Firebase auto-parsing)
+        // or a JSON string that needs to be parsed
+        const parsePoseData = (poseData, poseName) => {
+          if (poseData === null || poseData === undefined) {
+            throw new Error(`${poseName} poseData is null or undefined`);
+          }
+          
+          // If already an object, return it directly
+          if (typeof poseData === 'object' && !Array.isArray(poseData)) {
+            return poseData;
+          }
+          
+          // If string, try to parse it
+          if (typeof poseData === 'string') {
+            try {
+              return JSON.parse(poseData);
+            } catch (e) {
+              throw new Error(`${poseName} poseData is invalid JSON: ${e.message}`);
+            }
+          }
+          
+          throw new Error(`${poseName} poseData has unexpected type: ${typeof poseData}`);
+        };
+        
+        // Try to find poseData in alternative locations
+        const startPoseData = findPoseData(s, 'Start Pose') || s.poseData;
+        const intermediatePoseData = findPoseData(i, 'Intermediate Pose') || i.poseData;
+        const endPoseData = findPoseData(e, 'End Pose') || e.poseData;
+        
+        console.log('[LevelPlay] Attempting to parse pose data from found sources:', {
+          'startPoseData found': startPoseData !== null && startPoseData !== undefined,
+          'startPoseData type': typeof startPoseData,
+          'intermediatePoseData found': intermediatePoseData !== null && intermediatePoseData !== undefined,
+          'intermediatePoseData type': typeof intermediatePoseData,
+          'endPoseData found': endPoseData !== null && endPoseData !== undefined,
+          'endPoseData type': typeof endPoseData
         });
         
         try {
           const parsedPoses = [
-            JSON.parse(s.poseData),
-            JSON.parse(i.poseData),
-            JSON.parse(e.poseData),
+            parsePoseData(startPoseData, 'Start Pose'),
+            parsePoseData(intermediatePoseData, 'Intermediate Pose'),
+            parsePoseData(endPoseData, 'End Pose'),
           ];
+          // Final check before setting poses
+          if (isCancelled || currentUUID !== UUID) {
+            console.log('[LevelPlay] Request cancelled or UUID changed before setting poses');
+            return;
+          }
+          
           console.log('[LevelPlay] Poses parsed successfully:', {
             'poses count': parsedPoses.length,
             'first pose keys': parsedPoses[0] ? Object.keys(parsedPoses[0]) : null
           });
           setPoses(parsedPoses);
         } catch (parseError) {
-          console.error('[LevelPlay] Error parsing pose data:', parseError);
+          // Check if request is still relevant before logging error
+          if (isCancelled || currentUUID !== UUID) {
+            console.log('[LevelPlay] Request cancelled or UUID changed during error handling');
+            return;
+          }
+          // Graceful handling: pose data is missing, but level can still work without it
+          console.warn('[LevelPlay] Pose data not found or invalid, continuing without poses:', parseError?.message || String(parseError));
+          console.warn('[LevelPlay] Parse error details:', {
+            'error message': parseError?.message || String(parseError),
+            'error stack': parseError?.stack || 'No stack trace available',
+            'error type': typeof parseError,
+            'startPoseData type': s?.poseData ? typeof s.poseData : 'undefined',
+            'intermediatePoseData type': i?.poseData ? typeof i.poseData : 'undefined',
+            'endPoseData type': e?.poseData ? typeof e.poseData : 'undefined',
+            'startPoseData exists': !!s?.poseData,
+            'intermediatePoseData exists': !!i?.poseData,
+            'endPoseData exists': !!e?.poseData
+          });
+          
+          // Set empty arrays for poses and tolerances - modules requiring poses will be skipped automatically
+          setPoses([]);
+          setTolerances([]);
           setIsLoadingPoses(false);
-          return;
+          
+          // Continue execution - don't return, let the level load without pose data
+          console.log('[LevelPlay] Level will continue without pose data. Modules requiring poses will be skipped.');
+          return; // Still return here to skip the tolerance setting code below since we already set empty arrays
         }
         
         const tolArray = [s, i, e].map((pose) =>
@@ -193,15 +369,32 @@ export default function LevelPlay(props) {
             ? parseInt(pose.tolerance)
             : null
         );
+        // Final check before setting tolerances
+        if (isCancelled || currentUUID !== UUID) {
+          console.log('[LevelPlay] Request cancelled or UUID changed before setting tolerances');
+          return;
+        }
+        
         console.log('[LevelPlay] Tolerances set:', tolArray);
         setTolerances(tolArray);
         setIsLoadingPoses(false);
         console.log('[LevelPlay] Data loading completed successfully');
       })
       .catch((error) => {
+        // Check if request is still relevant before handling error
+        if (isCancelled || currentUUID !== UUID) {
+          console.log('[LevelPlay] Request cancelled or UUID changed, ignoring error');
+          return;
+        }
         console.error("[LevelPlay] Error loading conjecture data:", error);
         setIsLoadingPoses(false);
       });
+    
+    // Cleanup function to cancel request if UUID changes
+    return () => {
+      isCancelled = true;
+      console.log('[LevelPlay] Cleanup: cancelling data load for UUID:', currentUUID);
+    };
   }, [UUID]);
 
   /* ---------- phase event tracking ---------- */

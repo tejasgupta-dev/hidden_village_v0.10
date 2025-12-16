@@ -22,6 +22,7 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
   const questionTimerRef = useRef(null);
   const buttonPressRef = useRef(false);
   const hideQuestionTimerRef = useRef(null);
+  const hasInteractedWithButtonRef = useRef(false);
 
   // Visual spacing for clearer MCQ boxes
   const H_PAD = 24;   
@@ -108,6 +109,7 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
     clearQuestionTimers();
     setShowQuestion(true);
     setQuestionOpacity(1.0);
+    hasInteractedWithButtonRef.current = false;
 
     questionTimerRef.current = setTimeout(() => {
       startFadeOut();
@@ -196,6 +198,7 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
     setIsHoveringButton(overButton);
 
     if (overButton) {
+      hasInteractedWithButtonRef.current = true;
       if (!buttonPressRef.current) {
         buttonPressRef.current = true;
         handleQuestionButtonToggle();
@@ -243,7 +246,8 @@ const NewStage = ({ width, height, onComplete, gameID, poseData, columnDimension
     }
 
     // If cursor left button and question is shown - start 1 second timer
-    if (!isHoveringButton && showQuestion) {
+    // Only trigger if user has interacted with button (not on initial auto-show)
+    if (!isHoveringButton && showQuestion && hasInteractedWithButtonRef.current) {
       hideQuestionTimerRef.current = setTimeout(() => {
         clearQuestionTimers();
         setShowQuestion(false);

@@ -11,7 +11,7 @@ import Settings from '../Settings'; // Import the Settings component
 import { idToSprite } from "../Chapter"; //Import list of sprites
 import { saveNarrativeDraftToFirebaseWithCurrentOrg, loadGameDialoguesFromFirebaseWithCurrentOrg } from "../../firebase/database";
 import { useEffect } from "react";
-import { Curriculum } from '../CurricularModule/CurricularModule';
+import { Curriculum, getCurrentGameUUID } from '../CurricularModule/CurricularModule';
 import PixiLoader from '../utilities/PixiLoader';
 
 const StoryEditorModule = (props) => {
@@ -80,12 +80,12 @@ const StoryEditorModule = (props) => {
       
       // Save to database if there were changes to chapter numbers
       if (hasChanges) {
-        const gameId = Curriculum.getCurrentUUID() || gameUUID;
+        const gameId = getCurrentGameUUID() || gameUUID;
         if (gameId) {
           console.log(`Conjecture count decreased. Updating database...`);
           // Sort the updated dialogues before saving
           const sortedUpdated = sortDialogues(updated);
-          saveNarrativeDraftToFirebase(gameId, sortedUpdated).then(() => {
+          saveNarrativeDraftToFirebaseWithCurrentOrg(gameId, sortedUpdated).then(() => {
             console.log("Chapter numbers automatically updated in database due to conjecture removal");
           }).catch(error => {
             console.error("✗ Error auto-saving chapter updates:", error);
@@ -103,7 +103,7 @@ const StoryEditorModule = (props) => {
   }, [Curriculum.getCurrentConjectures().length, gameUUID]); // Added gameUUID as dependency
 
   useEffect(() => {
-    const gameId = gameUUID ?? Curriculum.getCurrentUUID();
+    const gameId = gameUUID ?? getCurrentGameUUID();
     if (!gameId) {
       console.warn("No real gameId—skipping dialogues load.");
       return;
@@ -286,7 +286,7 @@ const StoryEditorModule = (props) => {
   }
 
   const handleSaveDialogues = async () => {
-    const gameId = Curriculum.getCurrentUUID() || gameUUID;
+    const gameId = getCurrentGameUUID() || gameUUID;
   
     if (!gameId) {
       alert("No valid game ID. Please open or create a game first.");
