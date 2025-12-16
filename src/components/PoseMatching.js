@@ -29,7 +29,7 @@ const PoseMatching = (props) => {
     UUID,
     gameID,
     singleMatchPerPose = true,
-    repetitions = 1,
+    repetitions = 3,
   } = props;
 
   // Debug logging (only in development)

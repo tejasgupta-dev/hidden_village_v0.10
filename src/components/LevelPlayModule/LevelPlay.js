@@ -1,5 +1,5 @@
 import { useMachine } from '@xstate/react';
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 
 import VideoRecorder from '../VideoRecorder';
 import Chapter from '../Chapter';
@@ -59,6 +59,11 @@ export default function LevelPlay(props) {
   const [expText, setExpText] = useState('');
   const [settings, setSettings] = useState(null);
   
+  // Memoize the result of hasShownIntro to avoid infinite re-renders
+  const hasShownIntroResult = useMemo(() => {
+    return hasShownIntro ? hasShownIntro(currentConjectureIdx) : false;
+  }, [hasShownIntro, currentConjectureIdx]);
+  
   // Log state transitions
   useEffect(() => {
     console.log('[LevelPlay] State transition:', {
@@ -86,7 +91,7 @@ export default function LevelPlay(props) {
     ? Math.max(1, repetitionCountFromDB)
     : (settings && Number.isInteger(settings.repetitions) ? Math.max(1, settings.repetitions) : 3);
   const tweenDuration = 2000;
-  const tweenLoopCount = settings?.repetitions ?? 2;
+  const tweenLoopCount = settings?.repetitions ?? 3;
 
   // Refs for tracking previous state and video recorder
   const prevStateRef = useRef(null);
@@ -209,10 +214,11 @@ export default function LevelPlay(props) {
       writeToDatabasePoseMatchingStart(gameID).catch(console.error);
     } else if (state.value === 'intuition' && conjectureData) {
       const textBoxes = conjectureData[UUID]['Text Boxes'];
-      const desc = textBoxes['Intuition Description'] || textBoxes['Conjecture Description'] || '';
+      const desc = textBoxes['Conjecture Statement'] || textBoxes['Intuition Description'] || textBoxes['Conjecture Description'] || '';
       writeToDatabaseIntuitionStart(gameID, desc).catch(console.error);
     } else if (state.value === 'mcq' && conjectureData) {
-      const question = conjectureData[UUID]['Text Boxes']['MCQ Question'] || '';
+      const textBoxes = conjectureData[UUID]['Text Boxes'];
+      const question = textBoxes['Conjecture Statement'] || textBoxes['MCQ Question'] || '';
       writeToDatabaseMCQStart(gameID, question).catch(console.error);
     } else if (state.value === 'outroDialogue') {
       writeToDatabaseOutroStart(gameID).catch(console.error);
@@ -241,8 +247,8 @@ export default function LevelPlay(props) {
   useEffect(() => {
     if (!conjectureData) return;
     const textBoxes = conjectureData[UUID]['Text Boxes'];
-    // Use Intuition Description if available, fallback to Conjecture Description for backward compatibility
-    const desc = textBoxes['Intuition Description'] || textBoxes['Conjecture Description'] || '';
+    // Use Conjecture Statement if available, fallback to old fields for backward compatibility
+    const desc = textBoxes['Conjecture Statement'] || textBoxes['Intuition Description'] || textBoxes['Conjecture Description'] || '';
 
     if (state.value === 'intuition') {
       setExpText(`${desc}\nDo you think this is TRUE or FALSE?`);
@@ -421,19 +427,19 @@ export default function LevelPlay(props) {
   // Log render conditions for introDialogue
   useEffect(() => {
     if (state.value === 'introDialogue') {
-      const shouldRender = !hasShownIntro(currentConjectureIdx) &&
+      const shouldRender = !hasShownIntroResult &&
         conjectureData && 
         settings?.story;
       
       console.log('[LevelPlay] IntroDialogue render check:', {
         'state.value': state.value,
-        'hasShownIntro': hasShownIntro(currentConjectureIdx),
+        'hasShownIntro': hasShownIntroResult,
         'conjectureData exists': !!conjectureData,
         'settings?.story': settings?.story,
         'shouldRender Chapter': shouldRender
       });
     }
-  }, [state.value, hasShownIntro, currentConjectureIdx, conjectureData, settings]);
+  }, [state.value, hasShownIntroResult, conjectureData, settings]);
 
   // Log render conditions for poseMatching
   useEffect(() => {
@@ -456,21 +462,21 @@ export default function LevelPlay(props) {
     if (!settings || !conjectureData) return; // Wait for data to load
     
     // Check if Chapter should render
-    const shouldRenderChapter = !hasShownIntro(currentConjectureIdx) && 
+    const shouldRenderChapter = !hasShownIntroResult && 
                                  conjectureData && 
                                  settings?.story === true;
     
     // If Chapter should not render, automatically transition to tween
     if (!shouldRenderChapter) {
       console.log('[LevelPlay] Auto-transitioning from introDialogue to tween:', {
-        'hasShownIntro': hasShownIntro(currentConjectureIdx),
+        'hasShownIntro': hasShownIntroResult,
         'conjectureData exists': !!conjectureData,
         'settings.story': settings?.story,
         'shouldRenderChapter': shouldRenderChapter
       });
       
       // Mark intro as shown if it hasn't been marked yet
-      if (!hasShownIntro(currentConjectureIdx)) {
+      if (!hasShownIntroResult) {
         try {
           markIntroShown(currentConjectureIdx);
         } catch (e) {
@@ -480,7 +486,7 @@ export default function LevelPlay(props) {
       
       send('NEXT');
     }
-  }, [state.value, settings, conjectureData, currentConjectureIdx, hasShownIntro, markIntroShown, send]);
+  }, [state.value, settings, conjectureData, hasShownIntroResult, currentConjectureIdx, markIntroShown, send]);
 
   // Handle completion when all modules are skipped after poseMatching
   useEffect(() => {
@@ -512,7 +518,7 @@ export default function LevelPlay(props) {
     const intuitionCheck = state.value === 'intuition' && settings.intuition !== false && conjectureData;
     const insightCheck = state.value === 'insight' && settings.insight !== false;
     const mcqCheck = state.value === 'mcq' && settings.multipleChoice !== false;
-    const introDialogueCheck = state.value === 'introDialogue' && !hasShownIntro(currentConjectureIdx) && conjectureData && settings.story === true;
+    const introDialogueCheck = state.value === 'introDialogue' && !hasShownIntroResult && conjectureData && settings.story === true;
     const outroDialogueCheck = state.value === 'outroDialogue' && conjectureData && settings.story === true;
     
     const hasComponentToRender = tweenCheck || poseMatchingCheck || intuitionCheck || insightCheck || mcqCheck || introDialogueCheck || outroDialogueCheck;
@@ -525,7 +531,7 @@ export default function LevelPlay(props) {
         intuitionCheck: state.value === 'intuition' ? { result: intuitionCheck, hasConjectureData: !!conjectureData, settingsIntuition: settings.intuition } : 'N/A',
         insightCheck: state.value === 'insight' ? { result: insightCheck, settingsInsight: settings.insight } : 'N/A',
         mcqCheck: state.value === 'mcq' ? { result: mcqCheck, settingsMultipleChoice: settings.multipleChoice } : 'N/A',
-        introDialogueCheck: state.value === 'introDialogue' ? { result: introDialogueCheck, hasShownIntro: hasShownIntro(currentConjectureIdx), hasConjectureData: !!conjectureData, settingsStory: settings.story } : 'N/A',
+        introDialogueCheck: state.value === 'introDialogue' ? { result: introDialogueCheck, hasShownIntro: hasShownIntroResult, hasConjectureData: !!conjectureData, settingsStory: settings.story } : 'N/A',
         outroDialogueCheck: state.value === 'outroDialogue' ? { result: outroDialogueCheck, hasConjectureData: !!conjectureData, settingsStory: settings.story } : 'N/A',
         hasComponentToRender: hasComponentToRender
       });
@@ -585,7 +591,7 @@ export default function LevelPlay(props) {
         console.log('[LevelPlay] No component to render in state:', state.value, 'but subsequent modules are enabled, allowing transition');
       }
     }
-  }, [state.value, settings, conjectureData, poses.length, isLoadingPoses, currentConjectureIdx, hasShownIntro, onLevelComplete]);
+  }, [state.value, settings, conjectureData, poses.length, isLoadingPoses, currentConjectureIdx, hasShownIntroResult, onLevelComplete]);
 
   
   // Only show story/dialogue content if settings.story is true
@@ -601,7 +607,7 @@ export default function LevelPlay(props) {
 
       {/* Intro dialogue */}
       {state.value === 'introDialogue' &&
-        !hasShownIntro(currentConjectureIdx) &&
+        !hasShownIntroResult &&
         conjectureData && 
         settings?.story && (
           <Chapter
@@ -749,7 +755,7 @@ export default function LevelPlay(props) {
                 stageType="intuition"
                 question={(() => {
                   const textBoxes = conjectureData[UUID]['Text Boxes'];
-                  return textBoxes['Intuition Description'] || textBoxes['Conjecture Description'] || '';
+                  return textBoxes['Conjecture Statement'] || textBoxes['Intuition Description'] || textBoxes['Conjecture Description'] || '';
                 })()}
                 correctAnswer={(() => {
                   const textBoxes = conjectureData[UUID]['Text Boxes'];
@@ -797,7 +803,8 @@ export default function LevelPlay(props) {
         if (state.value === 'mcq') {
           const shouldRender = settings?.multipleChoice !== false;
           const hasConjectureData = !!conjectureData;
-          const hasQuestion = !!(conjectureData?.[UUID]?.['Text Boxes']?.['MCQ Question']);
+          const textBoxes = conjectureData?.[UUID]?.['Text Boxes'];
+          const hasQuestion = !!(textBoxes?.['Conjecture Statement'] || textBoxes?.['MCQ Question']);
           console.log('[LevelPlay] MCQ render check:', {
             state: state.value,
             settingsMultipleChoice: settings?.multipleChoice,
@@ -816,7 +823,7 @@ export default function LevelPlay(props) {
                 columnDimensions={columnDimensions}
                 question={(() => {
                   const textBoxes = conjectureData?.[UUID]?.['Text Boxes'];
-                  return textBoxes?.['MCQ Question'] || '';
+                  return textBoxes?.['Conjecture Statement'] || textBoxes?.['MCQ Question'] || '';
                 })()}
                 mcqChoices={(() => {
                   const textBoxes = conjectureData?.[UUID]?.['Text Boxes'];
@@ -879,7 +886,7 @@ export default function LevelPlay(props) {
           (state.value === 'intuition' && settings.intuition !== false && conjectureData) ||
           (state.value === 'insight' && settings.insight !== false) ||
           (state.value === 'mcq' && settings.multipleChoice !== false) ||
-          (state.value === 'introDialogue' && !hasShownIntro(currentConjectureIdx) && conjectureData && settings.story === true) ||
+          (state.value === 'introDialogue' && !hasShownIntroResult && conjectureData && settings.story === true) ||
           (state.value === 'outroDialogue' && conjectureData && settings.story === true) ||
           state.value === 'levelEnd';
         

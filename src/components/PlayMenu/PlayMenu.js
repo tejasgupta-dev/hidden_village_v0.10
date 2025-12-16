@@ -420,6 +420,7 @@ const PlayMenu = (props) => {
               console.log("Sending STORYEDITOR...");
               send("STORYEDITOR")}
             }
+            backToGameSelectCallback={() => send("GAMESELECT")}
           />
         )}
         {state.value === "storyEditor" && (

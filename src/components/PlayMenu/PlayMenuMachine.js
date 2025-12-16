@@ -78,6 +78,7 @@ export const PlayMenuMachine = createMachine({
         LEVELSELECT: "levelSelect", // move to conjecture selector
         NEWLEVEL: "newLevel", // preview a level in the game editor
         STORYEDITOR: "storyEditor", // move to story editor
+        GAMESELECT: "gameSelect", // move back to game select after saving
       },
     },
 

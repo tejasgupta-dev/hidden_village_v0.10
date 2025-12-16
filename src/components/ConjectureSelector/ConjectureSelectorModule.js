@@ -92,7 +92,7 @@ async function handleLevelClicked(conjecture, conjectureCallback, firebaseApp = 
   else if (await handlePIN(conjecture, "Please Enter the PIN.", firebaseApp)) { // when the user pulls up the list of levels in the level editor
     console.log('handleLevelClicked: Edit mode - setting up for level editing');
     setEditLevel(true);
-    setGoBackFromLevelEdit("MAIN");
+    setGoBackFromLevelEdit("LEVELSELECT");
     currentConjecture.setConjecture(conjecture);
     conjectureCallback(conjecture);
   } else {

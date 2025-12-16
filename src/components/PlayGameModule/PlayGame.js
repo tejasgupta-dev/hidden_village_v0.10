@@ -1,7 +1,7 @@
 import Button from "../Button";
 import PlayGameMachine from "./PlayGameMachine";
 import { useMachine } from "@xstate/react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import LevelPlay from "../LevelPlayModule/LevelPlay";
 import { Curriculum } from "../CurricularModule/CurricularModule";
 import usePoseData from "../utilities/PoseData";
@@ -12,10 +12,12 @@ import PixiLoader from "../utilities/PixiLoader";
 
 const PlayGame = (props) => {
   const [shownIntros, setShownIntros] = useState(new Set());
-  const markIntroShown = (chapterIdx) => {
+  const markIntroShown = useCallback((chapterIdx) => {
     setShownIntros((prev) => new Set(prev).add(chapterIdx));
-  };
-  const hasShownIntro = (chapterIdx) => shownIntros.has(chapterIdx);
+  }, []);
+  const hasShownIntro = useCallback((chapterIdx) => {
+    return shownIntros.has(chapterIdx);
+  }, [shownIntros]);
 
   const { columnDimensions, rowDimensions, height, width, backCallback, gameUUID} = props;
   const {poseData, canPlay, error, retryInitialization} = usePoseData();

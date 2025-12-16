@@ -93,6 +93,7 @@ export const keysToPush = [
   "Author Name",
   "PIN",
   "Conjecture Keywords",
+  "Conjecture Statement",
   "Intuition Description",
   "Intuition Correct Answer",
   "MCQ Question",
@@ -369,7 +370,12 @@ export const loadGameDialoguesFromFirebase = async (gameId, orgId) => {
 export const getCurrentOrgContext = async () => {
   try {
     // Import here to avoid circular dependency
-    const { getCurrentUserContext } = await import('./userDatabase.js');
+    const userDatabaseModule = await import('./userDatabase.js');
+    const getCurrentUserContext = userDatabaseModule?.getCurrentUserContext;
+    if (!getCurrentUserContext || typeof getCurrentUserContext !== 'function') {
+      console.error('getCurrentOrgContext: getCurrentUserContext is not a function');
+      return { orgId: null, role: null };
+    }
     const result = await getCurrentUserContext(app);
     return result;
   } catch (error) {
@@ -839,13 +845,53 @@ export const writeToDatabaseConjecture = async (existingUUID, orgId) => {
 
     const dataToPush = {};
 
-    const isAnyKeyNullOrUndefined = keysToPush.some((key) => {
+    // Auto-fill "Conjecture Statement" from old fields for backward compatibility when loading old levels
+    const conjectureStatement = localStorage.getItem('Conjecture Statement');
+    const intuitionDesc = localStorage.getItem('Intuition Description');
+    const mcqQuestion = localStorage.getItem('MCQ Question');
+    const conjectureDesc = localStorage.getItem('Conjecture Description');
+    
+    // If Conjecture Statement doesn't exist, try to create it from old fields
+    if ((!conjectureStatement || conjectureStatement.trim() === '')) {
+      if (intuitionDesc && intuitionDesc.trim() !== '') {
+        localStorage.setItem('Conjecture Statement', intuitionDesc);
+        console.log('writeToDatabaseConjecture: Auto-filled Conjecture Statement from Intuition Description');
+      } else if (mcqQuestion && mcqQuestion.trim() !== '') {
+        localStorage.setItem('Conjecture Statement', mcqQuestion);
+        console.log('writeToDatabaseConjecture: Auto-filled Conjecture Statement from MCQ Question');
+      } else if (conjectureDesc && conjectureDesc.trim() !== '') {
+        localStorage.setItem('Conjecture Statement', conjectureDesc);
+        console.log('writeToDatabaseConjecture: Auto-filled Conjecture Statement from Conjecture Description');
+      }
+    }
+
+    // Auto-fill old fields from "Conjecture Statement" for backward compatibility
+    // This ensures old levels that use "Intuition Description" and "MCQ Question" still work
+    const finalConjectureStatement = localStorage.getItem('Conjecture Statement');
+    if (finalConjectureStatement && finalConjectureStatement.trim() !== '') {
+      if (!intuitionDesc || intuitionDesc.trim() === '') {
+        localStorage.setItem('Intuition Description', finalConjectureStatement);
+        console.log('writeToDatabaseConjecture: Auto-filled Intuition Description from Conjecture Statement');
+      }
+      if (!mcqQuestion || mcqQuestion.trim() === '') {
+        localStorage.setItem('MCQ Question', finalConjectureStatement);
+        console.log('writeToDatabaseConjecture: Auto-filled MCQ Question from Conjecture Statement');
+      }
+      if (!conjectureDesc || conjectureDesc.trim() === '') {
+        localStorage.setItem('Conjecture Description', finalConjectureStatement);
+        console.log('writeToDatabaseConjecture: Auto-filled Conjecture Description from Conjecture Statement');
+      }
+    }
+
+    // Collect empty fields for better error message
+    const emptyFields = keysToPush.filter((key) => {
       const value = localStorage.getItem(key);
       return value === null || value === undefined || value.trim() === '';
     });
 
-    if (isAnyKeyNullOrUndefined) {
-      alert("One or more text values are empty. Cannot publish conjecture to database.");
+    if (emptyFields.length > 0) {
+      const fieldsList = emptyFields.join(', ');
+      alert(`One or more text values are empty. Cannot publish conjecture to database.\n\nEmpty fields: ${fieldsList}`);
       return false;
     }
 
@@ -920,9 +966,11 @@ export const writeToDatabaseConjecture = async (existingUUID, orgId) => {
     
     // If user is a student, automatically assign level to their class
     try {
-      const { getCurrentUserContext } = await import('./userDatabase.js');
-      const userContext = await getCurrentUserContext();
-      if (userContext?.role === 'Student' && userContext?.orgId === orgId) {
+      const userDatabaseModule = await import('./userDatabase.js');
+      const getCurrentUserContext = userDatabaseModule?.getCurrentUserContext;
+      if (getCurrentUserContext && typeof getCurrentUserContext === 'function') {
+        const userContext = await getCurrentUserContext(app);
+        if (userContext?.role === 'Student' && userContext?.orgId === orgId) {
         // Get current class ID from user profile
         const userClassRef = ref(db, `users/${userId}/orgs/${orgId}/currentClassId`);
         const classSnapshot = await get(userClassRef);
@@ -935,6 +983,7 @@ export const writeToDatabaseConjecture = async (existingUUID, orgId) => {
             addedBy: userId
           });
         }
+      }
       }
     } catch (error) {
       console.error('Error assigning level to class:', error);
@@ -961,6 +1010,44 @@ export const writeToDatabaseConjectureDraft = async (existingUUID, orgId) => {
 
     const dataToPush = {};
     let noName = false;
+
+    // Auto-fill "Conjecture Statement" from old fields for backward compatibility when loading old levels
+    const conjectureStatement = localStorage.getItem('Conjecture Statement');
+    const intuitionDesc = localStorage.getItem('Intuition Description');
+    const mcqQuestion = localStorage.getItem('MCQ Question');
+    const conjectureDesc = localStorage.getItem('Conjecture Description');
+    
+    // If Conjecture Statement doesn't exist, try to create it from old fields
+    if ((!conjectureStatement || conjectureStatement.trim() === '')) {
+      if (intuitionDesc && intuitionDesc.trim() !== '') {
+        localStorage.setItem('Conjecture Statement', intuitionDesc);
+        console.log('writeToDatabaseConjectureDraft: Auto-filled Conjecture Statement from Intuition Description');
+      } else if (mcqQuestion && mcqQuestion.trim() !== '') {
+        localStorage.setItem('Conjecture Statement', mcqQuestion);
+        console.log('writeToDatabaseConjectureDraft: Auto-filled Conjecture Statement from MCQ Question');
+      } else if (conjectureDesc && conjectureDesc.trim() !== '') {
+        localStorage.setItem('Conjecture Statement', conjectureDesc);
+        console.log('writeToDatabaseConjectureDraft: Auto-filled Conjecture Statement from Conjecture Description');
+      }
+    }
+
+    // Auto-fill old fields from "Conjecture Statement" for backward compatibility
+    // This ensures old levels that use "Intuition Description" and "MCQ Question" still work
+    const finalConjectureStatement = localStorage.getItem('Conjecture Statement');
+    if (finalConjectureStatement && finalConjectureStatement.trim() !== '') {
+      if (!intuitionDesc || intuitionDesc.trim() === '') {
+        localStorage.setItem('Intuition Description', finalConjectureStatement);
+        console.log('writeToDatabaseConjectureDraft: Auto-filled Intuition Description from Conjecture Statement');
+      }
+      if (!mcqQuestion || mcqQuestion.trim() === '') {
+        localStorage.setItem('MCQ Question', finalConjectureStatement);
+        console.log('writeToDatabaseConjectureDraft: Auto-filled MCQ Question from Conjecture Statement');
+      }
+      if (!conjectureDesc || conjectureDesc.trim() === '') {
+        localStorage.setItem('Conjecture Description', finalConjectureStatement);
+        console.log('writeToDatabaseConjectureDraft: Auto-filled Conjecture Description from Conjecture Statement');
+      }
+    }
 
     // Process text box values
     await Promise.all(keysToPush.map(async (key) => {
@@ -1307,9 +1394,11 @@ const countRejectedPromises = async (promises) => {
 
       // If user is a student, automatically assign game to their class
       try {
-        const { getCurrentUserContext } = await import('./userDatabase.js');
-        const userContext = await getCurrentUserContext();
-        if (userContext?.role === 'Student' && userContext?.orgId === orgId) {
+        const userDatabaseModule = await import('./userDatabase.js');
+        const getCurrentUserContext = userDatabaseModule?.getCurrentUserContext;
+        if (getCurrentUserContext && typeof getCurrentUserContext === 'function') {
+          const userContext = await getCurrentUserContext(app);
+          if (userContext?.role === 'Student' && userContext?.orgId === orgId) {
           // Get current class ID from user profile
           const userClassRef = ref(db, `users/${userId}/orgs/${orgId}/currentClassId`);
           const classSnapshot = await get(userClassRef);
@@ -1322,6 +1411,7 @@ const countRejectedPromises = async (promises) => {
               addedBy: userId
             });
           }
+        }
         }
       } catch (error) {
         console.error('Error assigning game to class:', error);

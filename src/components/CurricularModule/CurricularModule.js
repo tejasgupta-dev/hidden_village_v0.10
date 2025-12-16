@@ -140,7 +140,7 @@ export const Curriculum = {
 };
 
 const CurricularModule = (props) => {
-  const { height, width, userName, mainCallback, conjectureCallback, conjectureSelectCallback, storyEditorCallback } = props;
+  const { height, width, userName, mainCallback, conjectureCallback, conjectureSelectCallback, storyEditorCallback, backToGameSelectCallback } = props;
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [timer, setTimer] = useState(5); // default timer value
 
@@ -158,6 +158,21 @@ const CurricularModule = (props) => {
   const enhancedMainCallback = () => {
     resetCurricularValues();
     mainCallback();
+  };
+
+  const enhancedGameSelectCallback = (uuidBeforeSave = null) => {
+    // Use UUID BEFORE saving to know if this was a new game
+    // If editing an existing game (UUID was set before saving), return to game list
+    // If creating a new game (UUID was null before saving), return to main menu
+    const wasExistingGame = uuidBeforeSave !== null && uuidBeforeSave !== undefined && uuidBeforeSave !== '';
+    resetCurricularValues();
+    if (wasExistingGame && backToGameSelectCallback) {
+      console.log('enhancedGameSelectCallback: Editing existing game, returning to gameSelect');
+      backToGameSelectCallback();
+    } else {
+      console.log('enhancedGameSelectCallback: Creating new game, returning to main menu');
+      mainCallback(); // return to main menu for new game
+    }
   };
 
   const deleteCurrentCurricular = async (currentUUID) => {
@@ -294,9 +309,16 @@ const CurricularModule = (props) => {
             text={"SAVE DRAFT"}
             fontWeight={800}
             callback={async () => {
-              const success = await saveGameWithCurrentOrg(Curriculum.getCurrentUUID(), false);
+              console.log('SAVE DRAFT: Starting save...');
+              // Save UUID BEFORE saving to know if this was a new game
+              const uuidBeforeSave = Curriculum.getCurrentUUID();
+              const success = await saveGameWithCurrentOrg(uuidBeforeSave, false);
+              console.log('SAVE DRAFT: Save result:', success, 'UUID before save:', uuidBeforeSave);
               if (success) {
-                enhancedMainCallback();
+                console.log('SAVE DRAFT: Calling enhancedGameSelectCallback');
+                enhancedGameSelectCallback(uuidBeforeSave);
+              } else {
+                console.log('SAVE DRAFT: Save failed, not calling callback');
               }
             }}
           />
@@ -311,9 +333,11 @@ const CurricularModule = (props) => {
             text={"PUBLISH"}
             fontWeight={800}
             callback={async () => {
-              const success = await saveGameWithCurrentOrg(Curriculum.getCurrentUUID(), true);
+              // Save UUID BEFORE saving to know if this was a new game
+              const uuidBeforeSave = Curriculum.getCurrentUUID();
+              const success = await saveGameWithCurrentOrg(uuidBeforeSave, true);
               if (success) {
-                enhancedMainCallback();
+                enhancedGameSelectCallback(uuidBeforeSave);
               }
             }}
           />

@@ -1,5 +1,5 @@
 import Background from "../Background";
-import { Graphics, Text } from "@inlet/react-pixi";
+import { Graphics, Text, Container } from "@inlet/react-pixi";
 import { TextStyle } from "@pixi/text";
 import { orange, black, white, darkGray, yellow, red, blue } from "../../utils/colors";
 import Button from "../Button";
@@ -57,17 +57,27 @@ const PoseTestMatch = (props) => {
 
   // Get pose data from local storage
   useEffect(() => {
-    const startPose = JSON.parse(localStorage.getItem("start.json"));
-    const intermediatePose = JSON.parse(localStorage.getItem("intermediate.json"));
-    const endPose = JSON.parse(localStorage.getItem("end.json"));
+    const startPoseStr = localStorage.getItem("start.json");
+    const intermediatePoseStr = localStorage.getItem("intermediate.json");
+    const endPoseStr = localStorage.getItem("end.json");
 
-    const startTolerance = parseInt(localStorage.getItem("Start Tolerance")) || 45;
-    const intermediateTolerance = parseInt(localStorage.getItem("Intermediate Tolerance")) || 45;
-    const endTolerance = parseInt(localStorage.getItem("End Tolerance")) || 45;
+    if (startPoseStr && intermediatePoseStr && endPoseStr) {
+      try {
+        const startPose = JSON.parse(startPoseStr);
+        const intermediatePose = JSON.parse(intermediatePoseStr);
+        const endPose = JSON.parse(endPoseStr);
 
-    if (startPose && intermediatePose && endPose) {
-      setPoses([startPose, intermediatePose, endPose]);
-      setTolerances([startTolerance, intermediateTolerance, endTolerance]);
+        const startTolerance = parseInt(localStorage.getItem("Start Tolerance")) || 45;
+        const intermediateTolerance = parseInt(localStorage.getItem("Intermediate Tolerance")) || 45;
+        const endTolerance = parseInt(localStorage.getItem("End Tolerance")) || 45;
+
+        if (startPose && intermediatePose && endPose) {
+          setPoses([startPose, intermediatePose, endPose]);
+          setTolerances([startTolerance, intermediateTolerance, endTolerance]);
+        }
+      } catch (e) {
+        console.error("Failed to parse pose data from localStorage:", e);
+      }
     }
   }, []);
 
@@ -78,35 +88,33 @@ return(
   <> 
   {/* If poses is not null then start pose matching to test */}
       {poses != null && (
-        <Graphics draw={drawModalBackground} >
-        <>
-        <PoseMatching
-          poseData={poseData}
-          posesToMatch={posesToMatchGrouped}
-          columnDimensions={columnDimensions}
-          onComplete={conjectureCallback}
-          gameID={gameID}
-          UUID={testUUID}
-          tolerances={tolerances}
-          singleMatchPerPose={true}
-          
-        />
-        {/* Back Button */}
-        <RectButton
-          height={height * 0.23}
-          width={width * 0.26}
-          x={width * 0.025}
-          y={height * 0.85}
-          color={black}
-          fontSize={width * 0.015}
-          fontColor={white}
-          text={"BACK BUTTON"}
-          fontWeight={800}
-          callback={conjectureCallback}
-        />
-        </>
-        </Graphics>
-        
+        <Container>
+          <Graphics draw={drawModalBackground} />
+          <PoseMatchingSimplified
+            poseData={poseData}
+            posesToMatch={posesToMatchGrouped}
+            columnDimensions={columnDimensions}
+            onComplete={conjectureCallback}
+            gameID={gameID}
+            UUID={testUUID}
+            tolerances={tolerances}
+            singleMatchPerPose={true}
+            repetitions={repetitions}
+          />
+          {/* Back Button */}
+          <RectButton
+            height={height * 0.23}
+            width={width * 0.26}
+            x={width * 0.025}
+            y={height * 0.85}
+            color={black}
+            fontSize={width * 0.015}
+            fontColor={white}
+            text={"BACK"}
+            fontWeight={800}
+            callback={conjectureCallback}
+          />
+        </Container>
       )}
       {/* Otherwise, prompt to go back and complete all poses */}
       {poses == null &&

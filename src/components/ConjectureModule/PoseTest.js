@@ -8,6 +8,7 @@ import usePoseData from "../utilities/PoseData";
 import { Text, Container } from "@inlet/react-pixi";
 import { green, black, white } from "../../utils/colors";
 import RectButton from "../RectButton";
+import PixiLoader from "../utilities/PixiLoader";
 
 const PoseTest = (props) => {
     const { height, width, columnDimensions, rowDimensions, editCallback, conjectureCallback, UUID, gameID } = props;
@@ -58,7 +59,7 @@ const PoseTest = (props) => {
                 />
             </Container>
         );
-    } else if (!cameraStatus === "initialized") {
+    } else if (cameraStatus !== "initialized") {
         // Show initializing / loading message
         return (
             <Container>

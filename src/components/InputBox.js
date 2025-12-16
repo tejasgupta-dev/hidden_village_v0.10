@@ -18,6 +18,7 @@ const InputBox = (props) => {
 
   const buttonWidth = width * 0.4;
   const cornerRadius = 10; // Adjust the corner radius as needed
+  const textWrapWidth = buttonWidth - 10; // Slightly reduce right border for text
 
   const draw = useCallback(
     (g) => {
@@ -43,7 +44,7 @@ const InputBox = (props) => {
             fontWeight: fontWeight,
             fill: [fontColor],
             wordWrap: true,
-            wordWrapWidth: buttonWidth,
+            wordWrapWidth: textWrapWidth,
           })
         }
         interactive={true}

@@ -181,9 +181,9 @@ const StoryEditorModule = (props) => {
   const handleAddDialogue = () => {
     const newText = prompt("Enter dialogue text:");
     if (newText && newText.trim() !== "") {
-      // Default to the latest chapter (or first if none exist)
+      // Default to the first chapter (level 1)
       if (chapters.length === 0) setChapters(["1"]);
-      const defaultChapter = chapters.length ? chapters[chapters.length - 1] : "1";      
+      const defaultChapter = chapters.length ? chapters[0] : "1";      
       const newDialogue = {
         text: newText,
         character: "player",
@@ -191,7 +191,16 @@ const StoryEditorModule = (props) => {
         chapter: defaultChapter
       };
       
+      // Calculate which page the new dialogue will be on
+      const newDialogueIndex = dialogues.length; // Index of the new dialogue after adding
+      const newPage = Math.floor(newDialogueIndex / dialoguesPerPage);
+      
       setDialogues([...dialogues, newDialogue]);
+      
+      // If the new dialogue is on a different page, navigate to it
+      if (newPage > currentPage) {
+        setCurrentPage(newPage);
+      }
     }
   };
 
@@ -218,6 +227,14 @@ const StoryEditorModule = (props) => {
       const updated = [...dialogues];
       updated[globalIndex].text = updatedText;
       setDialogues(updated);
+      
+      // Check which page the edited dialogue is on
+      const editedPage = Math.floor(globalIndex / dialoguesPerPage);
+      
+      // If the edited dialogue is on a different page, navigate to it
+      if (editedPage !== currentPage) {
+        setCurrentPage(editedPage);
+      }
     }
   };
 

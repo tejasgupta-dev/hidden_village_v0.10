@@ -20,13 +20,12 @@ function createInputBox(charLimit, scaleFactor, widthMultiplier, xMultiplier, yM
     const raw = localStorage.getItem(textKey);
 
   const placeholderMap = {
-    'Conjecture Name':       'Enter level name…',
+    'Conjecture Name':       'Type the name of this level here.',
     'Author Name':           'Author',
     'PIN':                   '4-digit PIN',
-    'Intuition Description':'Add description for intuition stage…',
+    'Conjecture Statement':  'Type conjecture statement here...',
     'Intuition Correct Answer': 'Select TRUE or FALSE',
-    'MCQ Question':          'Add question for MCQ stage…',
-    'Conjecture Keywords':   'keyword1, keyword2',
+    'Conjecture Keywords':   'Type in your keywords here (separate each with a comma followed by a space)',
     'Multiple Choice 1':     'Choice A',
     'Multiple Choice 2':     'Choice B',
     'Multiple Choice 3':     'Choice C',
@@ -88,10 +87,32 @@ export const NameBox = (props) => {
 
   function handleBoxInput(key) {
     const existingValue = localStorage.getItem(key);
-    const newValue = prompt(`Please Enter Your Value for ${key}`, existingValue);
+    let newValue = prompt(`Please Enter Your Value for ${key}`, existingValue);
 
     if (newValue !== null) {
+      // Apply character limit for Conjecture Statement
+      if (key === 'Conjecture Statement' && newValue.length > 129) {
+        newValue = newValue.slice(0, 129);
+        alert('Text has been truncated to 129 characters.');
+      }
+      
+      // Apply character limit for Multiple Choice fields
+      if ((key === 'Multiple Choice 1' || key === 'Multiple Choice 2' || 
+           key === 'Multiple Choice 3' || key === 'Multiple Choice 4') && 
+          newValue.length > 205) {
+        newValue = newValue.slice(0, 205);
+        alert('Text has been truncated to 205 characters.');
+      }
+      
       localStorage.setItem(key, newValue);
+      
+      // Auto-sync Conjecture Statement to old fields for backward compatibility
+      if (key === 'Conjecture Statement') {
+        localStorage.setItem('Intuition Description', newValue);
+        localStorage.setItem('MCQ Question', newValue);
+        localStorage.setItem('Conjecture Description', newValue);
+      }
+      
       setRefresh((n) => n + 1);
     }
   }
@@ -107,11 +128,9 @@ export const NameBox = (props) => {
       {createInputBox(220, 0.10, .3, 0.46+ 0.062, 0.136-.050, 'Author Name', width, height, null, true, username)}
       {/* KEYWORDS box: positioned right below NAME/AUTHOR/PIN boxes with small gap (0.5cm ≈ 0.018) */}
       {createInputBox(220, 0.10, 1.268, 0.203 + 0.062, 0.158, 'Conjecture Keywords', width, height, handleBoxInput)}
-      {/* Intuition box: 1cm gap after keywords box (0.035) */}
-      {createInputBox(220, 0.15, 1.0, 0.134, 0.200, 'Intuition Description', width, height, handleBoxInput)}
-      {/* MCQ box: 1cm gap after intuition box (0.035) */}
-      {createInputBox(220, 0.15, 1.595, 0.134, 0.260, 'MCQ Question', width, height, handleBoxInput)}
-      {/* Intuition Correct Answer buttons - positioned to the right of Intuition Description */}
+      {/* Conjecture Statement box: 1cm gap after keywords box (0.035) - unified field for both intuition and MCQ */}
+      {createInputBox(220, 0.15, 1.0, 0.134, 0.230, 'Conjecture Statement', width, height, handleBoxInput)}
+      {/* Intuition Correct Answer buttons - positioned to the right of Conjecture Statement */}
       <IntuitionCorrectAnswerBox height={height} width={width} />
 
       {/* text, xMultiplier, yMultiplier, fontSizeMultiplier, totalWidth, totalHeight, color */}
@@ -275,7 +294,7 @@ export const IntuitionCorrectAnswerBox = (props) => {
     <>
       <Text
         x={width * 0.538}
-        y={height * 0.200}
+        y={height * 0.230}
         text="CORRECT:"
         style={new TextStyle({
           fontFamily: 'Arial',
@@ -288,7 +307,7 @@ export const IntuitionCorrectAnswerBox = (props) => {
         height={height * 0.03}
         width={width * 0.03}
         x={width * 0.62}
-        y={height * 0.23}
+        y={height * 0.26}
         color={correctAnswer === 'TRUE' ? green : blue}
         fontSize={width * 0.007}
         fontColor={correctAnswer === 'TRUE' ? black : white}
@@ -300,7 +319,7 @@ export const IntuitionCorrectAnswerBox = (props) => {
         height={height * 0.03}
         width={width * 0.03}
         x={width * 0.65}
-        y={height * 0.23}
+        y={height * 0.26}
         color={correctAnswer === 'FALSE' ? green : blue}
         fontSize={width * 0.007}
         fontColor={correctAnswer === 'FALSE' ? black : white}

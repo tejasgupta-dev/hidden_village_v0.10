@@ -66,7 +66,6 @@ const ExperimentalTask = (props) => {
     const [showQuestion, setShowQuestion] = useState(true);
     const [questionOpacity, setQuestionOpacity] = useState(1.0);
     const hoverTimerRef = useRef(null);
-    const autoTimerRef = useRef(null);
     const onCompleteRef = useRef(onComplete);
     const fadeIntervalRef = useRef(null);
     const questionTimerRef = useRef(null);
@@ -162,7 +161,7 @@ const ExperimentalTask = (props) => {
 
       questionTimerRef.current = setTimeout(() => {
         startFadeOut();
-      }, 5000);
+      }, 8000);
     }, [clearQuestionTimers, startFadeOut]);
 
     const hideQuestionOverlay = useCallback(() => {
@@ -171,59 +170,26 @@ const ExperimentalTask = (props) => {
       setQuestionOpacity(0);
     }, [clearQuestionTimers]);
 
-    const restartMainTimer = useCallback(() => {
-      if (autoTimerRef.current) {
-        clearTimeout(autoTimerRef.current);
-      }
-
-      autoTimerRef.current = setTimeout(() => {
-        console.log("Intuition: Calling onComplete from 50-second timer");
-        // Clear hover timer if it exists
-        if (hoverTimerRef.current) {
-          clearTimeout(hoverTimerRef.current);
-          hoverTimerRef.current = null;
-        }
-        // Record timeout as answer
-        if (gameID && isIntuition) {
-          writeToDatabaseTFAnswer('TIMEOUT', correctAnswer || null, gameID, question || '').catch(console.error);
-        }
-        onCompleteRef.current();
-      }, 50000);
-    }, []);
-
     const handleQuestionButtonToggle = useCallback(() => {
       if (showQuestion) {
         hideQuestionOverlay();
       } else {
         startQuestionOverlay();
       }
-      restartMainTimer();
-    }, [hideQuestionOverlay, restartMainTimer, showQuestion, startQuestionOverlay]);
+    }, [hideQuestionOverlay, showQuestion, startQuestionOverlay]);
 
     // Keep onComplete ref up to date
     useEffect(() => {
       onCompleteRef.current = onComplete;
     }, [onComplete]);
 
-    // Question display: show for 5 seconds, then fade out over 2 seconds
+    // Question display: show for 8 seconds, then fade out over 2 seconds
     useEffect(() => {
       startQuestionOverlay();
       return () => {
         clearQuestionTimers();
       };
     }, [clearQuestionTimers, startQuestionOverlay]);
-
-    // 50-sec auto-timer
-    useEffect(() => {
-      restartMainTimer();
-      
-      return () => {
-        if (autoTimerRef.current) {
-          clearTimeout(autoTimerRef.current);
-          autoTimerRef.current = null;
-        }
-      };
-    }, [restartMainTimer]);
 
     // Question bar dimensions (dynamic height based on content)
     const questionBarWidth = window.innerWidth * 0.8;
@@ -319,11 +285,6 @@ const ExperimentalTask = (props) => {
       hoverTimerRef.current && clearTimeout(hoverTimerRef.current);
       hoverTimerRef.current = setTimeout(() => {
         console.log("Intuition: Calling onComplete after stable 2s hover");
-        // Clear auto timer if it exists
-        if (autoTimerRef.current) {
-          clearTimeout(autoTimerRef.current);
-          autoTimerRef.current = null;
-        }
         // Map hoveredBox to answer (TRUE/FALSE)
         const selectedAnswer = hoveredBox === 'left' ? 'TRUE' : 'FALSE';
         // Write answer to database

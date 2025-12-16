@@ -93,7 +93,15 @@ function setLocalStorage(){
       }
 
       if (Object.keys(conj).length === 0) {
-        console.log('setLocalStorage: No conjecture data found, skipping localStorage setup');
+        console.log('setLocalStorage: No conjecture data found, initializing fields for new level');
+        // Initialize all fields from keysToPush with empty strings if not already set
+        // This ensures validation doesn't fail on null/undefined values
+        keysToPush.forEach((key) => {
+          if (localStorage.getItem(key) === null || localStorage.getItem(key) === undefined) {
+            localStorage.setItem(key, '');
+            console.log(`setLocalStorage: Initialized ${key} with empty string`);
+          }
+        });
         return;
       }
 
@@ -115,6 +123,26 @@ function setLocalStorage(){
       console.log(`setLocalStorage: Removed ${k} (value was: ${val})`);
     }
   });
+
+  // Auto-fill "Conjecture Statement" from old fields for backward compatibility
+  // Priority: Intuition Description > MCQ Question > Conjecture Description
+  const conjectureStatement = localStorage.getItem('Conjecture Statement');
+  if (!conjectureStatement || conjectureStatement.trim() === '') {
+    const intuitionDesc = localStorage.getItem('Intuition Description');
+    const mcqQuestion = localStorage.getItem('MCQ Question');
+    const conjectureDesc = localStorage.getItem('Conjecture Description');
+    
+    if (intuitionDesc && intuitionDesc.trim() !== '') {
+      localStorage.setItem('Conjecture Statement', intuitionDesc);
+      console.log('setLocalStorage: Auto-filled Conjecture Statement from Intuition Description');
+    } else if (mcqQuestion && mcqQuestion.trim() !== '') {
+      localStorage.setItem('Conjecture Statement', mcqQuestion);
+      console.log('setLocalStorage: Auto-filled Conjecture Statement from MCQ Question');
+    } else if (conjectureDesc && conjectureDesc.trim() !== '') {
+      localStorage.setItem('Conjecture Statement', conjectureDesc);
+      console.log('setLocalStorage: Auto-filled Conjecture Statement from Conjecture Description');
+    }
+  }
 
   console.log('setLocalStorage: Setting pose data...');
   // 2. Pose JSON
