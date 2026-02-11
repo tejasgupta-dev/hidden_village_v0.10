@@ -9,3 +9,6 @@ static
 .env
 src/.DS_Store
 .firebase
+
+# This file has the secrets of the env, we need to change it in the future
+src/firebase/init.js
